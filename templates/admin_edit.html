@@ -1,0 +1,20 @@
+<div class="bevel-out bg-[#c0c0c0] text-black px-5 py-4">
+  <h1 class="text-xl font-bold text-[#000080] mt-0 mb-2">editor</h1>
+  <p class="text-xs text-[#8b0000] font-bold mb-2">{{err}}</p>
+  <form method="post" action="/admin/save">
+    <input type="hidden" name="csrf" value="{{csrf}}">
+    <input type="hidden" name="id" value="{{id}}">
+    <label class="text-xs block">title</label>
+    <input name="title" value="{{etitle}}" class="bevel-in bg-white text-black px-2 py-1 w-full mb-2">
+    <label class="text-xs block">slug (leave blank to derive from the title)</label>
+    <input name="slug" value="{{eslug}}" class="bevel-in bg-white text-black px-2 py-1 w-full mb-2">
+    <label class="text-xs block">tags (comma-separated, a-z 0-9 dashes)</label>
+    <input name="tags" value="{{etags}}" class="bevel-in bg-white text-black px-2 py-1 w-full mb-2">
+    <label class="text-xs block">markdown</label>
+    <textarea name="md" rows="18" class="bevel-in bg-white text-black px-2 py-1 w-full mb-3 font-mono text-sm">{{emd}}</textarea>
+    <button class="btn95" type="submit" name="action" value="publish">Publish</button>
+    <button class="btn95" type="submit" name="action" value="draft">Save Draft</button>
+    <button class="btn95" type="submit" name="action" value="preview" formaction="/admin/preview">Preview</button>
+    <a class="postlink text-sm ml-3" href="/admin">cancel</a>
+  </form>
+</div>

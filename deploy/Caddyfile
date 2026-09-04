@@ -1,0 +1,21 @@
+# Caddy reverse proxy for blogd — automatic HTTPS via Let's Encrypt.
+# Caddy terminates TLS; blogd speaks plain HTTP on 127.0.0.1:8080.
+#
+#   sudo cp deploy/Caddyfile /etc/caddy/Caddyfile   # edit the domain
+#   sudo systemctl reload caddy
+
+blog.example.com {
+	encode gzip zstd
+	reverse_proxy 127.0.0.1:8080
+
+	# blogd already sets its own security headers; Caddy adds HSTS,
+	# which only makes sense once TLS actually terminates here.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		-Server
+	}
+
+	# static assets are immutable between builds; let the proxy cache them
+	@static path /static/*
+	header @static Cache-Control "public, max-age=604800"
+}

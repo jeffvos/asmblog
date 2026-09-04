@@ -1,0 +1,10 @@
+<div class="bevel-out bg-[#c0c0c0] text-black px-5 py-4 max-w-md mx-auto">
+  <h1 class="text-xl font-bold text-[#8b0000] mt-0 mb-2">delete this post?</h1>
+  <p class="font-bold mb-3">{{etitle}}</p>
+  <form method="post" action="/admin/delete">
+    <input type="hidden" name="csrf" value="{{csrf}}">
+    <input type="hidden" name="id" value="{{id}}">
+    <button class="btn95" type="submit">Yes, delete it</button>
+    <a class="postlink text-sm ml-3" href="/admin">cancel</a>
+  </form>
+</div>

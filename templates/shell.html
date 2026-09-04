@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{title}} &mdash; {{site}}</title>
+<link rel="stylesheet" href="/static/main.css">
+<link rel="alternate" type="application/atom+xml" href="/feed.xml" title="{{site}}">
+</head>
+<body class="bg-[#000080] text-zinc-200 font-mono min-h-screen">
+<div class="mx-auto max-w-3xl px-3 py-6">
+  <header class="bevel-out bg-[#c0c0c0] text-black px-4 py-3">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <a href="/" class="text-2xl font-bold text-[#000080] no-underline hover:underline">{{site}}</a>
+      <nav class="flex items-center gap-3 text-sm">
+        <a class="navlink" href="/">home</a>
+        <a class="navlink" href="/feed.xml">feed</a>
+      </nav>
+    </div>
+  </header>
+  <div class="marquee bevel-in bg-black text-[#00ff00] text-xs px-2 py-1 mt-2 mb-4 overflow-hidden whitespace-nowrap" aria-hidden="true"><span>*** WELCOME TO {{site}} *** SERVED FRESH BY HAND-WRITTEN x86_64 ASSEMBLY *** NO JAVASCRIPT WAS HARMED IN THE MAKING OF THIS PAGE *** YOU ARE SURFING THE INFORMATION SUPERHIGHWAY ***</span></div>
+  <form action="/search" method="get" class="mb-5 flex gap-1">
+    <input type="text" name="q" value="{{q}}" placeholder="search the archives..." class="bevel-in bg-white text-black px-2 py-1 text-sm flex-1 outline-none min-w-0">
+    <button type="submit" class="btn95">Search</button>
+  </form>
+  <main>
+{{content}}
+  </main>
+  <footer class="mt-10 text-center text-xs text-zinc-400">
+    <div class="mb-3">you are visitor number <span class="odometer">{{count}}</span> since boot</div>
+    <div class="mb-3"><span class="badge88">blogd 0.6</span> <span class="badge88 badge-green">100% ASM</span> <span class="badge88 badge-purple">0 BYTES OF JS</span> <span class="badge88 badge-red">TAILWIND INSIDE</span></div>
+    <div>best viewed with any browser &bull; <a class="navlink" href="/feed.xml">atom feed</a> &bull; est. 2026</div>
+  </footer>
+</div>
+</body>
+</html>

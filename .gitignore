@@ -1,0 +1,5 @@
+build/
+data/
+tools/
+static/main.css
+static/main.css.gz
