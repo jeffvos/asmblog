@@ -1766,13 +1766,22 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   overflow: hidden;
   white-space: nowrap;
 }
-.theme-pittsburgh .banner span {
+.theme-pittsburgh .banner span {           /* a black plate, ends cut at the stripe angle */
+  --pg-plate-h: 24px;
+  position: relative;
   display: inline-block;
+  height: var(--pg-plate-h);
+  line-height: var(--pg-plate-h);
   background: var(--pg-black);
   color: var(--pg-gold);
-  padding: 2px 12px;
-  margin-left: 100%;
-  animation: marquee 22s linear infinite;
+  padding: 0 calc(var(--pg-plate-h) + 14px);
+  clip-path: polygon(var(--pg-plate-h) 0, 100% 0, calc(100% - var(--pg-plate-h)) 100%, 0 100%);
+  /* travel the full banner width: from off the right edge to off the left */
+  animation: marquee-plate 22s linear infinite;
+}
+@keyframes marquee-plate {
+  0%   { left: 100%; transform: translateX(0); }
+  100% { left: 0;    transform: translateX(-100%); }
 }
 
 .theme-pittsburgh .field {
@@ -1964,6 +1973,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .banner span { animation: none !important; padding-left: 0 !important; }
+  .theme-pittsburgh .banner span { padding-left: calc(var(--pg-plate-h) + 14px) !important; }
   .card, .btn, .pglink { transition: none !important; }
   .card:hover, .btn:active { transform: none; }
   .theme-cochabamba .card { transform: none; }
