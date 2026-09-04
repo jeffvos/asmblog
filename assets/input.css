@@ -4,8 +4,8 @@
    blogd themes. Every visual element uses a semantic class
    (.masthead, .card, .btn, ...) so each theme can restyle them
    wholesale. The <body> carries one .theme-<name> class (retro,
-   sucre, medellin, bogota, lapaz, cochabamba, santacruz — the
-   ids live in pages.asm's theme table); all colour/border/font/
+   sucre, medellin, bogota, lapaz, cochabamba, santacruz, pittsburgh —
+   the ids live in pages.asm's theme table); all colour/border/font/
    shape decisions live under those scopes. Layout (spacing, flex,
    widths) stays in the templates as Tailwind utilities.
 
@@ -1676,6 +1676,273 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   .theme-santacruz .field { background: rgba(255, 255, 255, 0.08); }
   .theme-santacruz .content code { color: #9fe6bf; }
   .theme-santacruz .btn, .theme-santacruz .pglink:hover, .theme-santacruz .tag:hover, .theme-santacruz .badge-b { color: #0e1a15; }
+}
+
+/* =====================================================================
+   THEME: PITTSBURGH — Steel City, black and gold, dark first.
+   Riveted steel plates for panels (rivets are radial gradients in the
+   corners), a bridge-truss band over the masthead, a mill hazard
+   stripe for the banner, Steelmark colours on the badges, the three
+   rivers meeting at the Point under the footer. Condensed industrial
+   caps. Day mode is overcast brushed steel.
+   ===================================================================== */
+.theme-pittsburgh {
+  --pg-steel:   #1c1f22;
+  --pg-plate:   #2a2e33;
+  --pg-plate2:  #353a40;
+  --pg-black:   #101214;
+  --pg-ink:     #f2f0ea;
+  --pg-soft:    #c2c5c9;
+  --pg-faint:   #8a9097;
+  --pg-line:    #4a5057;
+  --pg-gold:    #ffb81c;
+  --pg-gold-d:  #d99a10;
+  --pg-gold-t:  #ffb81c;    /* gold as text (darkened by day) */
+  --pg-red:     #e3453b;
+  --pg-blue:    #0a5aa8;
+  --pg-river:   #3f8fb5;
+  --pg-brush:   rgba(255, 255, 255, 0.03);
+  --pg-rivet:   radial-gradient(circle, #a4aab0 0 2px, #4a5057 2.6px, transparent 3.4px);
+  --pg-rivets:  var(--pg-rivet) 6px 6px / 9px 9px no-repeat,
+                var(--pg-rivet) calc(100% - 6px) 6px / 9px 9px no-repeat,
+                var(--pg-rivet) 6px calc(100% - 6px) / 9px 9px no-repeat,
+                var(--pg-rivet) calc(100% - 6px) calc(100% - 6px) / 9px 9px no-repeat;
+  --pg-truss:   url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='14'%3E%3Crect width='28' height='14' fill='%23101214'/%3E%3Cpath d='M0 12.5L7 1.5L14 12.5L21 1.5L28 12.5' fill='none' stroke='%23ffb81c' stroke-width='2'/%3E%3Cpath d='M0 1.5h28M0 12.5h28' stroke='%23ffb81c' stroke-width='2'/%3E%3C/svg%3E");
+  background-color: var(--pg-steel);
+  /* brushed steel: fine horizontal grain */
+  background-image: repeating-linear-gradient(180deg, var(--pg-brush) 0 1px, transparent 1px 3px);
+  color: var(--pg-ink);
+  font-family: "Roboto Condensed", "Arial Narrow", "Helvetica Neue", "DejaVu Sans Condensed", "Liberation Sans Narrow", sans-serif;
+  line-height: 1.55;
+}
+.theme-pittsburgh .masthead, .theme-pittsburgh .card,
+.theme-pittsburgh .article, .theme-pittsburgh .notice {
+  background: var(--pg-rivets), linear-gradient(180deg, var(--pg-plate2), var(--pg-plate));
+  border: 1px solid var(--pg-line);
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), 0 3px 0 var(--pg-black);
+  padding: 1.2rem 1.5rem;
+}
+.theme-pittsburgh .masthead {
+  position: relative;
+  overflow: hidden;
+  border-top: 0;
+  padding-top: calc(1.2rem + 14px);
+}
+.theme-pittsburgh .masthead::before {   /* the bridge truss */
+  content: "";
+  position: absolute; left: 0; right: 0; top: 0; height: 14px;
+  background: var(--pg-truss) left top repeat-x;
+}
+.theme-pittsburgh .brand {
+  color: var(--pg-gold-t);
+  font-size: 1.9rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.theme-pittsburgh .brand:hover { color: var(--pg-ink); }
+.theme-pittsburgh .navlink {
+  color: var(--pg-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+}
+.theme-pittsburgh .navlink:hover { color: var(--pg-gold-t); border-bottom-color: var(--pg-gold); }
+
+.theme-pittsburgh .banner {              /* mill hazard stripe */
+  background: repeating-linear-gradient(135deg, var(--pg-gold) 0 14px, var(--pg-black) 14px 28px);
+  border: 1px solid var(--pg-line);
+  margin: 1rem 0 1.5rem;
+  padding: 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.theme-pittsburgh .banner span {
+  display: inline-block;
+  background: var(--pg-black);
+  color: var(--pg-gold);
+  padding: 2px 12px;
+  margin-left: 100%;
+  animation: marquee 22s linear infinite;
+}
+
+.theme-pittsburgh .field {
+  background: var(--pg-black);
+  color: var(--pg-ink);
+  border: 1px solid var(--pg-line);
+  border-radius: 2px;
+  padding: 0.5rem 0.7rem;
+  outline: none;
+}
+.theme-pittsburgh .field:focus { border-color: var(--pg-gold); box-shadow: 0 0 0 2px rgba(255, 184, 28, 0.25); }
+.theme-pittsburgh .btn {                 /* a pressed metal button */
+  background: var(--pg-gold);
+  color: var(--pg-black);
+  border: 0;
+  border-bottom: 3px solid var(--pg-gold-d);
+  border-radius: 2px;
+  padding: 0.45rem 1.1rem;
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 0.08s ease;
+}
+.theme-pittsburgh .btn:hover { background: #ffc94d; }
+.theme-pittsburgh .btn:active { transform: translateY(2px); border-bottom-width: 1px; }
+
+.theme-pittsburgh .card-title a {
+  color: var(--pg-ink);
+  font-weight: 800;
+  font-size: 1.25rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.theme-pittsburgh .card-title a:hover { color: var(--pg-gold-t); }
+.theme-pittsburgh .article-title {
+  color: var(--pg-gold-t);
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.theme-pittsburgh .meta { color: var(--pg-faint); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.7rem; }
+.theme-pittsburgh .excerpt { color: var(--pg-soft); }
+.theme-pittsburgh .backlink { color: var(--pg-gold-t); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.78rem; font-weight: 700; text-decoration: none; }
+.theme-pittsburgh .backlink:hover { color: var(--pg-ink); }
+
+.theme-pittsburgh .tag {                 /* stamped into the plate */
+  display: inline-block;
+  color: var(--pg-gold-t);
+  border: 1px solid var(--pg-gold);
+  border-radius: 2px;
+  padding: 0 7px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  margin-right: 3px;
+}
+.theme-pittsburgh .tag:hover { background: var(--pg-gold); color: var(--pg-black); }
+
+.theme-pittsburgh .pglink {
+  display: inline-block;
+  color: var(--pg-gold-t);
+  border: 1px solid var(--pg-gold);
+  border-radius: 2px;
+  padding: 0.35rem 0.9rem;
+  margin: 0 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  text-decoration: none;
+  background: var(--pg-black);
+}
+.theme-pittsburgh .pglink:hover { background: var(--pg-gold); color: var(--pg-black); }
+
+.theme-pittsburgh .hits {
+  display: inline-block; vertical-align: middle;
+  height: 18px; width: auto;
+  border: 1px solid var(--pg-line); border-radius: 2px;
+}
+.theme-pittsburgh .badge {               /* the Steelmark: gold, red, blue */
+  display: inline-block;
+  border-radius: 2px;
+  background: var(--pg-gold); color: var(--pg-black);
+  font-size: 10px; font-weight: 800; letter-spacing: 0.12em;
+  padding: 3px 9px;
+}
+.theme-pittsburgh .badge-b { background: var(--pg-red); color: #fff; }
+.theme-pittsburgh .badge-c { background: var(--pg-blue); color: #fff; }
+.theme-pittsburgh .footer { color: var(--pg-faint); letter-spacing: 0.04em; }
+.theme-pittsburgh .footer::before {      /* the three rivers, meeting at the Point */
+  content: "";
+  display: block;
+  width: 140px; height: 40px;
+  margin: 0 auto 12px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='40'%3E%3Cpath d='M0 8C30 8 45 20 70 20S110 20 140 20M0 32C30 32 45 20 70 20' fill='none' stroke='%233f8fb5' stroke-width='3' stroke-linecap='round'/%3E%3Ccircle cx='70' cy='20' r='3' fill='%23ffb81c'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+.theme-pittsburgh .listhead {            /* a steel beam */
+  color: var(--pg-gold-t);
+  border-left: 8px solid var(--pg-gold);
+  padding: 0.2rem 0 0.2rem 0.7rem;
+  margin-bottom: 1.2rem;
+  font-weight: 800;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+}
+.theme-pittsburgh .dellink { color: var(--pg-red); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; font-weight: 700; text-decoration: none; }
+.theme-pittsburgh .dellink:hover { text-decoration: underline; }
+.theme-pittsburgh .draft { color: var(--pg-gold-t); font-weight: 800; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; }
+.theme-pittsburgh .postlink { color: var(--pg-ink); text-decoration: underline; text-decoration-color: var(--pg-gold); text-underline-offset: 2px; }
+.theme-pittsburgh .postlink:hover { color: var(--pg-gold-t); }
+.theme-pittsburgh .table td, .theme-pittsburgh .table th { border-top: 1px solid var(--pg-line); }
+.theme-pittsburgh .error { color: var(--pg-red); font-weight: 800; }
+
+.theme-pittsburgh .content h1, .theme-pittsburgh .content h2, .theme-pittsburgh .content h3 {
+  color: var(--pg-gold-t); font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.theme-pittsburgh .content a { color: var(--pg-gold-t); text-decoration: underline; text-underline-offset: 2px; }
+.theme-pittsburgh .content a:hover { color: var(--pg-ink); }
+.theme-pittsburgh .content code {
+  background: var(--pg-black); color: var(--pg-gold);
+  padding: 1px 5px; border-radius: 2px;
+  font-family: "SF Mono", "Cascadia Code", Menlo, monospace; font-size: 0.9em;
+}
+.theme-pittsburgh .content pre {
+  background: var(--pg-black); color: #e8e6e0;
+  border: 1px solid var(--pg-line); border-left: 4px solid var(--pg-gold);
+  border-radius: 2px;
+  padding: 0.9rem 1rem; overflow-x: auto;
+}
+.theme-pittsburgh .content pre code { background: none; color: inherit; padding: 0; }
+.theme-pittsburgh .content blockquote {
+  border-left: 3px solid var(--pg-river);
+  padding-left: 0.9rem;
+  color: var(--pg-soft); font-style: italic;
+}
+.theme-pittsburgh .content figure, .theme-pittsburgh .flickr-embed {
+  background: var(--pg-rivets), var(--pg-plate);
+  border: 1px solid var(--pg-line); border-radius: 2px; padding: 10px;
+}
+
+/* Pittsburgh by day: overcast, brushed steel, the gold still on the bridges */
+.theme-pittsburgh { color-scheme: dark light; }
+@media (prefers-color-scheme: light) {
+  .theme-pittsburgh {
+    --pg-steel:   #d7dadd;
+    --pg-plate:   #eef0f1;
+    --pg-plate2:  #f8f9f9;
+    --pg-ink:     #15181b;
+    --pg-soft:    #3f454b;
+    --pg-faint:   #6b727a;
+    --pg-line:    #b4b9be;
+    --pg-gold-t:  #a86f00;
+    --pg-brush:   rgba(0, 0, 0, 0.035);
+    --pg-rivet:   radial-gradient(circle, #7d848b 0 2px, #c3c8cc 2.6px, transparent 3.4px);
+  }
+  .theme-pittsburgh .masthead, .theme-pittsburgh .card,
+  .theme-pittsburgh .article, .theme-pittsburgh .notice {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6), 0 3px 0 #9aa0a6;
+  }
+  .theme-pittsburgh .field { background: #fff; }
+  .theme-pittsburgh .pglink { background: #fff; }
+  .theme-pittsburgh .content code { color: #a86f00; background: #e3e6e8; }
 }
 
 /* ===== shared bits ===== */

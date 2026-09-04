@@ -33,12 +33,13 @@
 %define V_SELLPB   28           ; La Paz
 %define V_SELCBB   29           ; Cochabamba
 %define V_SELSRZ   30           ; Santa Cruz de la Sierra
-%define V_SELEN    31
-%define V_SELES    32
-%define V_CSSV     33           ; stylesheet version (crc32c of main.css)
-%define V_EURL     34           ; site url in the settings form
-%define V_THCOLOR  35           ; <meta name="theme-color"> for the theme
-%define NVALS      36
+%define V_SELPGH   31           ; Pittsburgh
+%define V_SELEN    32
+%define V_SELES    33
+%define V_CSSV     34           ; stylesheet version (crc32c of main.css)
+%define V_EURL     35           ; site url in the settings form
+%define V_THCOLOR  36           ; <meta name="theme-color"> for the theme
+%define NVALS      37
 
 ; locales: templates/<dir>/ sets, selected site-wide by [set_locale]
 %define LOC_EN     0

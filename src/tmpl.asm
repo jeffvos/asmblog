@@ -560,6 +560,7 @@ n_selbog:   db 'selbogota'
 n_sellpb:   db 'sellapaz'
 n_selcbb:   db 'selcochabamba'
 n_selsrz:   db 'selsantacruz'
+n_selpgh:   db 'selpittsburgh'
 n_selen:    db 'selen'
 n_seles:    db 'seles'
 n_cssv:     db 'cssv'
@@ -599,6 +600,7 @@ marker_names:                   ; {ptr, len, pad} triplets, indexed by id
     dq n_sellpb, 8, 0
     dq n_selcbb, 13, 0
     dq n_selsrz, 12, 0
+    dq n_selpgh, 13, 0
     dq n_selen, 5, 0
     dq n_seles, 5, 0
     dq n_cssv, 4, 0

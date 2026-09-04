@@ -132,7 +132,7 @@ client-side code involved.
 
 ### Themes
 
-Seven themes ship, selectable in **/admin/settings** and applied via a
+Eight themes ship, selectable in **/admin/settings** and applied via a
 class on `<body>` (every palette is compiled into the single
 stylesheet, so switching is instant and needs no rebuild). Each has its
 own shapes, type and textures, not just colours:
@@ -168,11 +168,17 @@ own shapes, type and textures, not just colours:
   leaf-shaped corners, a painted-column band from the Chiquitos
   missions under the masthead, concentric *anillos* as ornaments, a
   light humanist sans and a lowercase brand.
+- **Pittsburgh** — Steel City, black and gold, dark by default: panels
+  are riveted steel plates, the masthead carries a bridge-truss band,
+  the banner is a mill hazard stripe, badges take the Steelmark colours,
+  the footer shows the three rivers meeting at the Point, condensed
+  industrial caps. An overcast brushed-steel day mode follows a light
+  `prefers-color-scheme`.
 
 The favicon, touch icons, `og:image` card, web manifest colours,
 `<meta name="theme-color">` and the hit counter's colours follow the
 theme too: `tools/mkicons.py` draws a set per theme with its own frame
-style (`static/favicon.*`, `static/sucre-favicon.*`, …) and the server
+style (`static/favicon.*`, `static/sucre-favicon.*`, `static/pittsburgh-favicon.*`, …) and the server
 serves whichever matches the active theme, with a `?v=theme-…` token on
 the URLs so browsers and link unfurlers refetch after a switch. The
 theme ids, class names, form values and server-emitted colours live in

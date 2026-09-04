@@ -182,7 +182,7 @@ check "custom banner shows on the site"    bash -c "curl -s $A/ | grep -q 'CUSTO
 check "default theme is retro"             bash -c "curl -s $A/ | grep -q 'class=\"min-h-screen theme-retro\"'"
 check "retro icons by default"             bash -c "cmp -s <(curl -s $A/favicon.ico) '$ROOT/static/favicon.ico'"
 check "retro theme-color meta"             bash -c "curl -s $A/ | grep -q '<meta name=\"theme-color\" content=\"#000080\">'"
-for T in sucre medellin bogota lapaz cochabamba santacruz; do
+for T in sucre medellin bogota lapaz cochabamba santacruz pittsburgh; do
     expect_code "switch to $T theme"   303 -b "$JAR" --data-urlencode "csrf=$CSRF" \
         --data-urlencode "title=Smoke Blog" --data-urlencode ppp=5 --data-urlencode theme=$T "$A/admin/settings"
     check "$T theme now on the site"       bash -c "curl -s $A/ | grep -q 'class=\"min-h-screen theme-$T\"'"

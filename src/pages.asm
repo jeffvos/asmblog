@@ -2812,6 +2812,7 @@ theme_tbl:
     THEME 'theme-lapaz',      'lapaz',      '#17111f', '#5b2a86', '#0b0810', '#ffb000'
     THEME 'theme-cochabamba', 'cochabamba', '#e8d5b5', '#2f3a3d', '#2f3a3d', '#f3efe6'
     THEME 'theme-santacruz',  'santacruz',  '#fbf8f1', '#177245', '#0f4d33', '#ff6f59'
+    THEME 'theme-pittsburgh', 'pittsburgh', '#1c1f22', '#ffb81c', '#101214', '#ffb81c'
 s_posturl: db '/post/'
 s_slash: db '/'
 s_slash_len equ 1
@@ -3127,6 +3128,7 @@ TPATHS bog, 'bogota-'
 TPATHS lpb, 'lapaz-'
 TPATHS cbb, 'cochabamba-'
 TPATHS srz, 'santacruz-'
+TPATHS pgh, 'pittsburgh-'
 
 ; STATIC path, name len, ctype, ctype len, default cache mode, Sucre alt
 %macro STATIC 6
@@ -3150,6 +3152,7 @@ static_tbl:                     ; main.css must stay first (css_ver)
     STATIC p_lpb_%1, p_lpb_%1_l, %2, %3, CACHE_DAY, -1
     STATIC p_cbb_%1, p_cbb_%1_l, %2, %3, CACHE_DAY, -1
     STATIC p_srz_%1, p_srz_%1_l, %2, %3, CACHE_DAY, -1
+    STATIC p_pgh_%1, p_pgh_%1_l, %2, %3, CACHE_DAY, -1
 %endmacro
     TGROUP favsvg, ct_svg, ct_svg_len
     TGROUP favico, ct_ico, ct_ico_len

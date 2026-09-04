@@ -11,7 +11,8 @@ frame; Sucre a whitewashed wall under a terracotta roofline; Medellín a
 poster with an ink outline over a band of flowers; Bogotá a gold plaque
 on a brick wall; La Paz a stepped, aguayo-topped cholet facade;
 Cochabamba a chalkboard in a wooden frame on kraft paper; Santa Cruz a
-sand square over painted mission woodwork. Re-run after changing the
+sand square over painted mission woodwork; Pittsburgh a riveted steel
+plate under a gold bridge truss. Re-run after changing the
 art; the outputs are committed so a build needs no image tooling.
 """
 import struct, zlib, os
@@ -46,6 +47,9 @@ THEMES = {
     'santacruz-': dict(bg=rgb('#fbf8f1'), glyph=rgb('#177245'),
                        frame=('mission', [rgb(c) for c in ('#c98a2c', '#a73a2a', '#0f4d33', '#f1dcb0')]),
                        text=rgb('#0f4d33'), text2=rgb('#ff6f59')),
+    'pittsburgh-': dict(bg=rgb('#2a2e33'), glyph=rgb('#ffb81c'),
+                        frame=('steel', rgb('#101214'), rgb('#ffb81c'), rgb('#9aa0a6')),
+                        text=rgb('#f2f0ea'), text2=rgb('#ffb81c')),
 }
 
 # 5x7 pixel font for the glyphs we print
@@ -172,6 +176,36 @@ class Canvas:
             for x in range(self.w):
                 self.px[y * self.w + x] = list(stripes[((x + y) // w) % n])
 
+    def line(self, x0, y0, x1, y1, w, c):
+        """A w-thick line of squares (enough for pixel-art diagonals)."""
+        n = max(abs(x1 - x0), abs(y1 - y0), 1)
+        for i in range(n + 1):
+            x = x0 + (x1 - x0) * i // n
+            y = y0 + (y1 - y0) * i // n
+            self.rect(x - w // 2, y - w // 2, x - w // 2 + w, y - w // 2 + w, c)
+
+    def steel(self, t, black, gold, rivet):
+        """Pittsburgh: a bridge truss across the top, gold hairline, rivets."""
+        band = t * 2
+        self.rect(0, 0, self.w, band, black)
+        w = max(t // 3, 1)
+        step = band
+        x = 0
+        while x < self.w:
+            self.line(x, band - w, x + step, w, w, gold)
+            self.line(x + step, w, x + 2 * step, band - w, w, gold)
+            x += 2 * step
+        self.rect(0, 0, self.w, w, gold)
+        self.rect(0, band - w, self.w, band, gold)
+        self.rect(0, self.h - w, self.w, self.h, gold)
+        self.rect(0, 0, w, self.h, gold)
+        self.rect(self.w - w, 0, self.w, self.h, gold)
+        r = max(t // 2, 2)
+        m = t + w
+        for (x, y) in ((m, band + m), (self.w - m - r, band + m),
+                       (m, self.h - m - r), (self.w - m - r, self.h - m - r)):
+            self.rect(x, y, x + r, y + r, rivet)
+
     def frame(self, t, spec):
         kind = spec[0]
         if kind == 'bevel':
@@ -188,6 +222,8 @@ class Canvas:
             self.chalk(t, spec[1], spec[2])
         elif kind == 'mission':
             self.mission(t, spec[1])
+        elif kind == 'steel':
+            self.steel(t, spec[1], spec[2], spec[3])
 
     def text(self, s, x, y, scale, c):
         for ch in s:
@@ -221,7 +257,7 @@ def icon(size, th):
     c.frame(t, th['frame'])
     kind = th['frame'][0]
     # ">_" spans 11 cells; framed themes leave room for the frame
-    scale = max(size // (15 if kind in ('steps', 'chalk', 'brick') else 12), 1)
+    scale = max(size // (15 if kind in ('steps', 'chalk', 'brick', 'steel') else 12), 1)
     w = text_width('>_', scale)
     x = (size - w) // 2
     y = (size - 7 * scale) // 2
@@ -231,6 +267,8 @@ def icon(size, th):
         y -= t                            # room for the band at the foot
     elif kind == 'steps':
         y += t // 2
+    elif kind == 'steel':
+        y += t                            # below the truss band
     c.text('>_', x, y, scale, th['glyph'])
     return c
 
@@ -310,6 +348,16 @@ SVGS = {
 <rect x="1" y="1" width="14" height="14" fill="#8b5a2b"/>
 <rect x="2" y="2" width="12" height="12" fill="#2f3a3d"/>
 <path fill="#f3efe6" d="{GLYPH}"/>
+</svg>
+''',
+    # Pittsburgh: steel plate, gold hairline, rivets, truss along the foot
+    'pittsburgh-': f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
+<rect width="16" height="16" fill="#2a2e33"/>
+<path d="M0 0h16v1H0zM0 15h16v1H0zM0 0h1v16H0zM15 0h1v16h-1z" fill="#ffb81c"/>
+<path d="M1 12h14v3H1z" fill="#101214"/>
+<path d="M1 14h1v-1h1v-1h1v1h1v1h1v-1h1v-1h1v1h1v1h1v-1h1v-1h1v1h1v1h1v1H1z" fill="#ffb81c"/>
+<path d="M2 2h1v1H2zM13 2h1v1h-1z" fill="#9aa0a6"/>
+<path fill="#ffb81c" d="{GLYPH}"/>
 </svg>
 ''',
     # Santa Cruz: sand, painted mission woodwork along the foot
