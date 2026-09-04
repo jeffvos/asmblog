@@ -203,8 +203,8 @@ Flickr is left as escaped text, never rendered as a live tag. This is
 the only remote content the app allows, and it never relaxes
 `script-src 'none'`.
 
-Requires: `nasm`, GNU binutils, `libsodium-dev`, `curl`, `python3` and
-`xmllint` (tests only), and the Tailwind standalone CLI at
+Requires: `nasm`, GNU binutils, `libsodium-dev`, `curl` and `python3`
+(tests only), and the Tailwind standalone CLI at
 `tools/tailwindcss` (gitignored; download `tailwindcss-linux-x64` from the
 Tailwind GitHub releases and `chmod +x`). Optional: `brotli` (a `.br`
 sibling of the stylesheet is produced when present).

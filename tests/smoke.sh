@@ -22,6 +22,10 @@ trap 'kill "$PID" 2>/dev/null || true' EXIT
 sleep 0.3
 
 fail=0
+# well-formedness check with the standard library (no xmllint needed)
+xmlok() { python3 -c 'import sys, xml.dom.minidom as m; m.parseString(sys.stdin.buffer.read())' 2>/dev/null; }
+export -f xmlok
+
 check() {
     local desc="$1"; shift
     if "$@" >/dev/null 2>&1; then
@@ -98,7 +102,7 @@ check "manifest names the site"                 bash -c "curl -s -D - $B/manifes
 check "robots.txt blocks admin, links sitemap"  bash -c "curl -s -H 'Host: t.example' -H 'X-Forwarded-Proto: https' $B/robots.txt | grep -q '^Disallow: /admin' && curl -s -H 'Host: t.example' -H 'X-Forwarded-Proto: https' $B/robots.txt | grep -q '^Sitemap: https://t.example/sitemap.xml'"
 check "sitemap lists published posts only"      bash -c "test \"\$(curl -s -H 'Host: t.example' $B/sitemap.xml | grep -c '<url>')\" = 9 && ! curl -s -H 'Host: t.example' $B/sitemap.xml | grep -q secret-draft"
 check "sitemap needs an absolute origin"        bash -c "test \"\$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: ' $B/sitemap.xml)\" = 404"
-check "sitemap is well-formed xml"              bash -c "curl -s -H 'Host: t.example' $B/sitemap.xml | xmllint --noout -"
+check "sitemap is well-formed xml"              bash -c "curl -s -H 'Host: t.example' $B/sitemap.xml | xmlok"
 # --- canonical urls ---
 check "/page/1 redirects to /"                  bash -c "test \"\$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' $B/page/1)\" = '301 $B/'"
 check "trailing slash redirects"                bash -c "test \"\$(curl -s -o /dev/null -w '%{redirect_url}' $B/tag/asm/)\" = '$B/tag/asm'"
@@ -112,7 +116,7 @@ check "list titles: page N, #tag, search: q"    bash -c "curl -s $B/page/2 | gre
 check "no absolute urls without an origin"      bash -c "! curl -s -H 'Host: ' $B/post/why-assembly | grep -q 'rel=\"canonical\"' && curl -s -H 'Host: ' $B/post/why-assembly | grep -q 'twitter:card\" content=\"summary\"'"
 # --- feed ---
 check "feed: author, published, category, content" bash -c "F=\$(curl -s -H 'Host: t.example' $B/feed.xml); echo \"\$F\" | grep -q '<author><name>blogd</name></author>' && echo \"\$F\" | grep -q '<published>' && echo \"\$F\" | grep -q '<category term=\"asm\"/>' && echo \"\$F\" | grep -q '<content type=\"html\">' && echo \"\$F\" | grep -q 'href=\"http://t.example/post/why-assembly\"'"
-check "feed is well-formed xml (with and without origin)" bash -c "curl -s -H 'Host: t.example' $B/feed.xml | xmllint --noout - && curl -s -H 'Host: ' $B/feed.xml | xmllint --noout -"
+check "feed is well-formed xml (with and without origin)" bash -c "curl -s -H 'Host: t.example' $B/feed.xml | xmlok && curl -s -H 'Host: ' $B/feed.xml | xmlok"
 check "feed updated is the store time, not now" bash -c "A=\$(curl -s $B/feed.xml | grep -o '<updated>[^<]*' | head -1); sleep 1.1; B2=\$(curl -s $B/feed.xml | grep -o '<updated>[^<]*' | head -1); test \"\$A\" = \"\$B2\""
 # --- visitor counter ---
 check "hits.svg increments and is no-store"     bash -c "A=\$(curl -s $B/hits.svg | grep -o '>0*[0-9]*</text' | tr -dc 0-9); B2=\$(curl -s $B/hits.svg | grep -o '>0*[0-9]*</text' | tr -dc 0-9); test \$((10#\$A+1)) = \$((10#\$B2)) && curl -s -D - -o /dev/null $B/hits.svg | grep -qi '^cache-control: no-store'"
