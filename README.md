@@ -148,3 +148,7 @@ the Tailwind standalone CLI at `tools/tailwindcss` (gitignored; download
   each request makes use-after-free structurally impossible in request code.
 - Every source file declares a non-executable stack; the binary links with
   `-z noexecstack -z relro`.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
