@@ -1,19 +1,27 @@
 #!/usr/bin/env python3
-"""Generate blogd's icon set with nothing but the standard library.
+"""Generate blogd's icon sets with nothing but the standard library.
 
-Writes static/favicon.svg, static/favicon.ico (32px PNG-in-ICO),
-static/icon-192.png, static/icon-512.png and static/og.png (1200x630):
-a retro terminal prompt on navy with a bevelled frame and 5x7 pixel
-text. Re-run after changing the art; the outputs are committed so a
-build needs no image tooling.
+Writes favicon.svg, favicon.ico (32px PNG-in-ICO), icon-192.png,
+icon-512.png and og.png (1200x630) under static/ for the Retro theme,
+and the same five files prefixed "sucre-" for the Sucre theme; blogd
+serves whichever matches the active theme. Retro is a terminal prompt
+on navy in a bevelled frame; Sucre is the same prompt in colonial green
+on a whitewashed wall under a terracotta roofline. Re-run after
+changing the art; the outputs are committed so a build needs no image
+tooling.
 """
 import struct, zlib, os
 
-NAVY = (0x00, 0x00, 0x80)
-GREEN = (0x33, 0xFF, 0x33)
-LIGHT = (0xFF, 0xFF, 0xFF)
-DARK = (0x40, 0x40, 0x40)
-SILVER = (0xC0, 0xC0, 0xC0)
+THEMES = {
+    # name prefix, background, glyph, frame light/dark (bevel) or
+    # roof/line (flat), caption colours
+    '': dict(bg=(0x00, 0x00, 0x80), glyph=(0x33, 0xFF, 0x33),
+             frame=('bevel', (0xFF, 0xFF, 0xFF), (0x40, 0x40, 0x40)),
+             text=(0xFF, 0xFF, 0xFF), text2=(0xC0, 0xC0, 0xC0)),
+    'sucre-': dict(bg=(0xFF, 0xFD, 0xF8), glyph=(0x3F, 0x5E, 0x50),
+                   frame=('roof', (0xB0, 0x49, 0x2E), (0xE7, 0xDD, 0xCB)),
+                   text=(0x33, 0x30, 0x2B), text2=(0xB0, 0x49, 0x2E)),
+}
 
 # 5x7 pixel font for the glyphs we print
 FONT = {
@@ -58,12 +66,27 @@ class Canvas:
             for x in range(max(x0, 0), min(x1, self.w)):
                 self.px[row + x] = list(c)
 
-    def bevel(self, t):
+    def bevel(self, t, light, dark):
         """Classic outset frame: light top/left, dark bottom/right."""
-        self.rect(0, 0, self.w, t, LIGHT)
-        self.rect(0, 0, t, self.h, LIGHT)
-        self.rect(0, self.h - t, self.w, self.h, DARK)
-        self.rect(self.w - t, 0, self.w, self.h, DARK)
+        self.rect(0, 0, self.w, t, light)
+        self.rect(0, 0, t, self.h, light)
+        self.rect(0, self.h - t, self.w, self.h, dark)
+        self.rect(self.w - t, 0, self.w, self.h, dark)
+
+    def roof(self, t, roof, line):
+        """Sucre panel: hairline all round, a thick terracotta roofline."""
+        self.rect(0, 0, self.w, max(t // 3, 1), line)
+        self.rect(0, 0, max(t // 3, 1), self.h, line)
+        self.rect(0, self.h - max(t // 3, 1), self.w, self.h, line)
+        self.rect(self.w - max(t // 3, 1), 0, self.w, self.h, line)
+        self.rect(0, 0, self.w, t, roof)
+
+    def frame(self, t, spec):
+        kind, a, b = spec
+        if kind == 'bevel':
+            self.bevel(t, a, b)
+        else:
+            self.roof(t, a, b)
 
     def text(self, s, x, y, scale, c):
         for ch in s:
@@ -91,29 +114,29 @@ def text_width(s, scale):
     return len(s) * 6 * scale - scale
 
 
-def icon(size):
-    c = Canvas(size, size, NAVY)
+def icon(size, th):
+    c = Canvas(size, size, th['bg'])
     t = max(size // 16, 1)
-    c.bevel(t)
+    c.frame(t, th['frame'])
     scale = max(size // 12, 1)            # ">_" spans 11 cells
     w = text_width('>_', scale)
     x = (size - w) // 2
-    y = (size - 7 * scale) // 2
-    c.text('>_', x, y, scale, GREEN)
+    y = (size - 7 * scale) // 2 + (t // 2 if th['frame'][0] == 'roof' else 0)
+    c.text('>_', x, y, scale, th['glyph'])
     return c
 
 
-def og():
+def og(th):
     W, H = 1200, 630
-    c = Canvas(W, H, NAVY)
-    c.bevel(12)
+    c = Canvas(W, H, th['bg'])
+    c.frame(12 if th['frame'][0] == 'bevel' else 18, th['frame'])
     # prompt glyph
     s = 28
-    c.text('>_', 90, 130, s, GREEN)
+    c.text('>_', 90, 130, s, th['glyph'])
     # tagline lines
     s2 = 9
-    c.text('100% ASM', 90, 400, s2, LIGHT)
-    c.text('0 BYTES OF JS', 90, 400 + 9 * s2, s2, SILVER)
+    c.text('100% ASM', 90, 400, s2, th['text'])
+    c.text('0 BYTES OF JS', 90, 400 + 9 * s2, s2, th['text2'])
     return c
 
 
@@ -124,24 +147,36 @@ def ico_from_png(png):
     return hdr + entry + png
 
 
-SVG = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
+GLYPH = 'M3 3h1v1H3zM4 4h1v1H4zM5 5h1v1H5zM6 6h1v1H6zM5 7h1v1H5zM4 8h1v1H4zM3 9h1v1H3zM8 10h5v1H8z'
+SVGS = {
+    '': f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
 <rect width="16" height="16" fill="#000080"/>
 <path d="M0 0h16v1H0zM0 0h1v16H0z" fill="#fff"/>
 <path d="M15 0h1v16h-1zM0 15h16v1H0z" fill="#404040"/>
-<path fill="#33ff33" d="M3 3h1v1H3zM4 4h1v1H4zM5 5h1v1H5zM6 6h1v1H6zM5 7h1v1H5zM4 8h1v1H4zM3 9h1v1H3zM8 10h5v1H8z"/>
+<path fill="#33ff33" d="{GLYPH}"/>
 </svg>
-'''
+''',
+    'sucre-': f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
+<rect width="16" height="16" fill="#e7ddcb"/>
+<rect x="1" y="1" width="14" height="14" fill="#fffdf8"/>
+<rect width="16" height="2" fill="#b0492e"/>
+<path fill="#3f5e50" d="{GLYPH}"/>
+</svg>
+''',
+}
 
 
 def main():
     os.makedirs('static', exist_ok=True)
-    open('static/favicon.svg', 'w').write(SVG)
-    open('static/favicon.ico', 'wb').write(ico_from_png(icon(32).png()))
-    open('static/icon-192.png', 'wb').write(icon(192).png())
-    open('static/icon-512.png', 'wb').write(icon(512).png())
-    open('static/og.png', 'wb').write(og().png())
-    for f in ('favicon.svg', 'favicon.ico', 'icon-192.png', 'icon-512.png', 'og.png'):
-        print(f'{f}: {os.path.getsize("static/" + f)} bytes')
+    for prefix, th in THEMES.items():
+        p = 'static/' + prefix
+        open(p + 'favicon.svg', 'w').write(SVGS[prefix])
+        open(p + 'favicon.ico', 'wb').write(ico_from_png(icon(32, th).png()))
+        open(p + 'icon-192.png', 'wb').write(icon(192, th).png())
+        open(p + 'icon-512.png', 'wb').write(icon(512, th).png())
+        open(p + 'og.png', 'wb').write(og(th).png())
+        for f in ('favicon.svg', 'favicon.ico', 'icon-192.png', 'icon-512.png', 'og.png'):
+            print(f'{prefix}{f}: {os.path.getsize(p + f)} bytes')
 
 
 if __name__ == '__main__':

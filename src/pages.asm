@@ -1031,7 +1031,12 @@ page_feed:
     mov rdi, rbx
     mov rsi, r12
     call emit_base
-    EMITS a_icon2, rbx          ; /static/icon-192.png</icon>
+    EMITS a_icon2, rbx          ; /static/icon-192.png?v=
+    call theme_class
+    mov rdi, rbx
+    mov rsi, rax
+    call emit
+    EMITS a_icon3, rbx          ; </icon>
 .noicon:
     xor r13d, r13d              ; index
     xor r14d, r14d              ; emitted
@@ -1167,8 +1172,9 @@ page_feed:
 %define ST_BRP    80
 %define ST_BRL    88
 %define ST_CRC    96            ; dword x3: plain, gz, br
-%define ST_SIZE   112
-%define NSTATIC   6
+%define ST_ALT    112           ; index of the Sucre-theme variant, or -1
+%define ST_SIZE   120
+%define NSTATIC   11
 
 ; page_static(ctx, name_p, name_l)
 page_static:
@@ -1202,6 +1208,17 @@ page_static:
     inc rcx
     jmp .find
 .found:
+    cmp dword [set_theme], 1    ; themed icons: swap in the Sucre file
+    jne .themed
+    mov rax, [r13+ST_ALT]
+    test rax, rax
+    js .themed
+    imul rax, rax, ST_SIZE
+    lea rax, [static_tbl + rax]
+    cmp qword [rax+ST_P], 0
+    je .themed                  ; variant missing: keep the default
+    mov r13, rax
+.themed:
     mov r14, [r13+ST_P]
     test r14, r14
     jz .missing                 ; file absent at boot
@@ -1696,6 +1713,21 @@ emit_tag_list:
     pop r12
     ret
 
+; emit_ogpng(w) — "/static/og.png?v=<theme class>": the card follows the
+; theme, and the token makes caches and link unfurlers refetch it
+emit_ogpng:
+    push r12
+    mov r12, rdi
+    mov rsi, m_ogpng
+    mov edx, m_ogpng_len
+    call emit
+    call theme_class
+    mov rdi, r12
+    mov rsi, rax
+    call emit
+    pop r12
+    ret
+
 ; og_common(w, ctx) — og:site_name and og:locale
 og_common:
     push r12
@@ -1810,7 +1842,8 @@ meta_post:
     mov rdi, r12
     mov rsi, r13
     call emit_base
-    EMITS m_ogpng
+    mov rdi, r12
+    call emit_ogpng
     EMITS m_end
     EMITS m_twlarge
     jmp .times
@@ -1896,7 +1929,8 @@ meta_post:
     mov rdi, r12
     mov rsi, r13
     call emit_base
-    EMITS m_ogpng
+    mov rdi, r12
+    call emit_ogpng
 .jauthor:
     EMITS j_author
     call site_name
@@ -1996,7 +2030,8 @@ meta_list:
     mov rdi, r12
     mov rsi, r13
     call emit_base
-    EMITS m_ogpng
+    mov rdi, r12
+    call emit_ogpng
     EMITS m_end
     EMITS m_twlarge
     cmp qword [r14+L_MODE], 0
@@ -2732,7 +2767,7 @@ m_loc_es: db 'es_BO'
 m_loc_es_len equ $-m_loc_es
 m_ogimage: db '<meta property="og:image" content="'
 m_ogimage_len equ $-m_ogimage
-m_ogpng: db '/static/og.png'
+m_ogpng: db '/static/og.png?v='
 m_ogpng_len equ $-m_ogpng
 m_twlarge: db '<meta name="twitter:card" content="summary_large_image">', 10
 m_twlarge_len equ $-m_twlarge
@@ -2816,12 +2851,12 @@ mf_1_len equ $-mf_1
 mf_2: db '","short_name":"'
 mf_2_len equ $-mf_2
 mf_3_retro: db '","start_url":"/","display":"minimal-ui","background_color":"#000080",'
-            db '"theme_color":"#000080","icons":[{"src":"/static/icon-192.png","sizes":"192x192",'
-            db '"type":"image/png"},{"src":"/static/icon-512.png","sizes":"512x512","type":"image/png"}]}', 10
+            db '"theme_color":"#000080","icons":[{"src":"/static/icon-192.png?v=theme-retro","sizes":"192x192",'
+            db '"type":"image/png"},{"src":"/static/icon-512.png?v=theme-retro","sizes":"512x512","type":"image/png"}]}', 10
 mf_3_retro_len equ $-mf_3_retro
 mf_3_sucre: db '","start_url":"/","display":"minimal-ui","background_color":"#f4ecdd",'
-            db '"theme_color":"#a0522d","icons":[{"src":"/static/icon-192.png","sizes":"192x192",'
-            db '"type":"image/png"},{"src":"/static/icon-512.png","sizes":"512x512","type":"image/png"}]}', 10
+            db '"theme_color":"#b0492e","icons":[{"src":"/static/icon-192.png?v=theme-sucre","sizes":"192x192",'
+            db '"type":"image/png"},{"src":"/static/icon-512.png?v=theme-sucre","sizes":"512x512","type":"image/png"}]}', 10
 mf_3_sucre_len equ $-mf_3_sucre
 
 s_tag_a: db '<a class="tag" href="/tag/'
@@ -2852,8 +2887,10 @@ a_head3b: db '</name></author><generator>blogd 0.7</generator>', 10
 a_head3b_len equ $-a_head3b
 a_icon: db '<icon>'
 a_icon_len equ $-a_icon
-a_icon2: db '/static/icon-192.png</icon>', 10
+a_icon2: db '/static/icon-192.png?v='
 a_icon2_len equ $-a_icon2
+a_icon3: db '</icon>', 10
+a_icon3_len equ $-a_icon3
 a_e1: db '<entry><title>'
 a_e1_len equ $-a_e1
 a_e2: db '</title><link rel="alternate" type="text/html" href="'
@@ -2962,19 +2999,31 @@ p_og: db 'static/og.png', 0
 sfx_gz: db '.gz', 0
 sfx_br: db '.br', 0
 
-; STATIC path, name len, ctype, ctype len, default cache mode
-%macro STATIC 5
+p_sfavsvg: db 'static/sucre-favicon.svg', 0
+p_sfavico: db 'static/sucre-favicon.ico', 0
+p_si192: db 'static/sucre-icon-192.png', 0
+p_si512: db 'static/sucre-icon-512.png', 0
+p_sog: db 'static/sucre-og.png', 0
+
+; STATIC path, name len, ctype, ctype len, default cache mode, Sucre alt
+%macro STATIC 6
     dq %1, %1+7, %2, %3, %4, %5, 0, 0, 0, 0, 0, 0
     dd 0, 0, 0, 0
+    dq %6
 %endmacro
 align 8
 static_tbl:                     ; main.css must stay first (css_ver)
-    STATIC p_css, 8, ct_css, ct_css_len, CACHE_HOUR
-    STATIC p_favsvg, 11, ct_svg, ct_svg_len, CACHE_DAY
-    STATIC p_favico, 11, ct_ico, ct_ico_len, CACHE_DAY
-    STATIC p_i192, 12, ct_png, ct_png_len, CACHE_DAY
-    STATIC p_i512, 12, ct_png, ct_png_len, CACHE_DAY
-    STATIC p_og, 6, ct_png, ct_png_len, CACHE_DAY
+    STATIC p_css, 8, ct_css, ct_css_len, CACHE_HOUR, -1
+    STATIC p_favsvg, 11, ct_svg, ct_svg_len, CACHE_DAY, 6
+    STATIC p_favico, 11, ct_ico, ct_ico_len, CACHE_DAY, 7
+    STATIC p_i192, 12, ct_png, ct_png_len, CACHE_DAY, 8
+    STATIC p_i512, 12, ct_png, ct_png_len, CACHE_DAY, 9
+    STATIC p_og, 6, ct_png, ct_png_len, CACHE_DAY, 10
+    STATIC p_sfavsvg, 17, ct_svg, ct_svg_len, CACHE_DAY, -1
+    STATIC p_sfavico, 17, ct_ico, ct_ico_len, CACHE_DAY, -1
+    STATIC p_si192, 18, ct_png, ct_png_len, CACHE_DAY, -1
+    STATIC p_si512, 18, ct_png, ct_png_len, CACHE_DAY, -1
+    STATIC p_sog, 12, ct_png, ct_png_len, CACHE_DAY, -1
 
 svg1: db '<svg xmlns="http://www.w3.org/2000/svg" width="'
 svg1_len equ $-svg1

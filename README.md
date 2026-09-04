@@ -144,6 +144,12 @@ stylesheet, so switching is instant and needs no rebuild):
   accents, and serif display type. The banner becomes a quiet engraved
   lintel rather than a marquee.
 
+The favicon, touch icons and the `og:image` card follow the theme too:
+`tools/mkicons.py` draws a set per theme (`static/favicon.*`,
+`static/sucre-favicon.*`, …) and the server serves whichever matches
+the active theme, with a `?v=theme-…` token on the URLs so browsers and
+link unfurlers refetch after a switch.
+
 Templates use semantic classes (`.masthead`, `.card`, `.btn`, `.tag`, …)
 that each theme restyles under a `.theme-retro` / `.theme-sucre` scope in
 [assets/input.css](assets/input.css). Sucre follows
