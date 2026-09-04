@@ -1,5 +1,6 @@
 build/
 data/
-tools/
+tools/tailwindcss
 static/main.css
 static/main.css.gz
+static/main.css.br
