@@ -2,11 +2,16 @@
 
 /* ============================================================
    blogd themes. Every visual element uses a semantic class
-   (.masthead, .card, .btn, ...) so the two themes can restyle
-   them wholesale. The <body> carries .theme-retro or
-   .theme-sucre; all colour/border/font decisions live under
-   those scopes. Layout (spacing, flex, widths) stays in the
-   templates as Tailwind utilities.
+   (.masthead, .card, .btn, ...) so each theme can restyle them
+   wholesale. The <body> carries one .theme-<name> class (retro,
+   sucre, medellin, bogota, lapaz, cochabamba, santacruz — the
+   ids live in pages.asm's theme table); all colour/border/font/
+   shape decisions live under those scopes. Layout (spacing, flex,
+   widths) stays in the templates as Tailwind utilities.
+
+   Textures are inline only: CSS gradients and tiny data-URI SVG
+   tiles (the CSP allows data: images), so the site is still one
+   stylesheet and no extra requests.
 
    Classes emitted from the assembly (.tag, .pglink, .postlink,
    .dellink, .draft, .notice, .pager, .table) must be defined
@@ -29,7 +34,9 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
    THEME: RETRO  — Windows-95-meets-Geocities (the original look)
    ===================================================================== */
 .theme-retro {
-  background: #000080;
+  background-color: #000080;
+  /* the tiled background every 90s page had: an 8px dither */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' shape-rendering='crispEdges'%3E%3Crect x='0' y='0' width='1' height='1' fill='%231a1a94'/%3E%3Crect x='4' y='4' width='1' height='1' fill='%231a1a94'/%3E%3Crect x='2' y='6' width='1' height='1' fill='%230a0a78'/%3E%3Crect x='6' y='2' width='1' height='1' fill='%230a0a78'/%3E%3C/svg%3E");
   color: #c0c0c0;
   font-family: "Courier New", monospace;
 }
@@ -168,18 +175,27 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   --su-roof-d: #8f3a24;   /* terracotta, darker         */
   --su-green:  #3f5e50;   /* colonial shutter green     */
   --su-ochre:  #c1852f;   /* window trim ochre          */
-  background: var(--su-wall);
+  background-color: var(--su-wall);
+  /* plaster grain: a noise tile at a few percent */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.3 0 0 0 0 0.25 0 0 0 0 0.18 0 0 0 0.09 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)'/%3E%3C/svg%3E");
   color: var(--su-ink);
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   line-height: 1.6;
 }
 .theme-sucre .masthead {
+  position: relative;
+  overflow: hidden;
   background: var(--su-panel);
   border: 1px solid var(--su-line);
-  border-top: 5px solid var(--su-roof);   /* the roofline */
+  border-top: 0;
   border-radius: 3px 3px 8px 8px;
   box-shadow: 0 6px 18px rgba(51, 48, 43, 0.06);
-  padding: 1.1rem 1.25rem;
+  padding: calc(1.1rem + 6px) 1.25rem 1.1rem;
+}
+.theme-sucre .masthead::before {         /* the roofline, laid in tiles */
+  content: "";
+  position: absolute; left: 0; right: 0; top: 0; height: 6px;
+  background: repeating-linear-gradient(90deg, var(--su-roof) 0 11px, var(--su-roof-d) 11px 13px);
 }
 .theme-sucre .brand {
   font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
@@ -351,6 +367,1317 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   padding-left: 0.9rem;
 }
 
+/* =====================================================================
+   THEME: MEDELLÍN — Feria de las Flores street poster.
+   Screen-printed poster on halftone paper: chunky rounded panels with
+   a thick ink outline and a hard offset shadow in a second colour (the
+   misregistered second pass), a silleta flower band under the masthead,
+   sticker tags, a vinyl-strip marquee. Heavy grotesque display type.
+   ===================================================================== */
+.theme-medellin {
+  --md-paper:  #fffdfa;
+  --md-panel:  #ffffff;
+  --md-ink:    #14161a;
+  --md-soft:   #4b5058;
+  --md-faint:  #7a808a;
+  --md-green:  #1f7a3e;   /* the valley's eternal green   */
+  --md-green-d:#155a2d;
+  --md-pink:   #e4327b;   /* bougainvillea / silleta      */
+  --md-yellow: #f7c948;   /* marigold                     */
+  --md-orange: #f0742e;
+  --md-purple: #7b3fa0;
+  --md-dots:   rgba(20, 22, 26, 0.07);
+  --md-code:   #f1f2f4;
+  background-color: var(--md-paper);
+  /* halftone paper */
+  background-image: radial-gradient(circle at 1px 1px, var(--md-dots) 1px, transparent 1.6px);
+  background-size: 9px 9px;
+  color: var(--md-ink);
+  font-family: "Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif;
+  line-height: 1.55;
+}
+.theme-medellin .masthead {
+  position: relative;
+  overflow: hidden;
+  background: var(--md-panel);
+  border: 3px solid var(--md-ink);
+  border-radius: 20px;
+  box-shadow: 7px 7px 0 var(--md-pink);
+  padding: 1.1rem 1.3rem 1.7rem;
+}
+.theme-medellin .masthead::after {       /* the silleta: a band of flowers */
+  content: "";
+  position: absolute; left: 0; right: 0; bottom: 0; height: 12px;
+  background: repeating-linear-gradient(90deg,
+    var(--md-pink) 0 16px, var(--md-yellow) 16px 32px, var(--md-orange) 32px 48px,
+    var(--md-green) 48px 64px, var(--md-purple) 64px 80px);
+  border-top: 3px solid var(--md-ink);
+}
+.theme-medellin .brand {
+  color: var(--md-ink);
+  font-size: 1.9rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.theme-medellin .brand:hover { color: var(--md-green); }
+.theme-medellin .navlink {
+  color: var(--md-green);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.78rem;
+  text-decoration: none;
+  padding: 1px 5px;
+  border-radius: 6px;
+}
+.theme-medellin .navlink:hover { background: var(--md-yellow); color: var(--md-ink); }
+
+.theme-medellin .banner {                /* vinyl strip, still a marquee */
+  background: var(--md-pink);
+  color: #fff;
+  border: 3px solid var(--md-ink);
+  border-radius: 999px;
+  margin: 1rem 0 1.4rem;
+  padding: 3px 14px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.theme-medellin .banner span {
+  display: inline-block;
+  padding-left: 100%;
+  animation: marquee 22s linear infinite;
+}
+
+.theme-medellin .field {
+  background: var(--md-panel);
+  color: var(--md-ink);
+  border: 3px solid var(--md-ink);
+  border-radius: 12px;
+  padding: 0.45rem 0.8rem;
+  outline: none;
+}
+.theme-medellin .field:focus { box-shadow: 4px 4px 0 var(--md-yellow); }
+.theme-medellin .btn {
+  background: var(--md-green);
+  color: #fff;
+  border: 3px solid var(--md-ink);
+  border-radius: 999px;
+  padding: 0.4rem 1.1rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-decoration: none;
+  box-shadow: 4px 4px 0 var(--md-ink);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.12s ease;
+}
+.theme-medellin .btn:hover { background: var(--md-pink); }
+.theme-medellin .btn:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--md-ink); }
+
+.theme-medellin .card, .theme-medellin .article, .theme-medellin .notice {
+  background: var(--md-panel);
+  border: 3px solid var(--md-ink);
+  border-radius: 20px;
+  padding: 1.1rem 1.3rem;
+  box-shadow: 8px 8px 0 var(--md-green);
+}
+.theme-medellin .card:nth-of-type(3n+1) { box-shadow: 8px 8px 0 var(--md-pink); }
+.theme-medellin .card:nth-of-type(3n)   { box-shadow: 8px 8px 0 var(--md-yellow); }
+.theme-medellin .card { transition: transform 0.12s ease; }
+.theme-medellin .card:hover { transform: translate(-2px, -2px); }
+.theme-medellin .card-title a {
+  color: var(--md-ink);
+  font-weight: 900;
+  font-size: 1.3rem;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+}
+.theme-medellin .card-title a:hover { text-decoration: underline 4px var(--md-pink); text-underline-offset: 3px; }
+.theme-medellin .article-title {
+  color: var(--md-ink);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  font-size: 2rem;
+}
+.theme-medellin .meta {
+  color: var(--md-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+.theme-medellin .excerpt { color: var(--md-soft); }
+.theme-medellin .backlink { color: var(--md-green); font-weight: 800; text-decoration: none; }
+.theme-medellin .backlink:hover { color: var(--md-pink); }
+
+.theme-medellin .tag {                    /* stickers, slapped on */
+  display: inline-block;
+  background: var(--md-yellow);
+  color: var(--md-ink);
+  border: 2px solid var(--md-ink);
+  border-radius: 6px;
+  padding: 0 8px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  transform: rotate(-2deg);
+  margin: 0 3px 0 1px;
+}
+.theme-medellin .tag:nth-child(even) { transform: rotate(2deg); background: var(--md-panel); }
+.theme-medellin .tag:hover { background: var(--md-pink); color: #fff; }
+
+.theme-medellin .pglink {
+  display: inline-block;
+  background: var(--md-panel);
+  color: var(--md-ink);
+  border: 3px solid var(--md-ink);
+  border-radius: 999px;
+  padding: 0.3rem 1rem;
+  margin: 0 4px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  box-shadow: 3px 3px 0 var(--md-ink);
+}
+.theme-medellin .pglink:hover { background: var(--md-yellow); }
+
+.theme-medellin .hits {
+  display: inline-block; vertical-align: middle;
+  height: 18px; width: auto;
+  border: 3px solid var(--md-ink); border-radius: 6px;
+}
+.theme-medellin .badge {
+  display: inline-block;
+  border: 2px solid var(--md-ink);
+  border-radius: 6px;
+  background: var(--md-yellow); color: var(--md-ink);
+  font-size: 10px; font-weight: 800; letter-spacing: 0.08em;
+  padding: 2px 8px;
+}
+.theme-medellin .badge-b { background: var(--md-green); color: #fff; }
+.theme-medellin .badge-c { background: var(--md-pink); color: #fff; }
+.theme-medellin .footer { color: var(--md-soft); font-weight: 600; }
+
+.theme-medellin .listhead {              /* poster headline, highlighter under it */
+  display: inline-block;
+  color: var(--md-ink);
+  font-weight: 900;
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  line-height: 1.1;
+  padding: 0 6px;
+  margin-bottom: 1.1rem;
+  background: linear-gradient(transparent 55%, var(--md-yellow) 55%, var(--md-yellow) 92%, transparent 92%);
+}
+.theme-medellin .dellink { color: var(--md-pink); font-weight: 800; text-decoration: none; }
+.theme-medellin .dellink:hover { text-decoration: underline; }
+.theme-medellin .draft { color: var(--md-orange); font-weight: 800; }
+.theme-medellin .postlink { color: var(--md-green); font-weight: 800; text-decoration: none; }
+.theme-medellin .postlink:hover { text-decoration: underline 3px var(--md-pink); }
+.theme-medellin .table td, .theme-medellin .table th { border-top: 2px solid var(--md-code); }
+.theme-medellin .error { color: var(--md-pink); font-weight: 800; }
+
+.theme-medellin .content h1, .theme-medellin .content h2, .theme-medellin .content h3 {
+  color: var(--md-ink); font-weight: 900; letter-spacing: -0.02em;
+}
+.theme-medellin .content a { color: var(--md-green); text-decoration: underline 2px; text-underline-offset: 2px; }
+.theme-medellin .content a:hover { color: var(--md-pink); }
+.theme-medellin .content code {
+  background: var(--md-code); color: var(--md-ink);
+  padding: 1px 5px; border-radius: 4px;
+  font-family: "SF Mono", "Cascadia Code", Menlo, monospace; font-size: 0.9em;
+}
+.theme-medellin .content pre {
+  background: var(--md-ink); color: #fffdfa;
+  border: 3px solid var(--md-ink); border-radius: 14px;
+  padding: 0.9rem 1rem; overflow-x: auto;
+  box-shadow: 6px 6px 0 var(--md-green);
+}
+.theme-medellin .content pre code { background: none; color: inherit; padding: 0; }
+.theme-medellin .content blockquote {
+  border-left: 8px solid var(--md-pink);
+  padding-left: 0.9rem;
+  font-weight: 600; color: var(--md-soft);
+}
+.theme-medellin .content figure, .theme-medellin .flickr-embed {
+  border: 3px solid var(--md-ink); border-radius: 16px;
+  background: var(--md-panel); padding: 6px;
+  box-shadow: 6px 6px 0 var(--md-yellow);
+}
+
+/* Medellín after dark: the valley at night, the lights still on */
+.theme-medellin { color-scheme: light dark; }
+@media (prefers-color-scheme: dark) {
+  .theme-medellin {
+    --md-paper:  #0f1a14;
+    --md-panel:  #172420;
+    --md-ink:    #f4f2ec;
+    --md-soft:   #c7cbc4;
+    --md-faint:  #8f958e;
+    --md-green:  #3fbf6a;
+    --md-green-d:#2f9a53;
+    --md-pink:   #ff5fa0;
+    --md-yellow: #ffd45e;
+    --md-orange: #ff8a4a;
+    --md-purple: #a06ad0;
+    --md-dots:   rgba(255, 255, 255, 0.05);
+    --md-code:   #24332c;
+  }
+  .theme-medellin .btn, .theme-medellin .badge-b, .theme-medellin .badge-c,
+  .theme-medellin .tag:hover, .theme-medellin .banner { color: #0f1a14; }
+  .theme-medellin .content pre { background: #06100a; color: #eaf3ea; }
+}
+
+/* =====================================================================
+   THEME: BOGOTÁ — brick and gold, editorial.
+   Salmona's red brick under an overcast sky: the page is a brick wall
+   (one SVG tile, tinted by the background colour), panels are window
+   openings framed in a double line, Muisca gold for the accents and a
+   literary serif with small caps and a drop cap. No shadows, no radius.
+   ===================================================================== */
+.theme-bogota {
+  --bo-brick:  #8a4838;
+  --bo-panel:  #f2efe9;
+  --bo-panel2: #fbfaf7;
+  --bo-ink:    #26292d;
+  --bo-soft:   #4a4744;
+  --bo-faint:  #7b766f;
+  --bo-line:   #d8d2c8;
+  --bo-frame:  #3a3532;
+  --bo-gold:   #c9a03e;
+  --bo-gold-d: #9a7420;
+  --bo-red:    #7a2e22;   /* brick, darkened, for text */
+  --bo-plaque: #26292d;
+  --bo-ivory:  #ece7dc;
+  --bo-emerald:#2e6b4f;
+  background-color: var(--bo-brick);
+  /* running-bond brick: mortar and per-brick tints only, so one tile
+     serves both the daytime and the night wall */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='32' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h64v2H0zM0 16h64v2H0zM30 2h2v14h-2zM62 2h2v14h-2zM14 18h2v14h-2zM46 18h2v14h-2z' fill='rgba(0,0,0,0.42)'/%3E%3Crect x='0' y='2' width='30' height='14' fill='rgba(255,255,255,0.05)'/%3E%3Crect x='32' y='2' width='30' height='14' fill='rgba(0,0,0,0.07)'/%3E%3Crect x='16' y='18' width='30' height='14' fill='rgba(255,255,255,0.02)'/%3E%3Crect x='48' y='18' width='16' height='14' fill='rgba(0,0,0,0.04)'/%3E%3C/svg%3E");
+  color: var(--bo-ink);
+  font-family: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+  line-height: 1.6;
+}
+.theme-bogota .masthead {                /* a plaque set into the wall */
+  background: var(--bo-plaque);
+  color: var(--bo-ivory);
+  border: 1px solid var(--bo-gold);
+  border-bottom-width: 3px;
+  padding: 1rem 1.3rem;
+}
+.theme-bogota .brand {
+  color: var(--bo-ivory);
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+}
+.theme-bogota .brand:hover { color: var(--bo-gold); }
+.theme-bogota .navlink {
+  color: var(--bo-gold);
+  font-variant: small-caps;
+  letter-spacing: 0.12em;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+.theme-bogota .navlink:hover { border-bottom-color: var(--bo-gold); }
+
+.theme-bogota .banner {                  /* the newspaper's ears */
+  color: var(--bo-ivory);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+  border-top: 1px solid var(--bo-gold);
+  border-bottom: 1px solid var(--bo-gold);
+  margin: 0.9rem 0 1.4rem;
+  padding: 0.3rem 0.5rem;
+  text-align: center;
+  font-variant: small-caps;
+  font-size: 0.85rem;
+  letter-spacing: 0.16em;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.theme-bogota .banner span { display: inline; }
+
+.theme-bogota .field {
+  background: var(--bo-panel2);
+  color: var(--bo-ink);
+  border: 1px solid var(--bo-frame);
+  border-radius: 0;
+  padding: 0.5rem 0.7rem;
+  outline: none;
+  font-family: inherit;
+}
+.theme-bogota .field:focus { border-color: var(--bo-gold); box-shadow: inset 0 0 0 1px var(--bo-gold); }
+.theme-bogota .btn {
+  background: var(--bo-plaque);
+  color: var(--bo-ivory);
+  border: 1px solid var(--bo-gold);
+  border-radius: 0;
+  padding: 0.45rem 1.1rem;
+  font-variant: small-caps;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.theme-bogota .btn:hover { background: var(--bo-gold); color: var(--bo-plaque); }
+
+.theme-bogota .card, .theme-bogota .article, .theme-bogota .notice {
+  background: var(--bo-panel);
+  border: 5px double var(--bo-frame);   /* the window frame */
+  padding: 1.15rem 1.4rem;
+}
+.theme-bogota .card-title a {
+  color: var(--bo-ink);
+  font-weight: 700;
+  text-decoration: none;
+}
+.theme-bogota .card-title a:hover { color: var(--bo-red); }
+.theme-bogota .article-title {
+  color: var(--bo-ink);
+  font-weight: 700;
+  border-bottom: 1px solid var(--bo-gold);
+  padding-bottom: 0.4rem;
+}
+.theme-bogota .meta {
+  color: var(--bo-faint);
+  font-variant: small-caps;
+  letter-spacing: 0.08em;
+  font-size: 0.8rem;
+}
+.theme-bogota .excerpt { color: var(--bo-soft); }
+.theme-bogota .backlink { color: var(--bo-ivory); text-decoration: none; border-bottom: 1px solid var(--bo-gold); }
+.theme-bogota .backlink:hover { color: var(--bo-gold); }
+.theme-bogota .card .backlink { color: var(--bo-red); border-bottom-color: var(--bo-red); }
+
+.theme-bogota .tag {                     /* set as text, gold middots between */
+  color: var(--bo-red);
+  font-variant: small-caps;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+}
+.theme-bogota .tag + .tag::before { content: "\00b7\00a0"; color: var(--bo-gold); }
+.theme-bogota .tag:hover { color: var(--bo-gold-d); text-decoration: underline; }
+
+.theme-bogota .pglink {
+  display: inline-block;
+  color: var(--bo-ivory);
+  border: 1px solid var(--bo-gold);
+  padding: 0.3rem 0.9rem;
+  margin: 0 4px;
+  font-variant: small-caps;
+  letter-spacing: 0.1em;
+  text-decoration: none;
+  background: var(--bo-plaque);
+}
+.theme-bogota .pglink:hover { background: var(--bo-gold); color: var(--bo-plaque); }
+
+.theme-bogota .hits {
+  display: inline-block; vertical-align: middle;
+  height: 18px; width: auto;
+  border: 1px solid var(--bo-gold);
+}
+.theme-bogota .badge {
+  display: inline-block;
+  background: var(--bo-plaque); color: var(--bo-ivory);
+  border: 1px solid var(--bo-gold);
+  font-size: 10px; font-variant: small-caps; letter-spacing: 0.12em;
+  padding: 2px 9px;
+}
+.theme-bogota .badge-b { background: var(--bo-red); }
+.theme-bogota .badge-c { background: var(--bo-gold); color: var(--bo-plaque); }
+.theme-bogota .footer { color: var(--bo-ivory); text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6); }
+
+.theme-bogota .listhead {                /* a section title carved over the wall */
+  color: var(--bo-ivory);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+  font-style: italic;
+  font-size: 1.05rem;
+  border-bottom: 1px solid var(--bo-gold);
+  padding: 0 0 0.3rem;
+  margin-bottom: 1.1rem;
+}
+.theme-bogota .dellink { color: var(--bo-red); text-decoration: none; font-variant: small-caps; letter-spacing: 0.06em; }
+.theme-bogota .dellink:hover { text-decoration: underline; }
+.theme-bogota .draft { color: var(--bo-gold-d); font-weight: 700; font-variant: small-caps; letter-spacing: 0.06em; }
+.theme-bogota .postlink { color: var(--bo-ink); text-decoration: underline; text-decoration-color: var(--bo-gold); text-underline-offset: 2px; }
+.theme-bogota .postlink:hover { color: var(--bo-red); }
+.theme-bogota .table td, .theme-bogota .table th { border-top: 1px solid var(--bo-line); }
+.theme-bogota .error { color: var(--bo-red); font-weight: 700; }
+
+.theme-bogota .content h1, .theme-bogota .content h2, .theme-bogota .content h3 {
+  color: var(--bo-ink); font-weight: 700;
+}
+.theme-bogota .content > p:first-of-type::first-letter {   /* the drop cap */
+  float: left;
+  font-size: 3.3em;
+  line-height: 0.82;
+  padding: 0.08em 0.12em 0 0;
+  font-weight: 700;
+  color: var(--bo-red);
+}
+.theme-bogota .content a { color: var(--bo-red); text-decoration: underline; text-decoration-color: var(--bo-gold); text-underline-offset: 2px; }
+.theme-bogota .content a:hover { color: var(--bo-gold-d); }
+.theme-bogota .content code {
+  background: #e9e4dc; color: var(--bo-red);
+  padding: 1px 5px;
+  font-family: "SF Mono", "Cascadia Code", Menlo, monospace; font-size: 0.9em;
+}
+.theme-bogota .content pre {
+  background: var(--bo-plaque); color: var(--bo-ivory);
+  border-left: 4px solid var(--bo-gold);
+  padding: 0.9rem 1rem; overflow-x: auto;
+}
+.theme-bogota .content pre code { background: none; color: inherit; padding: 0; }
+.theme-bogota .content blockquote {
+  border-left: 1px solid var(--bo-gold);
+  padding-left: 1rem; margin-left: 0.25rem;
+  color: var(--bo-soft); font-style: italic;
+}
+.theme-bogota .content figure, .theme-bogota .flickr-embed {
+  border: 5px double var(--bo-frame);
+  background: var(--bo-panel2); padding: 4px;
+}
+
+/* Bogotá at night: rain on the brick, gold in the windows */
+.theme-bogota { color-scheme: light dark; }
+@media (prefers-color-scheme: dark) {
+  .theme-bogota {
+    --bo-brick:  #2b1a16;
+    --bo-panel:  #1f2124;
+    --bo-panel2: #17191c;
+    --bo-ink:    #e8e2d6;
+    --bo-soft:   #b8b1a6;
+    --bo-faint:  #8c867c;
+    --bo-line:   #3a3d42;
+    --bo-frame:  #6b655e;
+    --bo-gold:   #e0b34f;
+    --bo-gold-d: #c99a35;
+    --bo-red:    #d3705f;
+    --bo-plaque: #121417;
+    --bo-ivory:  #ece7dc;
+  }
+  .theme-bogota .content code { background: #2a2d31; color: #e0a596; }
+}
+
+/* =====================================================================
+   THEME: LA PAZ — neo-Andean cholet, dark first.
+   Freddy Mamani's El Alto: stepped chakana corners cut with clip-path,
+   a glossy teal→violet stroke around every panel, the masthead framed
+   in aguayo stripes, a minibus destination sign for the banner and
+   Teleférico line colours on the badges. Wide geometric caps.
+   ===================================================================== */
+.theme-lapaz {
+  --lp-night:  #17111f;
+  --lp-panel:  #221a2e;
+  --lp-deep:   #0f0b16;
+  --lp-ink:    #f2ecf7;
+  --lp-soft:   #c9bfd6;
+  --lp-faint:  #8f84a3;
+  --lp-line:   #4a3a66;
+  --lp-violet: #8a3fc9;
+  --lp-teal:   #17a398;
+  --lp-teal-l: #5fd3c8;
+  --lp-orange: #ff7a1a;
+  --lp-yellow: #ffb000;
+  --lp-red:    #e0313f;
+  --lp-green:  #35b24a;
+  --lp-sky:    #3fb8ff;
+  --lp-magenta:#ff3fa4;
+  --lp-title:  var(--lp-yellow);
+  --lp-weave:  rgba(255, 255, 255, 0.025);
+  --lp-stroke: linear-gradient(135deg, var(--lp-teal), var(--lp-violet));
+  --lp-aguayo: repeating-linear-gradient(90deg,
+      var(--lp-red) 0 12px, var(--lp-orange) 12px 24px, var(--lp-yellow) 24px 36px,
+      var(--lp-green) 36px 48px, var(--lp-sky) 48px 60px, var(--lp-violet) 60px 72px,
+      var(--lp-magenta) 72px 84px);
+  /* stepped corners, two steps of 10px */
+  --lp-steps: polygon(
+      0 20px, 10px 20px, 10px 10px, 20px 10px, 20px 0,
+      calc(100% - 20px) 0, calc(100% - 20px) 10px, calc(100% - 10px) 10px, calc(100% - 10px) 20px, 100% 20px,
+      100% calc(100% - 20px), calc(100% - 10px) calc(100% - 20px), calc(100% - 10px) calc(100% - 10px), calc(100% - 20px) calc(100% - 10px), calc(100% - 20px) 100%,
+      20px 100%, 20px calc(100% - 10px), 10px calc(100% - 10px), 10px calc(100% - 20px), 0 calc(100% - 20px));
+  --lp-chamfer: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+  background-color: var(--lp-night);
+  /* a faint diagonal weave over the night */
+  background-image: repeating-linear-gradient(45deg, var(--lp-weave) 0 2px, transparent 2px 7px);
+  color: var(--lp-ink);
+  font-family: Futura, "Century Gothic", "Avenir Next", "Trebuchet MS", "URW Gothic", sans-serif;
+  line-height: 1.6;
+}
+/* every panel: the element is the stroke, ::before is the face */
+.theme-lapaz .masthead, .theme-lapaz .card, .theme-lapaz .article, .theme-lapaz .notice {
+  position: relative;
+  isolation: isolate;
+  clip-path: var(--lp-steps);
+  background: var(--lp-stroke);
+  padding: 1.3rem 1.6rem;
+}
+.theme-lapaz .masthead::before, .theme-lapaz .card::before,
+.theme-lapaz .article::before, .theme-lapaz .notice::before {
+  content: "";
+  position: absolute; inset: 3px; z-index: -1;
+  clip-path: var(--lp-steps);
+  background: var(--lp-panel);
+}
+.theme-lapaz .masthead { background: var(--lp-aguayo); }   /* framed in aguayo */
+.theme-lapaz .masthead::before { inset: 6px; }
+.theme-lapaz .masthead {
+  padding: 1.4rem 1.8rem;
+  background-image: var(--lp-aguayo);
+}
+.theme-lapaz .brand {
+  color: var(--lp-title);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.theme-lapaz .brand:hover { color: var(--lp-teal-l); }
+.theme-lapaz .navlink {
+  color: var(--lp-teal-l);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.72rem;
+  text-decoration: none;
+}
+.theme-lapaz .navlink:hover { color: var(--lp-yellow); }
+
+.theme-lapaz .banner {                   /* minibus destination sign */
+  background: var(--lp-deep);
+  background-image: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 3px);
+  color: var(--lp-yellow);
+  border-left: 12px solid var(--lp-red);
+  border-right: 12px solid var(--lp-green);
+  margin: 1rem 0 1.5rem;
+  padding: 5px 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.theme-lapaz .banner span {
+  display: inline-block;
+  padding-left: 100%;
+  animation: marquee 24s linear infinite;
+}
+
+.theme-lapaz .field {
+  background: var(--lp-deep);
+  color: var(--lp-ink);
+  border: 1px solid var(--lp-line);
+  border-radius: 0;
+  padding: 0.5rem 0.7rem;
+  outline: none;
+  clip-path: var(--lp-chamfer);
+}
+.theme-lapaz .field:focus { border-color: var(--lp-teal); box-shadow: inset 0 0 0 1px var(--lp-teal); }
+.theme-lapaz .btn {
+  background: var(--lp-stroke);
+  color: #fff;
+  border: 0;
+  border-radius: 0;
+  clip-path: var(--lp-chamfer);
+  padding: 0.55rem 1.2rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  cursor: pointer;
+  text-decoration: none;
+  transition: filter 0.15s ease;
+}
+.theme-lapaz .btn:hover { filter: brightness(1.2); }
+
+.theme-lapaz .card-title a {
+  color: var(--lp-ink);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-decoration: none;
+}
+.theme-lapaz .card-title a:hover { color: var(--lp-yellow); }
+.theme-lapaz .article-title {
+  color: var(--lp-title);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.theme-lapaz .meta { color: var(--lp-faint); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.7rem; }
+.theme-lapaz .excerpt { color: var(--lp-soft); }
+.theme-lapaz .backlink { color: var(--lp-teal-l); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.75rem; text-decoration: none; }
+.theme-lapaz .backlink:hover { color: var(--lp-yellow); }
+
+.theme-lapaz .tag {                      /* stepped little blocks */
+  display: inline-block;
+  background: var(--lp-line);
+  color: var(--lp-ink);
+  clip-path: var(--lp-chamfer);
+  padding: 2px 9px;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  text-decoration: none;
+  margin-right: 3px;
+}
+.theme-lapaz .tag:hover { background: var(--lp-yellow); color: var(--lp-night); }
+
+.theme-lapaz .pglink {
+  display: inline-block;
+  color: var(--lp-teal-l);
+  border: 1px solid var(--lp-teal);
+  clip-path: var(--lp-chamfer);
+  padding: 0.35rem 0.9rem;
+  margin: 0 4px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  text-decoration: none;
+  background: var(--lp-deep);
+}
+.theme-lapaz .pglink:hover { background: var(--lp-teal); color: var(--lp-night); }
+
+.theme-lapaz .hits {
+  display: inline-block; vertical-align: middle;
+  height: 18px; width: auto;
+  border: 1px solid var(--lp-line);
+}
+.theme-lapaz .badge {                    /* Teleférico lines: red, yellow, green */
+  display: inline-block;
+  clip-path: var(--lp-chamfer);
+  background: var(--lp-red); color: #fff;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.14em;
+  padding: 3px 9px;
+}
+.theme-lapaz .badge-b { background: var(--lp-yellow); color: var(--lp-night); }
+.theme-lapaz .badge-c { background: var(--lp-green); }
+.theme-lapaz .footer { color: var(--lp-faint); letter-spacing: 0.04em; }
+
+.theme-lapaz .listhead {                 /* woven underline */
+  color: var(--lp-teal-l);
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.3rem 0 0.45rem;
+  margin-bottom: 1.1rem;
+  border-bottom: 4px solid transparent;
+  border-image: var(--lp-aguayo) 1;
+}
+.theme-lapaz .dellink { color: var(--lp-red); text-decoration: none; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.1em; }
+.theme-lapaz .dellink:hover { color: var(--lp-orange); }
+.theme-lapaz .draft { color: var(--lp-orange); font-weight: 700; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.1em; }
+.theme-lapaz .postlink { color: var(--lp-sky); text-decoration: none; }
+.theme-lapaz .postlink:hover { color: var(--lp-yellow); }
+.theme-lapaz .table td, .theme-lapaz .table th { border-top: 1px solid var(--lp-line); }
+.theme-lapaz .error { color: var(--lp-red); font-weight: 700; }
+
+.theme-lapaz .content h1, .theme-lapaz .content h2, .theme-lapaz .content h3 {
+  color: var(--lp-title); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+}
+.theme-lapaz .content a { color: var(--lp-sky); text-decoration: underline; text-underline-offset: 2px; }
+.theme-lapaz .content a:hover { color: var(--lp-yellow); }
+.theme-lapaz .content code {
+  background: var(--lp-deep); color: var(--lp-yellow);
+  padding: 1px 5px;
+  font-family: "SF Mono", "Cascadia Code", Menlo, monospace; font-size: 0.9em;
+}
+.theme-lapaz .content pre {
+  background: var(--lp-deep); color: #e6dff0;
+  border: 1px solid var(--lp-line);
+  border-left: 5px solid transparent;
+  border-image: var(--lp-stroke) 1;
+  padding: 0.9rem 1rem; overflow-x: auto;
+}
+.theme-lapaz .content pre code { background: none; color: inherit; padding: 0; }
+.theme-lapaz .content blockquote {
+  border-left: 5px solid var(--lp-orange);
+  padding-left: 0.9rem;
+  color: var(--lp-soft);
+}
+.theme-lapaz .content figure, .theme-lapaz .flickr-embed {
+  background: var(--lp-deep); padding: 6px;
+  clip-path: polygon(0 12px, 6px 12px, 6px 6px, 12px 6px, 12px 0,
+      calc(100% - 12px) 0, calc(100% - 12px) 6px, calc(100% - 6px) 6px, calc(100% - 6px) 12px, 100% 12px,
+      100% calc(100% - 12px), calc(100% - 6px) calc(100% - 12px), calc(100% - 6px) calc(100% - 6px), calc(100% - 12px) calc(100% - 6px), calc(100% - 12px) 100%,
+      12px 100%, 12px calc(100% - 6px), 6px calc(100% - 6px), 6px calc(100% - 12px), 0 calc(100% - 12px));
+}
+
+/* La Paz by day: thin air, hard light, the same facades */
+.theme-lapaz { color-scheme: dark light; }
+@media (prefers-color-scheme: light) {
+  .theme-lapaz {
+    --lp-night:  #f3f0fa;
+    --lp-panel:  #ffffff;
+    --lp-deep:   #e9e3f5;
+    --lp-ink:    #1b1526;
+    --lp-soft:   #4d4461;
+    --lp-faint:  #7c7391;
+    --lp-line:   #d9d2e8;
+    --lp-violet: #6a2fa0;
+    --lp-teal:   #0f7f77;
+    --lp-teal-l: #0f7f77;
+    --lp-title:  #6a2fa0;
+    --lp-weave:  rgba(80, 50, 120, 0.05);
+  }
+  .theme-lapaz .banner { background: #17111f; }
+  .theme-lapaz .content h1, .theme-lapaz .content h2, .theme-lapaz .content h3 { color: var(--lp-violet); }
+  .theme-lapaz .content code { color: var(--lp-violet); }
+  .theme-lapaz .content pre { background: #17111f; }
+  .theme-lapaz .content figure, .theme-lapaz .flickr-embed { background: #d9d2e8; }
+  .theme-lapaz .pglink { background: #fff; }
+  .theme-lapaz .tag { color: var(--lp-ink); }
+  .theme-lapaz .btn { color: #fff; }
+}
+
+/* =====================================================================
+   THEME: COCHABAMBA — La Cancha market.
+   Kraft paper with a fibre grain, chalkboard menus in wooden frames,
+   posts as pinned index cards with dashed hand-ruled borders, string
+   price tags, sticker badges. Slab-serif signboard type.
+   ===================================================================== */
+.theme-cochabamba {
+  --cb-kraft:   #dcc39b;
+  --cb-kraft-d: #c4a878;
+  --cb-card:    #f6efdd;
+  --cb-paper:   #fffdf7;
+  --cb-slate:   #2f3a3d;
+  --cb-slate-d: #232c2f;
+  --cb-chalk:   #f3efe6;
+  --cb-wood:    #8b5a2b;
+  --cb-ink:     #2b2320;
+  --cb-soft:    #5c4f45;
+  --cb-faint:   #8a7a6a;
+  --cb-line:    #8a7a6a;
+  --cb-red:     #c0392b;
+  --cb-yellow:  #e9b427;
+  --cb-yellow-d:#a67c00;
+  --cb-green:   #4f7f3a;
+  --cb-code:    #ecdfc3;
+  --cb-grain:   0.10;
+  background-color: var(--cb-kraft);
+  /* paper fibre */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.25 0 0 0 0 0.16 0 0 0 0 0.08 0 0 0 0.16 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23f)'/%3E%3C/svg%3E");
+  color: var(--cb-ink);
+  font-family: "Trebuchet MS", Verdana, "DejaVu Sans", "Bitstream Vera Sans", sans-serif;
+  line-height: 1.55;
+}
+.theme-cochabamba .masthead {            /* the chalkboard, in its wooden frame */
+  background: var(--cb-slate);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23f)'/%3E%3C/svg%3E");
+  color: var(--cb-chalk);
+  border: 7px solid var(--cb-wood);
+  border-radius: 3px;
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.45), 2px 3px 0 rgba(43, 35, 32, 0.25);
+  padding: 1.1rem 1.3rem;
+}
+.theme-cochabamba .brand {
+  font-family: Rockwell, "Roboto Slab", "Zilla Slab", "DejaVu Serif", "Bitstream Vera Serif", serif;
+  color: var(--cb-chalk);
+  font-size: 1.7rem;
+  font-weight: 700;
+  text-decoration: none;
+  border-bottom: 2px dashed rgba(243, 239, 230, 0.55);   /* chalk rule */
+}
+.theme-cochabamba .brand:hover { color: var(--cb-yellow); }
+.theme-cochabamba .navlink {
+  color: var(--cb-chalk);
+  text-decoration: none;
+  border-bottom: 1px dashed transparent;
+}
+.theme-cochabamba .navlink:hover { color: var(--cb-yellow); border-bottom-color: var(--cb-yellow); }
+
+.theme-cochabamba .banner {              /* a hanging price sign, string holes and all */
+  background: var(--cb-yellow);
+  background-image:
+    radial-gradient(circle at 14px 50%, var(--cb-kraft) 4px, transparent 5px),
+    radial-gradient(circle at calc(100% - 14px) 50%, var(--cb-kraft) 4px, transparent 5px);
+  color: var(--cb-ink);
+  border: 2px dashed var(--cb-ink);
+  border-radius: 3px;
+  box-shadow: 2px 3px 0 rgba(43, 35, 32, 0.25);
+  margin: 1rem 0 1.5rem;
+  padding: 0.35rem 30px;
+  text-align: center;
+  font-family: Rockwell, "Roboto Slab", "Zilla Slab", "DejaVu Serif", serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.theme-cochabamba .banner span { display: inline; }
+
+.theme-cochabamba .field {
+  background: var(--cb-paper);
+  color: var(--cb-ink);
+  border: 2px dashed var(--cb-line);
+  border-radius: 2px;
+  padding: 0.45rem 0.7rem;
+  outline: none;
+  font-family: inherit;
+}
+.theme-cochabamba .field:focus { border-color: var(--cb-red); }
+.theme-cochabamba textarea.field {       /* ruled notebook paper */
+  background-image: repeating-linear-gradient(transparent 0 23px, #d9cfb8 23px 24px);
+  line-height: 24px;
+  background-attachment: local;
+}
+.theme-cochabamba .btn {
+  background: var(--cb-slate);
+  color: var(--cb-chalk);
+  border: 2px solid var(--cb-slate-d);
+  border-radius: 3px;
+  padding: 0.4rem 1.1rem;
+  font-family: Rockwell, "Roboto Slab", "Zilla Slab", "DejaVu Serif", serif;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  box-shadow: 2px 2px 0 var(--cb-kraft-d);
+  transition: background 0.12s ease;
+}
+.theme-cochabamba .btn:hover { background: var(--cb-red); }
+.theme-cochabamba .btn:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--cb-kraft-d); }
+
+.theme-cochabamba .card, .theme-cochabamba .article, .theme-cochabamba .notice {
+  position: relative;
+  background: var(--cb-card);
+  border: 2px dashed var(--cb-line);
+  border-radius: 2px;
+  padding: 1.2rem 1.3rem 1.1rem;
+  box-shadow: 2px 3px 0 rgba(43, 35, 32, 0.18);
+}
+.theme-cochabamba .card::before, .theme-cochabamba .article::before {   /* the push-pin */
+  content: "";
+  position: absolute; top: -7px; left: 50%; margin-left: -7px;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ff9a8f, var(--cb-red) 60%, #8e2a20);
+  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.4);
+}
+.theme-cochabamba .card:nth-of-type(3n+2)::before { background: radial-gradient(circle at 35% 35%, #fff0a8, var(--cb-yellow) 60%, #a67c00); }
+.theme-cochabamba .card:nth-of-type(3n)::before   { background: radial-gradient(circle at 35% 35%, #b6e39a, var(--cb-green) 60%, #34561f); }
+.theme-cochabamba .card:nth-of-type(odd)  { transform: rotate(-0.4deg); }
+.theme-cochabamba .card:nth-of-type(even) { transform: rotate(0.4deg); }
+.theme-cochabamba .card-title a {
+  font-family: Rockwell, "Roboto Slab", "Zilla Slab", "DejaVu Serif", serif;
+  color: var(--cb-ink);
+  font-weight: 700;
+  text-decoration: none;
+}
+.theme-cochabamba .card-title a:hover { color: var(--cb-red); }
+.theme-cochabamba .article-title {
+  font-family: Rockwell, "Roboto Slab", "Zilla Slab", "DejaVu Serif", serif;
+  color: var(--cb-red);
+  font-weight: 700;
+}
+.theme-cochabamba .meta { color: var(--cb-faint); font-style: italic; }
+.theme-cochabamba .excerpt { color: var(--cb-soft); }
+.theme-cochabamba .backlink { color: var(--cb-green); text-decoration: none; border-bottom: 1px dashed var(--cb-green); }
+.theme-cochabamba .backlink:hover { color: var(--cb-red); border-bottom-color: var(--cb-red); }
+
+.theme-cochabamba .tag {                 /* a string price tag: point, hole, card */
+  position: relative;
+  display: inline-block;
+  background: var(--cb-paper);
+  color: var(--cb-ink);
+  border: 1.5px solid var(--cb-ink);
+  border-left: 0;
+  border-radius: 0 3px 3px 0;
+  padding: 0 8px 0 10px;
+  margin: 0 4px 0 9px;
+  font-size: 0.72rem;
+  line-height: 18px;
+  text-decoration: none;
+  background-image: radial-gradient(circle at 5px 50%, var(--cb-ink) 1.6px, transparent 2.4px);
+}
+.theme-cochabamba .tag::before {
+  content: "";
+  position: absolute; left: -7px; top: 2px;
+  width: 15px; height: 15px;
+  background: inherit;
+  border-left: 1.5px solid var(--cb-ink);
+  border-bottom: 1.5px solid var(--cb-ink);
+  transform: rotate(45deg);
+  z-index: -1;
+}
+.theme-cochabamba .tag:hover { background-color: var(--cb-yellow); }
+.theme-cochabamba .tag:hover::before { background: var(--cb-yellow); }
+
+.theme-cochabamba .pglink {
+  display: inline-block;
+  background: var(--cb-card);
+  color: var(--cb-ink);
+  border: 2px dashed var(--cb-line);
+  border-radius: 2px;
+  padding: 0.3rem 0.9rem;
+  margin: 0 4px;
+  text-decoration: none;
+  font-weight: 700;
+}
+.theme-cochabamba .pglink:hover { background: var(--cb-slate); color: var(--cb-chalk); border-style: solid; }
+
+.theme-cochabamba .hits {
+  display: inline-block; vertical-align: middle;
+  height: 18px; width: auto;
+  border: 2px solid var(--cb-wood); border-radius: 2px;
+}
+.theme-cochabamba .badge {               /* price stickers */
+  display: inline-block;
+  border-radius: 999px;
+  background: var(--cb-yellow); color: var(--cb-ink);
+  font-family: Rockwell, "Roboto Slab", "Zilla Slab", "DejaVu Serif", serif;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+  padding: 3px 10px;
+  box-shadow: 1px 1px 0 rgba(43, 35, 32, 0.3);
+}
+.theme-cochabamba .badge-b { background: var(--cb-green); color: var(--cb-chalk); }
+.theme-cochabamba .badge-c { background: var(--cb-red); color: var(--cb-chalk); }
+.theme-cochabamba .footer { color: var(--cb-soft); }
+
+.theme-cochabamba .listhead {            /* today's menu, in chalk */
+  background: var(--cb-slate);
+  color: var(--cb-chalk);
+  border: 4px solid var(--cb-wood);
+  border-radius: 3px;
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.4);
+  font-family: Rockwell, "Roboto Slab", "Zilla Slab", "DejaVu Serif", serif;
+  font-size: 1rem;
+  padding: 0.4rem 0.9rem;
+  margin-bottom: 1.25rem;
+  text-decoration: underline wavy rgba(243, 239, 230, 0.55);
+  text-underline-offset: 4px;
+}
+.theme-cochabamba .dellink { color: var(--cb-red); text-decoration: none; border-bottom: 1px dashed var(--cb-red); }
+.theme-cochabamba .dellink:hover { border-bottom-style: solid; }
+.theme-cochabamba .draft { color: var(--cb-yellow-d); font-weight: 700; }
+.theme-cochabamba .postlink { color: var(--cb-green); text-decoration: none; }
+.theme-cochabamba .postlink:hover { color: var(--cb-red); text-decoration: underline; }
+.theme-cochabamba .table td, .theme-cochabamba .table th { border-top: 1px dashed var(--cb-line); }
+.theme-cochabamba .error { color: var(--cb-red); font-weight: 700; }
+
+.theme-cochabamba .content h1, .theme-cochabamba .content h2, .theme-cochabamba .content h3 {
+  font-family: Rockwell, "Roboto Slab", "Zilla Slab", "DejaVu Serif", serif;
+  color: var(--cb-ink); font-weight: 700;
+}
+.theme-cochabamba .content h2 { border-bottom: 2px dashed var(--cb-line); padding-bottom: 0.2rem; }
+.theme-cochabamba .content a { color: var(--cb-green); text-decoration: underline; text-underline-offset: 2px; }
+.theme-cochabamba .content a:hover { color: var(--cb-red); }
+.theme-cochabamba .content code {
+  background: var(--cb-code); color: #7a2e1d;
+  padding: 1px 5px; border-radius: 2px;
+  font-family: "SF Mono", "Cascadia Code", Menlo, monospace; font-size: 0.9em;
+}
+.theme-cochabamba .content pre {          /* a small chalkboard */
+  background: var(--cb-slate); color: var(--cb-chalk);
+  border: 4px solid var(--cb-wood); border-radius: 3px;
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.4);
+  padding: 0.9rem 1rem; overflow-x: auto;
+}
+.theme-cochabamba .content pre code { background: none; color: inherit; padding: 0; }
+.theme-cochabamba .content blockquote {
+  border-left: 4px double var(--cb-red);
+  padding-left: 0.9rem;
+  color: var(--cb-soft); font-style: italic;
+}
+.theme-cochabamba .content figure, .theme-cochabamba .flickr-embed {
+  border: 2px dashed var(--cb-line); border-radius: 2px;
+  background: var(--cb-paper); padding: 6px;
+  box-shadow: 2px 3px 0 rgba(43, 35, 32, 0.18);
+}
+
+/* Cochabamba after closing: the whole page is the chalkboard */
+.theme-cochabamba { color-scheme: light dark; }
+@media (prefers-color-scheme: dark) {
+  .theme-cochabamba {
+    --cb-kraft:   #232b2e;
+    --cb-kraft-d: #151a1c;
+    --cb-card:    #3b3128;
+    --cb-paper:   #2c2622;
+    --cb-slate:   #1b2224;
+    --cb-slate-d: #101416;
+    --cb-ink:     #f1ebe0;
+    --cb-soft:    #cfc4b3;
+    --cb-faint:   #a3968a;
+    --cb-line:    #8a7a6a;
+    --cb-red:     #e2574a;
+    --cb-yellow:  #f0c04a;
+    --cb-yellow-d:#e0b040;
+    --cb-green:   #7fb35f;
+    --cb-code:    #4a3d31;
+  }
+  .theme-cochabamba { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23f)'/%3E%3C/svg%3E"); }
+  .theme-cochabamba .banner, .theme-cochabamba .badge, .theme-cochabamba .tag:hover { color: #2b2320; }
+  .theme-cochabamba .content code { color: #f0c9a0; }
+  .theme-cochabamba textarea.field { background-image: repeating-linear-gradient(transparent 0 23px, #4a423b 23px 24px); }
+}
+
+/* =====================================================================
+   THEME: SANTA CRUZ DE LA SIERRA — tropical lowland, mission woodwork.
+   Sand and heat: an open, borderless page with translucent panels,
+   leaf-shaped corners, a painted-wood band from the Chiquitos mission
+   columns under the masthead, concentric anillos as the footer
+   ornament. Light humanist sans, lowercase brand.
+   ===================================================================== */
+.theme-santacruz {
+  --sc-sand:    #fbf8f1;
+  --sc-glow:    rgba(246, 196, 69, 0.28);
+  --sc-panel:   rgba(255, 255, 255, 0.62);
+  --sc-panel-h: rgba(255, 255, 255, 0.9);
+  --sc-ink:     #1e2a26;
+  --sc-soft:    #4f5d58;
+  --sc-faint:   #7f8b86;
+  --sc-line:    rgba(30, 42, 38, 0.1);
+  --sc-green:   #177245;
+  --sc-green-d: #0f4d33;
+  --sc-leaf:    #2e9e5b;
+  --sc-leaf-bg: #e3f2e8;
+  --sc-sky:     #2aa7d8;
+  --sc-sun:     #f6c445;
+  --sc-coral:   #ff6f59;
+  --sc-ochre:   #c98a2c;
+  --sc-mission: #a73a2a;
+  --sc-cream:   #f1dcb0;
+  --sc-code:    #eef5f0;
+  --sc-jungle:  #0f2b21;
+  background-color: var(--sc-sand);
+  /* afternoon sun in the top-right */
+  background-image: radial-gradient(70vw 45vw at 100% 0, var(--sc-glow), transparent 70%);
+  background-attachment: fixed;
+  color: var(--sc-ink);
+  font-family: "Segoe UI", "Helvetica Neue", "Open Sans", "Noto Sans", system-ui, sans-serif;
+  line-height: 1.7;
+}
+.theme-santacruz .masthead {
+  position: relative;
+  overflow: hidden;
+  background: var(--sc-panel);
+  border-radius: 24px 6px 24px 6px;
+  padding: 1.3rem 1.6rem 2rem;
+}
+.theme-santacruz .masthead::after {      /* the painted, carved mission column */
+  content: "";
+  position: absolute; left: 0; right: 0; bottom: 0; height: 12px;
+  background: repeating-linear-gradient(45deg,
+    var(--sc-ochre) 0 10px, var(--sc-mission) 10px 20px, var(--sc-green-d) 20px 30px, var(--sc-cream) 30px 36px);
+}
+.theme-santacruz .brand {
+  color: var(--sc-green-d);
+  font-size: 2rem;
+  font-weight: 300;
+  letter-spacing: -0.01em;
+  text-transform: lowercase;
+  text-decoration: none;
+}
+.theme-santacruz .brand:hover { color: var(--sc-coral); }
+.theme-santacruz .navlink {
+  color: var(--sc-green);
+  font-weight: 500;
+  text-decoration: none;
+}
+.theme-santacruz .navlink:hover { color: var(--sc-coral); }
+
+.theme-santacruz .banner {               /* a thin sunlit ribbon */
+  background: var(--sc-sun);
+  color: #3a2a10;
+  border-radius: 999px;
+  margin: 1rem 0 1.5rem;
+  padding: 0.3rem 1rem;
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.theme-santacruz .banner span { display: inline; }
+
+.theme-santacruz .field {
+  background: var(--sc-panel-h);
+  color: var(--sc-ink);
+  border: 0;
+  border-bottom: 2px solid var(--sc-green);
+  border-radius: 10px 10px 0 0;
+  padding: 0.5rem 0.8rem;
+  outline: none;
+}
+.theme-santacruz .field:focus { border-bottom-color: var(--sc-coral); }
+.theme-santacruz .btn {
+  background: var(--sc-green);
+  color: #fff;
+  border: 0;
+  border-radius: 999px;
+  padding: 0.5rem 1.3rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+.theme-santacruz .btn:hover { background: var(--sc-leaf); }
+
+.theme-santacruz .card, .theme-santacruz .article, .theme-santacruz .notice {
+  background: var(--sc-panel);
+  border: 0;
+  border-radius: 24px 6px 24px 6px;
+  padding: 1.3rem 1.6rem;
+  transition: background 0.2s ease;
+}
+.theme-santacruz .card:hover { background: var(--sc-panel-h); }
+.theme-santacruz .card-title a {
+  color: var(--sc-green-d);
+  font-weight: 500;
+  font-size: 1.25rem;
+  text-decoration: none;
+}
+.theme-santacruz .card-title a:hover { color: var(--sc-coral); }
+.theme-santacruz .article-title {
+  color: var(--sc-green-d);
+  font-weight: 300;
+  font-size: 2rem;
+}
+.theme-santacruz .meta { color: var(--sc-faint); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.68rem; }
+.theme-santacruz .excerpt { color: var(--sc-soft); }
+.theme-santacruz .backlink { color: var(--sc-green); text-decoration: none; }
+.theme-santacruz .backlink:hover { color: var(--sc-coral); }
+
+.theme-santacruz .tag {                  /* leaves */
+  display: inline-block;
+  background: var(--sc-leaf-bg);
+  color: var(--sc-green-d);
+  border-radius: 12px 2px 12px 2px;
+  padding: 1px 10px;
+  font-size: 0.76rem;
+  text-decoration: none;
+  margin-right: 2px;
+}
+.theme-santacruz .tag:hover { background: var(--sc-leaf); color: #fff; }
+
+.theme-santacruz .pglink {
+  display: inline-block;
+  color: var(--sc-green);
+  border: 1px solid var(--sc-green);
+  border-radius: 999px;
+  padding: 0.35rem 1rem;
+  margin: 0 4px;
+  text-decoration: none;
+}
+.theme-santacruz .pglink:hover { background: var(--sc-green); color: #fff; }
+
+.theme-santacruz .hits {
+  display: inline-block; vertical-align: middle;
+  height: 18px; width: auto;
+  border: 0; border-radius: 6px;
+}
+.theme-santacruz .badge {
+  display: inline-block;
+  border-radius: 999px;
+  background: var(--sc-sun); color: #3a2a10;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+  padding: 3px 10px;
+}
+.theme-santacruz .badge-b { background: var(--sc-green); color: #fff; }
+.theme-santacruz .badge-c { background: var(--sc-coral); color: #fff; }
+.theme-santacruz .footer { color: var(--sc-faint); }
+.theme-santacruz .footer::before {       /* los anillos */
+  content: "";
+  display: block;
+  width: 60px; height: 60px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  background: repeating-radial-gradient(circle, var(--sc-green) 0 1.5px, transparent 1.5px 9px);
+  opacity: 0.7;
+}
+
+.theme-santacruz .listhead {
+  color: var(--sc-green-d);
+  font-weight: 300;
+  font-size: 1.35rem;
+  text-transform: lowercase;
+  margin-bottom: 1rem;
+}
+.theme-santacruz .listhead::before {     /* a small anillo */
+  content: "";
+  display: inline-block;
+  width: 16px; height: 16px;
+  margin-right: 10px;
+  vertical-align: -2px;
+  border-radius: 50%;
+  background: repeating-radial-gradient(circle, var(--sc-coral) 0 1.5px, transparent 1.5px 4.5px);
+}
+.theme-santacruz .dellink { color: var(--sc-coral); text-decoration: none; }
+.theme-santacruz .dellink:hover { text-decoration: underline; }
+.theme-santacruz .draft { color: var(--sc-ochre); font-weight: 600; }
+.theme-santacruz .postlink { color: var(--sc-green); text-decoration: none; }
+.theme-santacruz .postlink:hover { color: var(--sc-coral); }
+.theme-santacruz .table td, .theme-santacruz .table th { border-top: 1px solid var(--sc-line); }
+.theme-santacruz .error { color: var(--sc-coral); font-weight: 600; }
+
+.theme-santacruz .content h1, .theme-santacruz .content h2, .theme-santacruz .content h3 {
+  color: var(--sc-green-d); font-weight: 500;
+}
+.theme-santacruz .content a { color: var(--sc-green); text-decoration: underline; text-decoration-color: var(--sc-leaf); text-underline-offset: 3px; }
+.theme-santacruz .content a:hover { color: var(--sc-coral); }
+.theme-santacruz .content code {
+  background: var(--sc-code); color: var(--sc-green-d);
+  padding: 1px 6px; border-radius: 6px;
+  font-family: "SF Mono", "Cascadia Code", Menlo, monospace; font-size: 0.9em;
+}
+.theme-santacruz .content pre {
+  background: var(--sc-jungle); color: #e9f5ee;
+  border-radius: 16px 4px 16px 4px;
+  padding: 0.9rem 1.1rem; overflow-x: auto;
+}
+.theme-santacruz .content pre code { background: none; color: inherit; padding: 0; }
+.theme-santacruz .content blockquote {
+  border-left: 3px solid var(--sc-sun);
+  padding-left: 1rem;
+  color: var(--sc-soft); font-style: italic;
+}
+.theme-santacruz .content figure, .theme-santacruz .flickr-embed {
+  background: var(--sc-panel-h); border-radius: 16px 4px 16px 4px; padding: 6px;
+}
+
+/* Santa Cruz at night: humid dark, lamps in the windows */
+.theme-santacruz { color-scheme: light dark; }
+@media (prefers-color-scheme: dark) {
+  .theme-santacruz {
+    --sc-sand:    #0e1a15;
+    --sc-glow:    rgba(246, 196, 69, 0.10);
+    --sc-panel:   rgba(255, 236, 200, 0.06);
+    --sc-panel-h: rgba(255, 236, 200, 0.11);
+    --sc-ink:     #ecf3ee;
+    --sc-soft:    #b9c7bf;
+    --sc-faint:   #7f8f87;
+    --sc-line:    rgba(236, 243, 238, 0.1);
+    --sc-green:   #5ccf8a;
+    --sc-green-d: #8fe0b0;
+    --sc-leaf:    #4fbf7a;
+    --sc-leaf-bg: rgba(92, 207, 138, 0.15);
+    --sc-coral:   #ff8a75;
+    --sc-ochre:   #e0a24a;
+    --sc-code:    #1c2f27;
+    --sc-jungle:  #071510;
+  }
+  .theme-santacruz .field { background: rgba(255, 255, 255, 0.08); }
+  .theme-santacruz .content code { color: #9fe6bf; }
+  .theme-santacruz .btn, .theme-santacruz .pglink:hover, .theme-santacruz .tag:hover, .theme-santacruz .badge-b { color: #0e1a15; }
+}
+
 /* ===== shared bits ===== */
 .content p { margin: 0.75rem 0; }
 .content h2 { font-size: 1.3rem; margin: 1rem 0 0.5rem; }
@@ -370,8 +1697,9 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .banner span { animation: none !important; padding-left: 0 !important; }
-  .theme-sucre .card, .theme-sucre .btn { transition: none; }
-  .theme-sucre .card:hover { transform: none; }
+  .card, .btn, .pglink { transition: none !important; }
+  .card:hover, .btn:active { transform: none; }
+  .theme-cochabamba .card { transform: none; }
 }
 
 /* post images (markdown ![alt](url)) and figures, both themes */
@@ -401,6 +1729,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
     --su-green:  #8fb89f;
     --su-ochre:  #d9a24e;
   }
+  .theme-sucre { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 0.95 0 0 0 0 0.85 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)'/%3E%3C/svg%3E"); }
   .theme-sucre .field, .theme-sucre .pglink { background: #211d19; color: var(--su-ink); }
   .theme-sucre .tag, .theme-sucre .badge { background: #352e27; }
   .theme-sucre .content code { background: #3a3128; color: #f0c9b8; }
@@ -412,10 +1741,14 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
 
 /* print: the article, nothing else */
 @media print {
-  body, .theme-retro, .theme-sucre { background: #fff; color: #000; }
+  body[class*="theme-"] { background: #fff; color: #000; }
   .banner, form[action="/search"], .footer, .pager, .hits, .backlink { display: none; }
-  .masthead, .card, .article { box-shadow: none; border-color: #999; }
-  .theme-retro .masthead, .theme-retro .card, .theme-retro .article { background: #fff; }
+  .masthead, .card, .article {
+    background: #fff; color: #000; box-shadow: none; border-color: #999;
+    clip-path: none; transform: none;
+  }
+  .masthead::before, .masthead::after, .card::before, .article::before { display: none; }
+  .brand, .article-title, .card-title a, .content h1, .content h2, .content h3 { color: #000; }
   .content a::after { content: " (" attr(href) ")"; font-size: 0.85em; }
 }
 

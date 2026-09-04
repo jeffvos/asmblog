@@ -132,31 +132,61 @@ client-side code involved.
 
 ### Themes
 
-Two themes ship, selectable in **/admin/settings** and applied via a
-class on `<body>` (both palettes are compiled into the single
-stylesheet, so switching is instant and needs no rebuild):
+Seven themes ship, selectable in **/admin/settings** and applied via a
+class on `<body>` (every palette is compiled into the single
+stylesheet, so switching is instant and needs no rebuild). Each has its
+own shapes, type and textures, not just colours:
 
-- **Retro** (default) — polished 1990s web: navy backdrop, beveled
-  silver panels, monospace, a scrolling marquee, a green-LED hit counter.
+- **Retro** (default) — polished 1990s web: navy backdrop with a tiled
+  8-pixel dither, beveled silver panels, monospace, a scrolling
+  marquee, a green-LED hit counter.
 - **Sucre** — a modern take on the whitewashed colonial architecture of
-  Sucre, Bolivia (*La Ciudad Blanca*): warm plaster background, panels as
-  white "walls" under terracotta rooflines, colonial-green links, ochre
-  accents, and serif display type. The banner becomes a quiet engraved
-  lintel rather than a marquee.
+  Sucre, Bolivia (*La Ciudad Blanca*): plaster-grain background, panels
+  as white "walls" under a tiled terracotta roofline, colonial-green
+  links, ochre accents, serif display type. The banner is a quiet
+  engraved lintel rather than a marquee.
+- **Medellín** — a Feria de las Flores street poster: halftone paper,
+  chunky rounded panels with a thick ink outline and a hard offset
+  shadow in a second colour, a silleta flower band under the masthead,
+  slapped-on sticker tags, a vinyl-strip marquee, heavy grotesque caps.
+- **Bogotá** — brick and gold, editorial: the page is a running-bond
+  brick wall (one SVG tile tinted by the background), panels are
+  window openings framed in a double line, Muisca gold accents, a
+  literary serif with small caps and a drop cap. Nothing rounded.
+- **La Paz** — neo-Andean cholet, dark by default: stepped chakana
+  corners cut with `clip-path`, a glossy teal→violet stroke around every
+  panel, the masthead framed in aguayo stripes, a minibus destination
+  sign for the banner, Teleférico line colours on the badges, wide
+  geometric caps. A thin-air daytime palette follows a light
+  `prefers-color-scheme`.
+- **Cochabamba** — La Cancha market: kraft paper with a fibre grain,
+  chalkboard menus in wooden frames, posts as pinned index cards with
+  dashed hand-ruled borders and coloured push-pins, string price tags,
+  sticker badges, slab-serif signboard type.
+- **Santa Cruz de la Sierra** — tropical lowland and mission woodwork:
+  sand with an afternoon sun glow, open borderless panels with
+  leaf-shaped corners, a painted-column band from the Chiquitos
+  missions under the masthead, concentric *anillos* as ornaments, a
+  light humanist sans and a lowercase brand.
 
-The favicon, touch icons and the `og:image` card follow the theme too:
-`tools/mkicons.py` draws a set per theme (`static/favicon.*`,
-`static/sucre-favicon.*`, …) and the server serves whichever matches
-the active theme, with a `?v=theme-…` token on the URLs so browsers and
-link unfurlers refetch after a switch.
+The favicon, touch icons, `og:image` card, web manifest colours,
+`<meta name="theme-color">` and the hit counter's colours follow the
+theme too: `tools/mkicons.py` draws a set per theme with its own frame
+style (`static/favicon.*`, `static/sucre-favicon.*`, …) and the server
+serves whichever matches the active theme, with a `?v=theme-…` token on
+the URLs so browsers and link unfurlers refetch after a switch. The
+theme ids, class names, form values and server-emitted colours live in
+one table in [src/pages.asm](src/pages.asm).
 
 Templates use semantic classes (`.masthead`, `.card`, `.btn`, `.tag`, …)
-that each theme restyles under a `.theme-retro` / `.theme-sucre` scope in
-[assets/input.css](assets/input.css). Sucre follows
-`prefers-color-scheme: dark`; both themes respect
-`prefers-reduced-motion`, have a print stylesheet, and use cross-document
-view transitions for page-to-page navigation where the browser supports
-them (no script involved).
+that each theme restyles under a `.theme-<name>` scope in
+[assets/input.css](assets/input.css). Textures are inline only — CSS
+gradients and tiny data-URI SVG tiles — so the site is still one
+stylesheet and no extra requests. All themes but Retro follow
+`prefers-color-scheme`; every theme respects `prefers-reduced-motion`,
+has a print stylesheet, and uses cross-document view transitions for
+page-to-page navigation where the browser supports them (no script
+involved).
 
 ### Localization
 

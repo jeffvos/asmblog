@@ -181,13 +181,20 @@ check "custom banner shows on the site"    bash -c "curl -s $A/ | grep -q 'CUSTO
 # theme switching
 check "default theme is retro"             bash -c "curl -s $A/ | grep -q 'class=\"min-h-screen theme-retro\"'"
 check "retro icons by default"             bash -c "cmp -s <(curl -s $A/favicon.ico) '$ROOT/static/favicon.ico'"
-expect_code "switch to sucre theme"    303 -b "$JAR" --data-urlencode "csrf=$CSRF" \
-    --data-urlencode "title=Smoke Blog" --data-urlencode ppp=5 --data-urlencode theme=sucre "$A/admin/settings"
-check "sucre theme now on the site"        bash -c "curl -s $A/ | grep -q 'class=\"min-h-screen theme-sucre\"'"
-check "sucre radio pre-checked in form"    bash -c "curl -s -b '$JAR' $A/admin/settings | grep -q 'value=\"sucre\" checked'"
-check "icons follow the theme"             bash -c "cmp -s <(curl -s $A/favicon.ico) '$ROOT/static/sucre-favicon.ico' && cmp -s <(curl -s $A/static/og.png) '$ROOT/static/sucre-og.png' && curl -s $A/ | grep -q 'og.png?v=theme-sucre' && curl -s $A/ | grep -q 'favicon.svg?v=theme-sucre'"
+check "retro theme-color meta"             bash -c "curl -s $A/ | grep -q '<meta name=\"theme-color\" content=\"#000080\">'"
+for T in sucre medellin bogota lapaz cochabamba santacruz; do
+    expect_code "switch to $T theme"   303 -b "$JAR" --data-urlencode "csrf=$CSRF" \
+        --data-urlencode "title=Smoke Blog" --data-urlencode ppp=5 --data-urlencode theme=$T "$A/admin/settings"
+    check "$T theme now on the site"       bash -c "curl -s $A/ | grep -q 'class=\"min-h-screen theme-$T\"'"
+    check "$T radio pre-checked in form"   bash -c "curl -s -b '$JAR' $A/admin/settings | grep -q 'value=\"$T\" checked'"
+    check "$T icons follow the theme"      bash -c "cmp -s <(curl -s $A/favicon.ico) '$ROOT/static/$T-favicon.ico' && cmp -s <(curl -s $A/static/favicon.svg) '$ROOT/static/$T-favicon.svg' && cmp -s <(curl -s $A/static/icon-192.png) '$ROOT/static/$T-icon-192.png' && cmp -s <(curl -s $A/static/og.png) '$ROOT/static/$T-og.png' && curl -s $A/ | grep -q 'og.png?v=theme-$T' && curl -s $A/ | grep -q 'favicon.svg?v=theme-$T'"
+    check "$T manifest + meta + counter"   bash -c "M=\$(curl -s $A/manifest.webmanifest); echo \"\$M\" | grep -q 'icon-512.png?v=theme-$T' && C=\$(echo \"\$M\" | grep -o '\"theme_color\":\"#[0-9a-f]*\"' | cut -d'\"' -f4) && curl -s $A/ | grep -q \"<meta name=.theme-color. content=.\$C.>\" && curl -s $A/hits.svg | grep -q 'fill=\"#[0-9a-f]\{6\}\"' && curl -s $A/404-page | grep -q 'theme-$T'"
+    check "$T stylesheet scope exists"     bash -c "grep -q '\.theme-$T' '$ROOT/static/main.css'"
+done
+check "unknown theme value falls back"     bash -c "curl -s -o /dev/null -b '$JAR' --data-urlencode csrf=$CSRF --data-urlencode 'title=Smoke Blog' --data-urlencode ppp=5 --data-urlencode theme=bogus $A/admin/settings && curl -s $A/ | grep -q 'theme-retro'"
 expect_code "switch back to retro"     303 -b "$JAR" --data-urlencode "csrf=$CSRF" \
     --data-urlencode "title=Smoke Blog" --data-urlencode ppp=5 --data-urlencode theme=retro "$A/admin/settings"
+check "theme survives a settings reload"   bash -c "curl -s $A/ | grep -q 'theme-retro'"
 # localization (site-wide, from settings)
 check "default locale is en-US"            bash -c "curl -s $A/ | grep -q '<html lang=\"en\">' && curl -s $A/ | grep -Eq 'class=\"meta text-xs mt-1\">[A-Z][a-z]+ [0-9]+, [0-9]{4}'"
 expect_code "switch locale to es-BO"   303 -b "$JAR" --data-urlencode "csrf=$CSRF" \

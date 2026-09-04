@@ -26,13 +26,19 @@
 %define V_BANNER   21
 %define V_EBANNER  22
 %define V_THEME    23
-%define V_SELRETRO 24
+%define V_SELRETRO 24           ; theme radios: V_SELRETRO + theme id
 %define V_SELSUCRE 25
-%define V_SELEN    26
-%define V_SELES    27
-%define V_CSSV     28           ; stylesheet version (crc32c of main.css)
-%define V_EURL     29           ; site url in the settings form
-%define NVALS      30
+%define V_SELMDE   26           ; Medellín
+%define V_SELBOG   27           ; Bogotá
+%define V_SELLPB   28           ; La Paz
+%define V_SELCBB   29           ; Cochabamba
+%define V_SELSRZ   30           ; Santa Cruz de la Sierra
+%define V_SELEN    31
+%define V_SELES    32
+%define V_CSSV     33           ; stylesheet version (crc32c of main.css)
+%define V_EURL     34           ; site url in the settings form
+%define V_THCOLOR  35           ; <meta name="theme-color"> for the theme
+%define NVALS      36
 
 ; locales: templates/<dir>/ sets, selected site-wide by [set_locale]
 %define LOC_EN     0

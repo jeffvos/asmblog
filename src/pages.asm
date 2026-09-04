@@ -73,6 +73,7 @@ global finish_page
 global finish_304
 global shell_vals
 global theme_class
+global theme_from_value
 
 ; ---- page_list frame (offsets derive from NVALS so the registry can
 ; grow without hand-renumbering) ------------------------------------------
@@ -1172,9 +1173,22 @@ page_feed:
 %define ST_BRP    80
 %define ST_BRL    88
 %define ST_CRC    96            ; dword x3: plain, gz, br
-%define ST_ALT    112           ; index of the Sucre-theme variant, or -1
+%define ST_ALT    112           ; index of the first themed variant, or -1
+                                ; (variants for themes 1..NTHEMES-1 follow
+                                ; each other, so theme t is at ST_ALT+t-1)
 %define ST_SIZE   120
-%define NSTATIC   11
+
+; theme_tbl row layout (the table itself sits with the data below)
+%define TH_CLASS   0
+%define TH_CLASS_L 8
+%define TH_VAL     16
+%define TH_VAL_L   24
+%define TH_MFBG    32           ; 7 bytes
+%define TH_COLOR   40           ; 7 bytes
+%define TH_HITBG   48           ; 7 bytes
+%define TH_HITFG   56           ; 7 bytes
+%define TH_SIZE    64
+%define NSTATIC   (6 + 5*(NTHEMES-1))
 
 ; page_static(ctx, name_p, name_l)
 page_static:
@@ -1208,11 +1222,14 @@ page_static:
     inc rcx
     jmp .find
 .found:
-    cmp dword [set_theme], 1    ; themed icons: swap in the Sucre file
-    jne .themed
+    mov eax, [set_theme]        ; themed icons: swap in the theme's file
+    test eax, eax
+    jz .themed
     mov rax, [r13+ST_ALT]
     test rax, rax
     js .themed
+    add eax, [set_theme]
+    dec rax
     imul rax, rax, ST_SIZE
     lea rax, [static_tbl + rax]
     cmp qword [rax+ST_P], 0
@@ -1378,15 +1395,29 @@ page_manifest:
     mov rdi, rbx
     mov rsi, rax
     call emit_json_esc
-    mov rsi, mf_3_retro
-    mov edx, mf_3_retro_len
-    cmp dword [set_theme], 1
-    jne .colours
-    mov rsi, mf_3_sucre
-    mov edx, mf_3_sucre_len
-.colours:
+    call theme_entry
+    mov r13, rax
+    EMITS mf_3, rbx             ; ","start_url":"/",...,"background_color":"
+    lea rsi, [r13+TH_MFBG]
+    mov edx, 7
     mov rdi, rbx
-    call emit                   ; ","start_url":"/",...colours...,"icons":[...]}
+    call emit
+    EMITS mf_4, rbx             ; ","theme_color":"
+    lea rsi, [r13+TH_COLOR]
+    mov edx, 7
+    mov rdi, rbx
+    call emit
+    EMITS mf_5, rbx             ; ","icons":[{"src":"/static/icon-192.png?v=
+    mov rsi, [r13+TH_CLASS]
+    mov rdx, [r13+TH_CLASS_L]
+    mov rdi, rbx
+    call emit
+    EMITS mf_6, rbx             ; ","sizes":"192x192",...,"src":"/static/icon-512.png?v=
+    mov rsi, [r13+TH_CLASS]
+    mov rdx, [r13+TH_CLASS_L]
+    mov rdi, rbx
+    call emit
+    EMITS mf_7, rbx             ; ","sizes":"512x512","type":"image/png"}]}
     lea rsi, [r12+CTX_OUT+CTX_BODY_OFF]
     mov rax, [rsp]
     sub rax, rsi
@@ -2163,15 +2194,31 @@ page_hits:
     pop rsi
     lea rdi, [rsp+32]
     call emit_u64
-    mov rsi, svg3_retro
-    mov edx, svg3_retro_len
-    cmp dword [set_theme], 1
-    jne .colours
-    mov rsi, svg3_sucre
-    mov edx, svg3_sucre_len
-.colours:
-    lea rdi, [rsp+32]
+    call theme_entry
+    push rax
+    lea rdi, [rsp+40]
+    mov rsi, svg3a
+    mov edx, svg3a_len
     call emit
+    mov rax, [rsp]
+    lea rdi, [rsp+40]
+    lea rsi, [rax+TH_HITBG]
+    mov edx, 7
+    call emit
+    lea rdi, [rsp+40]
+    mov rsi, svg3b
+    mov edx, svg3b_len
+    call emit
+    mov rax, [rsp]
+    lea rdi, [rsp+40]
+    lea rsi, [rax+TH_HITFG]
+    mov edx, 7
+    call emit
+    lea rdi, [rsp+40]
+    mov rsi, svg3c
+    mov edx, svg3c_len
+    call emit
+    pop rax
     mov rcx, 6                  ; zero-pad to six digits
     sub rcx, rbx
     jle .digits
@@ -2446,16 +2493,50 @@ load_file:
 
 ; ---- finish_page --------------------------------------------------------
 
+; theme_entry() -> rax = theme_tbl row for [set_theme]
+theme_entry:
+    mov eax, [set_theme]
+    imul rax, rax, TH_SIZE
+    add rax, theme_tbl
+    ret
+
 ; theme_class() -> rax = class-name ptr, rdx = len (from [set_theme])
 theme_class:
-    cmp dword [set_theme], 1
-    je .sucre
-    mov rax, s_theme_retro
-    mov edx, s_theme_retro_len
+    call theme_entry
+    mov rdx, [rax+TH_CLASS_L]
+    mov rax, [rax+TH_CLASS]
     ret
-.sucre:
-    mov rax, s_theme_sucre
-    mov edx, s_theme_sucre_len
+
+; theme_from_value(p, len) -> eax = theme id whose form value matches,
+; 0 (retro) for anything unknown
+theme_from_value:
+    push r12
+    push r13
+    push rbx
+    mov r12, rdi
+    mov r13, rsi
+    xor ebx, ebx
+.next:
+    imul rax, rbx, TH_SIZE
+    add rax, theme_tbl
+    cmp r13, [rax+TH_VAL_L]
+    jne .miss
+    mov rdi, r12
+    mov rsi, [rax+TH_VAL]
+    mov rdx, r13
+    call mem_eq
+    test eax, eax
+    jnz .hit
+.miss:
+    inc ebx
+    cmp ebx, NTHEMES
+    jb .next
+    xor ebx, ebx
+.hit:
+    mov eax, ebx
+    pop rbx
+    pop r13
+    pop r12
     ret
 
 ; shell_vals(vals) — the values every shell render needs: site title,
@@ -2474,9 +2555,14 @@ shell_vals:
     mov [rdi+V_BANNER*16], rax
     mov rax, [set_banner_l]
     mov [rdi+V_BANNER*16+8], rax
-    call theme_class
-    mov [rdi+V_THEME*16], rax
-    mov [rdi+V_THEME*16+8], rdx
+    call theme_entry
+    mov rcx, [rax+TH_CLASS]
+    mov [rdi+V_THEME*16], rcx
+    mov rcx, [rax+TH_CLASS_L]
+    mov [rdi+V_THEME*16+8], rcx
+    add rax, TH_COLOR
+    mov [rdi+V_THCOLOR*16], rax
+    mov qword [rdi+V_THCOLOR*16+8], 7
     mov qword [rdi+V_CSSV*16], css_ver
     mov qword [rdi+V_CSSV*16+8], 8
     ret
@@ -2701,10 +2787,31 @@ section .data
 
 def_site: db 'blogd'
 def_site_len equ $-def_site
-s_theme_retro: db 'theme-retro'
-s_theme_retro_len equ $-s_theme_retro
-s_theme_sucre: db 'theme-sucre'
-s_theme_sucre_len equ $-s_theme_sucre
+; ---- theme table -------------------------------------------------------
+; One row per theme id (see NTHEMES in store.inc): the <body> class, the
+; settings-form value, and the fixed-width '#rrggbb' colours the server
+; emits itself — manifest background, theme-color (manifest + <meta>),
+; and the hit counter's background/digits. Everything else about a theme
+; is CSS (assets/input.css) and icons (tools/mkicons.py).
+%macro THEME 6                  ; class, value, mfbg, color, hitbg, hitfg
+    dq %%c, %%c_l, %%v, %%v_l
+    db %3, 0, %4, 0, %5, 0, %6, 0
+    [section .rodata]
+%%c: db %1
+%%c_l equ $-%%c
+%%v: db %2
+%%v_l equ $-%%v
+    __?SECT?__
+%endmacro
+align 8
+theme_tbl:
+    THEME 'theme-retro',      'retro',      '#000080', '#000080', '#000000', '#33ff33'
+    THEME 'theme-sucre',      'sucre',      '#f4ecdd', '#b0492e', '#2b241f', '#e6c07b'
+    THEME 'theme-medellin',   'medellin',   '#fffdfa', '#1f7a3e', '#1f7a3e', '#ffffff'
+    THEME 'theme-bogota',     'bogota',     '#3a3f45', '#7a2e22', '#26292d', '#d4a642'
+    THEME 'theme-lapaz',      'lapaz',      '#17111f', '#5b2a86', '#0b0810', '#ffb000'
+    THEME 'theme-cochabamba', 'cochabamba', '#e8d5b5', '#2f3a3d', '#2f3a3d', '#f3efe6'
+    THEME 'theme-santacruz',  'santacruz',  '#fbf8f1', '#177245', '#0f4d33', '#ff6f59'
 s_posturl: db '/post/'
 s_slash: db '/'
 s_slash_len equ 1
@@ -2850,14 +2957,16 @@ mf_1: db '{"name":"'
 mf_1_len equ $-mf_1
 mf_2: db '","short_name":"'
 mf_2_len equ $-mf_2
-mf_3_retro: db '","start_url":"/","display":"minimal-ui","background_color":"#000080",'
-            db '"theme_color":"#000080","icons":[{"src":"/static/icon-192.png?v=theme-retro","sizes":"192x192",'
-            db '"type":"image/png"},{"src":"/static/icon-512.png?v=theme-retro","sizes":"512x512","type":"image/png"}]}', 10
-mf_3_retro_len equ $-mf_3_retro
-mf_3_sucre: db '","start_url":"/","display":"minimal-ui","background_color":"#f4ecdd",'
-            db '"theme_color":"#b0492e","icons":[{"src":"/static/icon-192.png?v=theme-sucre","sizes":"192x192",'
-            db '"type":"image/png"},{"src":"/static/icon-512.png?v=theme-sucre","sizes":"512x512","type":"image/png"}]}', 10
-mf_3_sucre_len equ $-mf_3_sucre
+mf_3: db '","start_url":"/","display":"minimal-ui","background_color":"'
+mf_3_len equ $-mf_3
+mf_4: db '","theme_color":"'
+mf_4_len equ $-mf_4
+mf_5: db '","icons":[{"src":"/static/icon-192.png?v='
+mf_5_len equ $-mf_5
+mf_6: db '","sizes":"192x192","type":"image/png"},{"src":"/static/icon-512.png?v='
+mf_6_len equ $-mf_6
+mf_7: db '","sizes":"512x512","type":"image/png"}]}', 10
+mf_7_len equ $-mf_7
 
 s_tag_a: db '<a class="tag" href="/tag/'
 s_tag_a_len equ $-s_tag_a
@@ -2883,7 +2992,7 @@ a_head2c: db '/feed.xml"/>', 10, '<id>tag:blogd:feed</id><updated>'
 a_head2c_len equ $-a_head2c
 a_head3: db '</updated>', 10, '<author><name>'
 a_head3_len equ $-a_head3
-a_head3b: db '</name></author><generator>blogd 0.8</generator>', 10
+a_head3b: db '</name></author><generator>blogd 0.9</generator>', 10
 a_head3b_len equ $-a_head3b
 a_icon: db '<icon>'
 a_icon_len equ $-a_icon
@@ -2924,7 +3033,7 @@ s_200: db 'HTTP/1.1 200 OK', 13, 10
 s_200_len equ $-s_200
 s_304: db 'HTTP/1.1 304 Not Modified', 13, 10
 s_304_len equ $-s_304
-s_server: db 'Server: blogd/0.8', 13, 10
+s_server: db 'Server: blogd/0.9', 13, 10
 s_server_len equ $-s_server
 s_ka: db 'Connection: keep-alive', 13, 10
 s_ka_len equ $-s_ka
@@ -2999,11 +3108,25 @@ p_og: db 'static/og.png', 0
 sfx_gz: db '.gz', 0
 sfx_br: db '.br', 0
 
-p_sfavsvg: db 'static/sucre-favicon.svg', 0
-p_sfavico: db 'static/sucre-favicon.ico', 0
-p_si192: db 'static/sucre-icon-192.png', 0
-p_si512: db 'static/sucre-icon-512.png', 0
-p_sog: db 'static/sucre-og.png', 0
+; themed icon sets: static/<theme>-<file>, one set per non-retro theme
+%macro TPATHS 2                 ; label stem, file prefix
+p_%1_favsvg: db 'static/', %2, 'favicon.svg', 0
+p_%1_favsvg_l equ $-p_%1_favsvg-8
+p_%1_favico: db 'static/', %2, 'favicon.ico', 0
+p_%1_favico_l equ $-p_%1_favico-8
+p_%1_i192: db 'static/', %2, 'icon-192.png', 0
+p_%1_i192_l equ $-p_%1_i192-8
+p_%1_i512: db 'static/', %2, 'icon-512.png', 0
+p_%1_i512_l equ $-p_%1_i512-8
+p_%1_og: db 'static/', %2, 'og.png', 0
+p_%1_og_l equ $-p_%1_og-8
+%endmacro
+TPATHS sucre, 'sucre-'
+TPATHS mde, 'medellin-'
+TPATHS bog, 'bogota-'
+TPATHS lpb, 'lapaz-'
+TPATHS cbb, 'cochabamba-'
+TPATHS srz, 'santacruz-'
 
 ; STATIC path, name len, ctype, ctype len, default cache mode, Sucre alt
 %macro STATIC 6
@@ -3015,26 +3138,35 @@ align 8
 static_tbl:                     ; main.css must stay first (css_ver)
     STATIC p_css, 8, ct_css, ct_css_len, CACHE_HOUR, -1
     STATIC p_favsvg, 11, ct_svg, ct_svg_len, CACHE_DAY, 6
-    STATIC p_favico, 11, ct_ico, ct_ico_len, CACHE_DAY, 7
-    STATIC p_i192, 12, ct_png, ct_png_len, CACHE_DAY, 8
-    STATIC p_i512, 12, ct_png, ct_png_len, CACHE_DAY, 9
-    STATIC p_og, 6, ct_png, ct_png_len, CACHE_DAY, 10
-    STATIC p_sfavsvg, 17, ct_svg, ct_svg_len, CACHE_DAY, -1
-    STATIC p_sfavico, 17, ct_ico, ct_ico_len, CACHE_DAY, -1
-    STATIC p_si192, 18, ct_png, ct_png_len, CACHE_DAY, -1
-    STATIC p_si512, 18, ct_png, ct_png_len, CACHE_DAY, -1
-    STATIC p_sog, 12, ct_png, ct_png_len, CACHE_DAY, -1
+    STATIC p_favico, 11, ct_ico, ct_ico_len, CACHE_DAY, 6+1*(NTHEMES-1)
+    STATIC p_i192, 12, ct_png, ct_png_len, CACHE_DAY, 6+2*(NTHEMES-1)
+    STATIC p_i512, 12, ct_png, ct_png_len, CACHE_DAY, 6+3*(NTHEMES-1)
+    STATIC p_og, 6, ct_png, ct_png_len, CACHE_DAY, 6+4*(NTHEMES-1)
+; themed variants, one group per file in theme-id order (sucre first)
+%macro TGROUP 3                 ; file stem, ctype, ctype len
+    STATIC p_sucre_%1, p_sucre_%1_l, %2, %3, CACHE_DAY, -1
+    STATIC p_mde_%1, p_mde_%1_l, %2, %3, CACHE_DAY, -1
+    STATIC p_bog_%1, p_bog_%1_l, %2, %3, CACHE_DAY, -1
+    STATIC p_lpb_%1, p_lpb_%1_l, %2, %3, CACHE_DAY, -1
+    STATIC p_cbb_%1, p_cbb_%1_l, %2, %3, CACHE_DAY, -1
+    STATIC p_srz_%1, p_srz_%1_l, %2, %3, CACHE_DAY, -1
+%endmacro
+    TGROUP favsvg, ct_svg, ct_svg_len
+    TGROUP favico, ct_ico, ct_ico_len
+    TGROUP i192, ct_png, ct_png_len
+    TGROUP i512, ct_png, ct_png_len
+    TGROUP og, ct_png, ct_png_len
 
 svg1: db '<svg xmlns="http://www.w3.org/2000/svg" width="'
 svg1_len equ $-svg1
 svg2: db '" height="18" viewBox="0 0 '
 svg2_len equ $-svg2
-svg3_retro: db ' 18"><rect width="100%" height="100%" fill="#000"/>'
-            db '<text x="4" y="13" font-family="Courier New,monospace" font-size="12" fill="#3f3">'
-svg3_retro_len equ $-svg3_retro
-svg3_sucre: db ' 18"><rect width="100%" height="100%" fill="#2b241f"/>'
-            db '<text x="4" y="13" font-family="Courier New,monospace" font-size="12" fill="#e6c07b">'
-svg3_sucre_len equ $-svg3_sucre
+svg3a: db ' 18"><rect width="100%" height="100%" fill="'
+svg3a_len equ $-svg3a
+svg3b: db '"/><text x="4" y="13" font-family="Courier New,monospace" font-size="12" fill="'
+svg3b_len equ $-svg3b
+svg3c: db '">'
+svg3c_len equ $-svg3c
 svg4: db '</text></svg>', 10
 svg4_len equ $-svg4
 svg_zero: db '0'

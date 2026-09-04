@@ -33,6 +33,10 @@
 ; callers stage them first (settings_set_url validates the url).
 %define SET_HDR 28                 ; fixed prefix before the strings
 
+; themes: 0 retro, 1 sucre, 2 medellin, 3 bogota, 4 lapaz, 5 cochabamba,
+; 6 santacruz — the table with names and colours lives in pages.asm
+%define NTHEMES 7
+
 ; In-memory post struct (112 bytes, allocated from the store arena;
 ; string pointers point either into the loaded file image or into
 ; arena copies made at append time — both live as long as the arena):

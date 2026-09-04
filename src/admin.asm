@@ -40,6 +40,7 @@ extern set_url
 extern set_url_l
 extern settings_set_url
 extern theme_class
+extern theme_from_value
 extern shell_vals
 extern emit_date_hdr
 extern i18n_get
@@ -828,16 +829,7 @@ admin_route:
     mov qword [rsp+A_VALS+V_EURL*16], set_url
     mov rax, [set_url_l]
     mov [rsp+A_VALS+V_EURL*16+8], rax
-    ; pre-check the radio for the active theme
-    cmp dword [set_theme], 1
-    je .sp_sucre
-    mov qword [rsp+A_VALS+V_SELRETRO*16], a_checked
-    mov qword [rsp+A_VALS+V_SELRETRO*16+8], a_checked_len
-    jmp .sp_theme_done
-.sp_sucre:
-    mov qword [rsp+A_VALS+V_SELSUCRE*16], a_checked
-    mov qword [rsp+A_VALS+V_SELSUCRE*16+8], a_checked_len
-.sp_theme_done:
+    call set_theme_radio        ; pre-check the radio for the active theme
     call set_locale_radios
     mov edi, S_T_SETTINGS
     call i18n_get
@@ -872,19 +864,11 @@ admin_route:
     mov [rsp+A_ID], rax         ; borrow the slot for ppp
     cmp qword [rsp+A_FLD+FI_BANNER*16+8], 200   ; banner bound
     ja .st_err
-    ; theme: "sucre" selects 1, anything else 0 (retro)
-    xor r13d, r13d
-    cmp qword [rsp+A_FLD+FI_THEME*16+8], 5
-    jne .theme_set
+    ; theme: the form value looked up in the theme table (unknown = retro)
     mov rdi, [rsp+A_FLD+FI_THEME*16]
-    mov rsi, a_theme_sucre
-    mov edx, 5
-    call mem_eq
-    test eax, eax
-    jz .theme_set
-    mov r13d, 1
-.theme_set:
-    mov [set_theme], r13d       ; store_save_settings persists [set_theme]
+    mov rsi, [rsp+A_FLD+FI_THEME*16+8]
+    call theme_from_value
+    mov [set_theme], eax        ; store_save_settings persists [set_theme]
     ; locale: "es" selects es-BO (1), anything else en-US (0)
     xor r13d, r13d
     cmp qword [rsp+A_FLD+FI_LOCALE*16+8], 2
@@ -963,15 +947,7 @@ admin_route:
     mov [rsp+A_VALS+V_EURL*16], rax
     mov rax, [rsp+A_FLD+FI_URL*16+8]
     mov [rsp+A_VALS+V_EURL*16+8], rax
-    cmp dword [set_theme], 1
-    je .se_sucre
-    mov qword [rsp+A_VALS+V_SELRETRO*16], a_checked
-    mov qword [rsp+A_VALS+V_SELRETRO*16+8], a_checked_len
-    jmp .se_theme_done
-.se_sucre:
-    mov qword [rsp+A_VALS+V_SELSUCRE*16], a_checked
-    mov qword [rsp+A_VALS+V_SELSUCRE*16+8], a_checked_len
-.se_theme_done:
+    call set_theme_radio
     call set_locale_radios
     mov edi, S_T_SETTINGS
     call i18n_get
@@ -1106,6 +1082,17 @@ csrf_check:
     ret
 
 ; set_locale_radios — pre-check the language radio for [set_locale].
+; set_theme_radio — check the settings radio for [set_theme]; the
+; V_SEL* slots are laid out in theme-id order.
+set_theme_radio:
+    mov eax, [set_theme]
+    add eax, V_SELRETRO
+    shl eax, 4
+    lea rax, [rsp+8+A_VALS+rax]
+    mov qword [rax], a_checked
+    mov qword [rax+8], a_checked_len
+    ret
+
 set_locale_radios:
     cmp dword [set_locale], 1
     je .es
@@ -1549,7 +1536,6 @@ a_p_settings: db '/settings'
 a_p_preview:  db '/preview'
 a_cookie_lc:  db 'cookie:'
 a_act_draft:  db 'draft'
-a_theme_sucre: db 'sucre'
 a_checked: db 'checked'
 a_checked_len equ $-a_checked
 
@@ -1568,7 +1554,7 @@ a_ck2_len equ $-a_ck2
 a_ckclear: db 'sid=0; Path=/; Max-Age=0'
 a_ckclear_len equ $-a_ckclear
 
-a_303: db 'HTTP/1.1 303 See Other', 13, 10, 'Server: blogd/0.8', 13, 10
+a_303: db 'HTTP/1.1 303 See Other', 13, 10, 'Server: blogd/0.9', 13, 10
 a_303_len equ $-a_303
 a_ka: db 'Connection: keep-alive', 13, 10
 a_ka_len equ $-a_ka

@@ -555,10 +555,16 @@ n_ebanner: db 'ebanner'
 n_theme:   db 'theme'
 n_selretro: db 'selretro'
 n_selsucre: db 'selsucre'
+n_selmde:   db 'selmedellin'
+n_selbog:   db 'selbogota'
+n_sellpb:   db 'sellapaz'
+n_selcbb:   db 'selcochabamba'
+n_selsrz:   db 'selsantacruz'
 n_selen:    db 'selen'
 n_seles:    db 'seles'
 n_cssv:     db 'cssv'
 n_eurl:     db 'eurl'
+n_thcolor:  db 'themecolor'
 
 align 8
 marker_names:                   ; {ptr, len, pad} triplets, indexed by id
@@ -588,10 +594,16 @@ marker_names:                   ; {ptr, len, pad} triplets, indexed by id
     dq n_theme, 5, 0
     dq n_selretro, 8, 0
     dq n_selsucre, 8, 0
+    dq n_selmde, 11, 0
+    dq n_selbog, 9, 0
+    dq n_sellpb, 8, 0
+    dq n_selcbb, 13, 0
+    dq n_selsrz, 12, 0
     dq n_selen, 5, 0
     dq n_seles, 5, 0
     dq n_cssv, 4, 0
     dq n_eurl, 4, 0
+    dq n_thcolor, 10, 0
 
 ; one template set per locale; slot = locale*NTMPL + template id
 f_shell:    db 'templates/en/shell.html', 0

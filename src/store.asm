@@ -434,7 +434,7 @@ apply_record:
     mov [set_ttl], ecx
 .ttl_done:
     mov ecx, [rax+16]           ; theme id (unknown values keep the default)
-    cmp ecx, 1
+    cmp ecx, NTHEMES-1
     ja .theme_default
     mov [set_theme], ecx
 .theme_default:
