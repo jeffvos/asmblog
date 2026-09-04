@@ -31,8 +31,10 @@ extern set_title_p
 extern set_title_l
 extern set_banner_p
 extern set_banner_l
+extern set_theme
 extern set_present
 extern set_hash
+extern theme_class
 extern store_find_by_id
 extern store_append_post
 extern store_delete_post
@@ -81,7 +83,8 @@ global admin_route
 %define FI_CSRF      8
 %define FI_PPP       9
 %define FI_BANNER    10
-%define FIELD_N      11
+%define FI_THEME     11
+%define FIELD_N      12
 
 ; frame
 %define A_VALS    0
@@ -144,6 +147,9 @@ admin_route:
     mov [rsp+A_VALS+V_BANNER*16], rax
     mov rax, [set_banner_l]
     mov [rsp+A_VALS+V_BANNER*16+8], rax
+    call theme_class
+    mov [rsp+A_VALS+V_THEME*16], rax
+    mov [rsp+A_VALS+V_THEME*16+8], rdx
 
     ; session from the sid cookie
     mov qword [rsp+A_SESS], -1
@@ -788,6 +794,16 @@ admin_route:
     mov [rsp+A_VALS+V_EBANNER*16], rax
     mov rax, [set_banner_l]
     mov [rsp+A_VALS+V_EBANNER*16+8], rax
+    ; pre-check the radio for the active theme
+    cmp dword [set_theme], 1
+    je .sp_sucre
+    mov qword [rsp+A_VALS+V_SELRETRO*16], a_checked
+    mov qword [rsp+A_VALS+V_SELRETRO*16+8], a_checked_len
+    jmp .sp_theme_done
+.sp_sucre:
+    mov qword [rsp+A_VALS+V_SELSUCRE*16], a_checked
+    mov qword [rsp+A_VALS+V_SELSUCRE*16+8], a_checked_len
+.sp_theme_done:
     mov qword [rsp+A_VALS+V_TITLE*16], a_t_settings
     mov qword [rsp+A_VALS+V_TITLE*16+8], a_t_settings_len
     mov rdi, r12
@@ -819,6 +835,19 @@ admin_route:
     mov [rsp+A_ID], rax         ; borrow the slot for ppp
     cmp qword [rsp+A_FLD+FI_BANNER*16+8], 200   ; banner bound
     ja .st_err
+    ; theme: "sucre" selects 1, anything else 0 (retro)
+    xor r13d, r13d
+    cmp qword [rsp+A_FLD+FI_THEME*16+8], 5
+    jne .theme_set
+    mov rdi, [rsp+A_FLD+FI_THEME*16]
+    mov rsi, a_theme_sucre
+    mov edx, 5
+    call mem_eq
+    test eax, eax
+    jz .theme_set
+    mov r13d, 1
+.theme_set:
+    mov [set_theme], r13d       ; store_save_settings persists [set_theme]
     ; optional password change
     mov rax, [rsp+A_FLD+FI_PASSWORD*16+8]
     test rax, rax
@@ -876,6 +905,15 @@ admin_route:
     mov [rsp+A_VALS+V_EBANNER*16], rax
     mov rax, [rsp+A_FLD+FI_BANNER*16+8]
     mov [rsp+A_VALS+V_EBANNER*16+8], rax
+    cmp dword [set_theme], 1
+    je .se_sucre
+    mov qword [rsp+A_VALS+V_SELRETRO*16], a_checked
+    mov qword [rsp+A_VALS+V_SELRETRO*16+8], a_checked_len
+    jmp .se_theme_done
+.se_sucre:
+    mov qword [rsp+A_VALS+V_SELSUCRE*16], a_checked
+    mov qword [rsp+A_VALS+V_SELSUCRE*16+8], a_checked_len
+.se_theme_done:
     mov qword [rsp+A_VALS+V_TITLE*16], a_t_settings
     mov qword [rsp+A_VALS+V_TITLE*16+8], a_t_settings_len
     mov rdi, r12
@@ -1429,6 +1467,9 @@ a_p_settings: db '/settings'
 a_p_preview:  db '/preview'
 a_cookie_lc:  db 'cookie:'
 a_act_draft:  db 'draft'
+a_theme_sucre: db 'sucre'
+a_checked: db 'checked'
+a_checked_len equ $-a_checked
 
 a_t_admin: db 'control panel'
 a_t_admin_len equ $-a_t_admin
@@ -1507,6 +1548,7 @@ n_faction:   db 'action'
 n_fcsrf:     db 'csrf'
 n_fppp:      db 'ppp'
 n_fbanner:   db 'banner'
+n_ftheme:    db 'theme'
 
 align 8
 fld_names:                      ; {ptr, len, pad}, indexed by FI_*
@@ -1521,23 +1563,25 @@ fld_names:                      ; {ptr, len, pad}, indexed by FI_*
     dq n_fcsrf, 4, 0
     dq n_fppp, 3, 0
     dq n_fbanner, 6, 0
+    dq n_ftheme, 5, 0
 
-; dashboard row fragments
-r_tr1: db '<tr class="border-t border-neutral-400"><td class="py-1 pr-2"><a class="postlink" href="/admin/edit/'
+; dashboard row fragments (classes must be CSS components; Tailwind
+; does not scan .asm, only the html templates)
+r_tr1: db '<tr><td><a class="postlink" href="/admin/edit/'
 r_tr1_len equ $-r_tr1
 r_tr2: db '">'
 r_tr2_len equ $-r_tr2
-r_tr3: db '</a></td><td class="text-xs pr-2 whitespace-nowrap">'
+r_tr3: db '</a></td><td class="meta">'
 r_tr3_len equ $-r_tr3
-r_tr4: db '</td><td class="text-xs pr-2">'
+r_tr4: db '</td><td>'
 r_tr4_len equ $-r_tr4
-r_tr5: db '</td><td class="text-right"><a class="dellink" href="/admin/delete/'
+r_tr5: db '</td><td><a class="dellink" href="/admin/delete/'
 r_tr5_len equ $-r_tr5
 r_tr6: db '">delete</a></td></tr>'
 r_tr6_len equ $-r_tr6
 r_pub: db 'published'
 r_pub_len equ $-r_pub
-r_draft: db '<span class="text-[#8b0000] font-bold">draft</span>'
+r_draft: db '<span class="draft">draft</span>'
 r_draft_len equ $-r_draft
 
 section .note.GNU-stack noalloc noexec nowrite progbits

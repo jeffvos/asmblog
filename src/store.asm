@@ -47,6 +47,7 @@ global set_title_p
 global set_title_l
 global set_banner_p
 global set_banner_l
+global set_theme
 global set_hash
 global set_present
 
@@ -146,6 +147,7 @@ store_open:
     mov qword [set_title_l], 0
     mov qword [set_banner_p], def_banner    ; default until settings load
     mov qword [set_banner_l], def_banner_len
+    mov dword [set_theme], 0                 ; 0 = retro (default)
     test r12, r12
     jnz .load
     mov rdi, [store_fd]         ; brand new store: write the file header
@@ -311,6 +313,8 @@ apply_record:
     jz .ttl_done
     mov [set_ttl], ecx
 .ttl_done:
+    mov ecx, [rax+16]           ; theme id
+    mov [set_theme], ecx
     mov ecx, [rax+8]            ; title length
     mov [set_title_l], rcx
     mov r8d, [rax+12]           ; banner length
@@ -768,7 +772,7 @@ write_settings_locked:
     sub rsp, 32
     mov [rsp+16], r8            ; banner ptr
     mov [rsp+24], r9            ; banner len
-    lea rax, [r15+r9+SET_HDR+128]   ; payload = 20 + title + banner + 128
+    lea rax, [r15+r9+SET_HDR+128]   ; payload = SET_HDR + title + banner + 128
     mov [rsp+8], rax
     lea rbp, [rax+R_HDR+7]
     and rbp, -8                 ; padded total record size
@@ -797,7 +801,9 @@ write_settings_locked:
     mov [rdi+R_HDR+8], r15d     ; title len
     mov rax, [rsp+24]
     mov [rdi+R_HDR+12], eax     ; banner len
-    mov dword [rdi+R_HDR+16], 128
+    mov eax, [set_theme]
+    mov [rdi+R_HDR+16], eax     ; theme id
+    mov dword [rdi+R_HDR+20], 128
     lea rdi, [rdi+R_HDR+SET_HDR]
     mov rsi, r14               ; title
     mov rdx, r15
@@ -1058,6 +1064,7 @@ set_title_p: resq 1
 set_title_l: resq 1
 set_banner_p: resq 1
 set_banner_l: resq 1
+set_theme:   resd 1
 set_hash:    resb 128
 set_present: resb 1
 store_lock:  resd 1

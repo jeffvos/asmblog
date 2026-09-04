@@ -25,7 +25,10 @@
 %define V_EPPP     20
 %define V_BANNER   21
 %define V_EBANNER  22
-%define NVALS      23
+%define V_THEME    23
+%define V_SELRETRO 24
+%define V_SELSUCRE 25
+%define NVALS      26
 
 ; markers whose values are emitted raw (already-safe HTML we generated)
 %define RAW_MASK   ((1<<V_CONTENT)|(1<<V_TAGS)|(1<<V_HTML)|(1<<V_ROWS))

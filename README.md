@@ -28,8 +28,26 @@ different set.
 The admin panel lives at `/admin` (log in with the password set by
 `blogd init`). It offers a post dashboard, a markdown editor with live
 preview and draft/publish, delete-with-confirm, and a settings page for
-the site title, posts-per-page, the scrolling banner message, and the
-password.
+the site title, posts-per-page, the scrolling banner message, the theme,
+and the password.
+
+### Themes
+
+Two themes ship, selectable in **/admin/settings** and applied via a
+class on `<body>` (both palettes are compiled into the single
+stylesheet, so switching is instant and needs no rebuild):
+
+- **Retro** (default) — polished 1990s web: navy backdrop, beveled
+  silver panels, monospace, a scrolling marquee, a green-LED hit counter.
+- **Sucre** — a modern take on the whitewashed colonial architecture of
+  Sucre, Bolivia (*La Ciudad Blanca*): warm plaster background, panels as
+  white "walls" under terracotta rooflines, colonial-green links, ochre
+  accents, and serif display type. The banner becomes a quiet engraved
+  lintel rather than a marquee.
+
+Templates use semantic classes (`.masthead`, `.card`, `.btn`, `.tag`, …)
+that each theme restyles under a `.theme-retro` / `.theme-sucre` scope in
+[assets/input.css](assets/input.css).
 
 ### Embedding Flickr photos
 

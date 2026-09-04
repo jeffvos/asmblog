@@ -24,6 +24,7 @@ extern set_title_p
 extern set_title_l
 extern set_banner_p
 extern set_banner_l
+extern set_theme
 extern w_init
 extern w_ovf
 extern emit
@@ -48,6 +49,7 @@ global page_feed
 global page_css
 global load_static
 global finish_page
+global theme_class
 
 ; ---- page_list frame (offsets derive from NVALS so the registry can
 ; grow without hand-renumbering) ------------------------------------------
@@ -176,6 +178,9 @@ page_list:
     mov [rsp+L_VALS+V_BANNER*16], rax
     mov rax, [set_banner_l]
     mov [rsp+L_VALS+V_BANNER*16+8], rax
+    call theme_class
+    mov [rsp+L_VALS+V_THEME*16], rax
+    mov [rsp+L_VALS+V_THEME*16+8], rdx
 
     ; heading panel for tag/search pages
     cmp qword [rsp+L_MODE], 0
@@ -762,6 +767,9 @@ page_post:
     mov [rsp+Q_VALS+V_BANNER*16], rax
     mov rax, [set_banner_l]
     mov [rsp+Q_VALS+V_BANNER*16+8], rax
+    call theme_class
+    mov [rsp+Q_VALS+V_THEME*16], rax
+    mov [rsp+Q_VALS+V_THEME*16+8], rdx
     ; title
     mov rax, [r15+P_TITLE_P]
     mov [rsp+Q_VALS+V_TITLE*16], rax
@@ -1181,6 +1189,18 @@ load_file:
 
 ; ---- finish_page --------------------------------------------------------
 
+; theme_class() -> rax = class-name ptr, rdx = len (from [set_theme])
+theme_class:
+    cmp dword [set_theme], 1
+    je .sucre
+    mov rax, s_theme_retro
+    mov edx, s_theme_retro_len
+    ret
+.sucre:
+    mov rax, s_theme_sucre
+    mov edx, s_theme_sucre_len
+    ret
+
 ; finish_page(ctx, body_len, ctype_p, ctype_l, extra_p, extra_l)
 ; Headers are written right-aligned against CTX_BODY_OFF, where the
 ; body has already been rendered.
@@ -1269,6 +1289,10 @@ section .data
 
 def_site: db 'blogd'
 def_site_len equ $-def_site
+s_theme_retro: db 'theme-retro'
+s_theme_retro_len equ $-s_theme_retro
+s_theme_sucre: db 'theme-sucre'
+s_theme_sucre_len equ $-s_theme_sucre
 s_posturl: db '/post/'
 s_home: db 'home'
 s_home_len equ $-s_home
@@ -1278,10 +1302,10 @@ h_tag: db 'posts tagged #'
 h_tag_len equ $-h_tag
 h_search: db 'search results for: '
 h_search_len equ $-h_search
-s_empty: db '<div class="bevel-out bg-[#c0c0c0] text-black px-4 py-3">nothing here yet. check back soon!</div>'
+s_empty: db '<div class="notice">nothing here yet. check back soon!</div>'
 s_empty_len equ $-s_empty
 
-s_pgr_open: db '<div class="mt-6 text-sm text-center">'
+s_pgr_open: db '<div class="pager">'
 s_pgr_open_len equ $-s_pgr_open
 s_pgr_close: db '</div>'
 s_pgr_close_len equ $-s_pgr_close

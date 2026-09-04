@@ -1,178 +1,375 @@
 @import "tailwindcss";
 
-/* ---- retro-chic component layer: Windows-95-meets-Geocities,
-   rendered with modern manners ---------------------------------- */
+/* ============================================================
+   blogd themes. Every visual element uses a semantic class
+   (.masthead, .card, .btn, ...) so the two themes can restyle
+   them wholesale. The <body> carries .theme-retro or
+   .theme-sucre; all colour/border/font decisions live under
+   those scopes. Layout (spacing, flex, widths) stays in the
+   templates as Tailwind utilities.
 
-.bevel-out {
-  border: 3px outset #ffffff;
-  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.45);
-}
-.bevel-in {
-  border: 2px inset #ffffff;
-}
+   Classes emitted from the assembly (.tag, .pglink, .postlink,
+   .dellink, .draft, .notice, .pager, .table) must be defined
+   here, because Tailwind only scans the HTML templates.
+   ============================================================ */
 
-.btn95 {
-  border: 3px outset #fff;
+body { min-height: 100vh; margin: 0; }
+.card, .article, .masthead { box-sizing: border-box; }
+
+/* =====================================================================
+   THEME: RETRO  — Windows-95-meets-Geocities (the original look)
+   ===================================================================== */
+.theme-retro {
+  background: #000080;
+  color: #c0c0c0;
+  font-family: "Courier New", monospace;
+}
+.theme-retro .masthead,
+.theme-retro .card,
+.theme-retro .article {
   background: #c0c0c0;
   color: #000;
-  padding: 2px 14px;
-  font-size: 0.875rem;
-  cursor: pointer;
+  border: 3px outset #fff;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.45);
 }
-.btn95:active {
-  border-style: inset;
-}
-
-.navlink {
-  color: #00ffff;
-  text-decoration: underline;
-}
-.navlink:hover {
-  background: #00ffff;
+.theme-retro .brand {
   color: #000080;
-}
-header .navlink {
-  color: #0000ee;
-}
-header .navlink:visited {
-  color: #551a8b;
-}
-header .navlink:hover {
-  background: #000080;
-  color: #fff;
-}
-
-.postlink {
-  color: #0000ee;
-  text-decoration: underline;
-}
-.postlink:visited {
-  color: #551a8b;
-}
-.postlink:hover {
-  background: #000080;
-  color: #fff;
-}
-
-.backlink {
-  color: #00ffff;
-  text-decoration: underline;
-}
-
-.tag {
-  color: #006666;
+  font-size: 1.5rem;
+  font-weight: bold;
   text-decoration: none;
 }
-.tag:hover {
-  text-decoration: underline;
-  background: #006666;
-  color: #fff;
-}
+.theme-retro .brand:hover { text-decoration: underline; }
+.theme-retro .navlink { color: #00ffff; text-decoration: underline; }
+.theme-retro .navlink:hover { background: #00ffff; color: #000080; }
+.theme-retro .masthead .navlink { color: #0000ee; }
+.theme-retro .masthead .navlink:visited { color: #551a8b; }
+.theme-retro .masthead .navlink:hover { background: #000080; color: #fff; }
 
-.dellink {
-  color: #8b0000;
-  text-decoration: underline;
-  font-size: 0.75rem;
-}
-.dellink:hover {
-  background: #8b0000;
-  color: #fff;
-}
-
-.pglink {
-  color: #00ffff;
-  text-decoration: underline;
-  border: 2px outset #fff;
-  background: #000080;
-  padding: 2px 10px;
-  display: inline-block;
-  margin: 0 4px;
-}
-.pglink:active {
-  border-style: inset;
-}
-
-.odometer {
+.theme-retro .banner {
+  border: 2px inset #fff;
   background: #000;
   color: #00ff00;
-  padding: 1px 8px;
-  letter-spacing: 3px;
-  border: 2px inset #fff;
-  font-weight: bold;
-}
-
-.badge88 {
-  display: inline-block;
-  border: 2px outset #fff;
-  background: #000080;
-  color: #fff;
-  font-size: 10px;
-  letter-spacing: 1px;
+  font-size: 0.75rem;
   padding: 2px 8px;
+  margin: 8px 0 16px;
+  overflow: hidden;
+  white-space: nowrap;
 }
-.badge-green  { background: #006400; }
-.badge-purple { background: #551a8b; }
-.badge-red    { background: #8b0000; }
-
-.marquee span {
+.theme-retro .banner span {
   display: inline-block;
   padding-left: 100%;
   animation: marquee 20s linear infinite;
 }
+
+.theme-retro .field {
+  border: 2px inset #fff;
+  background: #fff;
+  color: #000;
+  padding: 4px 8px;
+  outline: none;
+}
+.theme-retro .btn {
+  border: 3px outset #fff;
+  background: #c0c0c0;
+  color: #000;
+  padding: 2px 14px;
+  cursor: pointer;
+  text-decoration: none;
+}
+.theme-retro .btn:active { border-style: inset; }
+
+.theme-retro .card-title a, .theme-retro .postlink {
+  color: #0000ee; text-decoration: underline;
+}
+.theme-retro .card-title a:visited, .theme-retro .postlink:visited { color: #551a8b; }
+.theme-retro .card-title a:hover, .theme-retro .postlink:hover { background: #000080; color: #fff; }
+.theme-retro .article-title { color: #000080; font-weight: bold; }
+.theme-retro .meta { color: #404040; }
+.theme-retro .excerpt { color: #303030; }
+.theme-retro .backlink { color: #00ffff; text-decoration: underline; }
+
+.theme-retro .tag { color: #006666; text-decoration: none; }
+.theme-retro .tag:hover { text-decoration: underline; background: #006666; color: #fff; }
+
+.theme-retro .pglink {
+  color: #00ffff; text-decoration: underline;
+  border: 2px outset #fff; background: #000080;
+  padding: 2px 10px; display: inline-block; margin: 0 4px;
+}
+.theme-retro .pglink:active { border-style: inset; }
+
+.theme-retro .hits {
+  background: #000; color: #00ff00; padding: 1px 8px;
+  letter-spacing: 3px; border: 2px inset #fff; font-weight: bold;
+}
+.theme-retro .badge {
+  display: inline-block; border: 2px outset #fff;
+  background: #000080; color: #fff; font-size: 10px;
+  letter-spacing: 1px; padding: 2px 8px;
+}
+.theme-retro .badge-b { background: #006400; }
+.theme-retro .badge-c { background: #551a8b; }
+.theme-retro .footer { color: #a0a0b0; }
+
+.theme-retro .listhead {
+  border: 2px inset #fff; background: #000; color: #00ff00;
+  font-size: 0.875rem; padding: 6px 12px; margin-bottom: 16px;
+}
+.theme-retro .listhead::before { content: "C:\\> "; }
+
+.theme-retro .notice {
+  border: 3px outset #fff; background: #c0c0c0; color: #000;
+  padding: 12px 16px;
+}
+.theme-retro .dellink { color: #8b0000; text-decoration: underline; }
+.theme-retro .dellink:hover { background: #8b0000; color: #fff; }
+.theme-retro .draft { color: #8b0000; font-weight: bold; }
+.theme-retro .table td, .theme-retro .table th { border-top: 1px solid #808080; }
+.theme-retro .error { color: #8b0000; font-weight: bold; }
+
+/* post body typography */
+.theme-retro .content h1, .theme-retro .content h2, .theme-retro .content h3 {
+  color: #000080; font-weight: bold;
+}
+.theme-retro .content a { color: #0000ee; text-decoration: underline; }
+.theme-retro .content a:visited { color: #551a8b; }
+.theme-retro .content code { background: #000; color: #00ff00; padding: 0 4px; }
+.theme-retro .content pre {
+  background: #000; color: #00ff00; padding: 8px 10px;
+  border: 2px inset #fff;
+}
+.theme-retro .content blockquote {
+  border-left: 4px solid #808080; color: #333; font-style: italic;
+}
+
+/* =====================================================================
+   THEME: SUCRE — whitewashed colonial (La Ciudad Blanca), modernised.
+   Whitewashed plaster walls, terracotta rooflines, colonial-green
+   shutters, warm ochre. Panels read as little white buildings with a
+   terracotta roof: a solid top border over a soft-shadowed white card.
+   ===================================================================== */
+.theme-sucre {
+  --su-wall:   #f7f2e9;   /* whitewash / plaster        */
+  --su-panel:  #fffdf8;   /* sunlit wall                */
+  --su-ink:    #33302b;   /* espresso text              */
+  --su-soft:   #6f665a;   /* muted secondary text       */
+  --su-faint:  #9a8f7c;   /* meta / captions            */
+  --su-line:   #e7ddcb;   /* warm hairline border       */
+  --su-roof:   #b0492e;   /* terracotta roof tile       */
+  --su-roof-d: #8f3a24;   /* terracotta, darker         */
+  --su-green:  #3f5e50;   /* colonial shutter green     */
+  --su-ochre:  #c1852f;   /* window trim ochre          */
+  background: var(--su-wall);
+  color: var(--su-ink);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.6;
+}
+.theme-sucre .masthead {
+  background: var(--su-panel);
+  border: 1px solid var(--su-line);
+  border-top: 5px solid var(--su-roof);   /* the roofline */
+  border-radius: 3px 3px 8px 8px;
+  box-shadow: 0 6px 18px rgba(51, 48, 43, 0.06);
+  padding: 1.1rem 1.25rem;
+}
+.theme-sucre .brand {
+  font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+  color: var(--su-roof);
+  font-size: 1.65rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+}
+.theme-sucre .brand:hover { color: var(--su-roof-d); }
+.theme-sucre .navlink {
+  color: var(--su-green);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+.theme-sucre .navlink:hover { border-bottom-color: var(--su-green); }
+
+/* the announcement, presented as a quiet engraved lintel rather than
+   a scrolling marquee — the modern restraint */
+.theme-sucre .banner {
+  background: var(--su-roof);
+  color: #fbf3e6;
+  border-radius: 4px;
+  margin: 0.9rem 0 1.5rem;
+  padding: 0.5rem 1rem;
+  text-align: center;
+  font-family: Georgia, "Palatino Linotype", serif;
+  font-size: 0.8rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.theme-sucre .banner span { display: inline; }
+
+.theme-sucre .field {
+  background: #fff;
+  border: 1px solid var(--su-line);
+  border-radius: 5px;
+  padding: 0.5rem 0.7rem;
+  color: var(--su-ink);
+  outline: none;
+}
+.theme-sucre .field:focus { border-color: var(--su-roof); box-shadow: 0 0 0 3px rgba(176,73,46,0.12); }
+.theme-sucre .btn {
+  background: var(--su-roof);
+  color: #fbf3e6;
+  border: 1px solid var(--su-roof-d);
+  border-radius: 5px;
+  padding: 0.5rem 1.1rem;
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 500;
+  transition: background 0.15s ease;
+}
+.theme-sucre .btn:hover { background: var(--su-roof-d); }
+
+.theme-sucre .card, .theme-sucre .article, .theme-sucre .notice {
+  background: var(--su-panel);
+  border: 1px solid var(--su-line);
+  border-top: 3px solid var(--su-roof);
+  border-radius: 3px 3px 8px 8px;
+  box-shadow: 0 4px 14px rgba(51, 48, 43, 0.05);
+  padding: 1.1rem 1.3rem;
+}
+.theme-sucre .card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+.theme-sucre .card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(51, 48, 43, 0.09);
+}
+.theme-sucre .card-title a {
+  font-family: Georgia, "Iowan Old Style", serif;
+  color: var(--su-ink);
+  text-decoration: none;
+  font-weight: 600;
+}
+.theme-sucre .card-title a:hover { color: var(--su-roof); }
+.theme-sucre .article-title {
+  font-family: Georgia, "Iowan Old Style", serif;
+  color: var(--su-roof);
+  font-weight: 600;
+}
+.theme-sucre .meta { color: var(--su-faint); }
+.theme-sucre .excerpt { color: var(--su-soft); }
+.theme-sucre .backlink { color: var(--su-green); text-decoration: none; border-bottom: 1px solid var(--su-line); }
+.theme-sucre .backlink:hover { border-bottom-color: var(--su-green); }
+
+.theme-sucre .tag {
+  display: inline-block;
+  background: #efe7d6;
+  color: var(--su-green);
+  border-radius: 999px;
+  padding: 1px 10px;
+  font-size: 0.8rem;
+  text-decoration: none;
+  margin-right: 2px;
+}
+.theme-sucre .tag:hover { background: var(--su-green); color: #fbf3e6; }
+
+.theme-sucre .pglink {
+  display: inline-block;
+  color: var(--su-roof);
+  background: #fff;
+  border: 1px solid var(--su-line);
+  border-radius: 5px;
+  padding: 0.35rem 0.9rem;
+  margin: 0 4px;
+  text-decoration: none;
+}
+.theme-sucre .pglink:hover { background: var(--su-roof); color: #fbf3e6; border-color: var(--su-roof-d); }
+
+.theme-sucre .hits {
+  font-family: Georgia, serif;
+  color: var(--su-roof);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.theme-sucre .badge {
+  display: inline-block;
+  background: #efe7d6;
+  color: var(--su-soft);
+  border: 1px solid var(--su-line);
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 2px 10px;
+}
+.theme-sucre .badge-b { color: var(--su-green); }
+.theme-sucre .badge-c { color: var(--su-roof); }
+.theme-sucre .footer { color: var(--su-faint); }
+
+.theme-sucre .listhead {
+  border-left: 3px solid var(--su-roof);
+  color: var(--su-ink);
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 1rem;
+  padding: 0.25rem 0 0.25rem 0.8rem;
+  margin-bottom: 1.25rem;
+}
+.theme-sucre .dellink { color: var(--su-roof); text-decoration: none; }
+.theme-sucre .dellink:hover { text-decoration: underline; }
+.theme-sucre .draft { color: var(--su-ochre); font-weight: 600; }
+.theme-sucre .postlink { color: var(--su-green); text-decoration: none; }
+.theme-sucre .postlink:hover { text-decoration: underline; }
+.theme-sucre .table td, .theme-sucre .table th { border-top: 1px solid var(--su-line); }
+.theme-sucre .error { color: var(--su-roof); font-weight: 600; }
+
+.theme-sucre .content { color: var(--su-ink); }
+.theme-sucre .content h1, .theme-sucre .content h2, .theme-sucre .content h3 {
+  font-family: Georgia, "Iowan Old Style", serif;
+  color: var(--su-roof);
+  font-weight: 600;
+}
+.theme-sucre .content a { color: var(--su-green); text-decoration: underline; text-underline-offset: 2px; }
+.theme-sucre .content code {
+  background: #f0e8d8; color: var(--su-roof-d);
+  padding: 1px 5px; border-radius: 3px;
+  font-family: "SF Mono", "Cascadia Code", Menlo, monospace; font-size: 0.9em;
+}
+.theme-sucre .content pre {
+  background: #2f2a25; color: #f3ead9;
+  padding: 0.9rem 1rem; border-radius: 6px; overflow-x: auto;
+}
+.theme-sucre .content pre code { background: none; color: inherit; padding: 0; }
+.theme-sucre .content blockquote {
+  border-left: 3px solid var(--su-ochre);
+  color: var(--su-soft); font-style: italic;
+  padding-left: 0.9rem;
+}
+
+/* ===== shared bits ===== */
+.content p { margin: 0.75rem 0; }
+.content h2 { font-size: 1.3rem; margin: 1rem 0 0.5rem; }
+.content h3 { font-size: 1.1rem; margin: 1rem 0 0.5rem; }
+.content ul { list-style: square; margin: 0.75rem 0 0.75rem 1.5rem; }
+.content ol { list-style: decimal; margin: 0.75rem 0 0.75rem 1.5rem; }
+.content pre { margin: 0.75rem 0; }
+.content hr { border: 0; border-top: 1px solid currentColor; opacity: 0.3; margin: 1rem 0; }
+
+.pager { margin-top: 1.5rem; text-align: center; font-size: 0.875rem; }
+.table td, .table th { padding: 5px 10px 5px 0; text-align: left; }
+.table td:last-child, .table th:last-child { text-align: right; padding-right: 0; }
+
 @keyframes marquee {
   0%   { transform: translateX(0); }
   100% { transform: translateX(-100%); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .marquee span { animation: none; padding-left: 0; }
+  .banner span { animation: none !important; padding-left: 0 !important; }
 }
 
-/* post body typography, 1996 palette with 2026 line-height */
-.prose95 h1, .prose95 h2, .prose95 h3 {
-  color: #000080;
-  font-weight: bold;
-  margin: 1rem 0 0.5rem;
-}
-.prose95 h2 { font-size: 1.25rem; }
-.prose95 h3 { font-size: 1.1rem; }
-.prose95 p { margin: 0.75rem 0; line-height: 1.55; }
-.prose95 a { color: #0000ee; text-decoration: underline; }
-.prose95 a:visited { color: #551a8b; }
-.prose95 code {
-  background: #000;
-  color: #00ff00;
-  padding: 0 4px;
-}
-.prose95 pre {
-  background: #000;
-  color: #00ff00;
-  padding: 8px 10px;
-  overflow-x: auto;
-  border: 2px inset #fff;
-  margin: 0.75rem 0;
-}
-.prose95 pre code { padding: 0; }
-.prose95 blockquote {
-  border-left: 4px solid #808080;
-  margin: 0.75rem 0;
-  padding-left: 0.75rem;
-  color: #333;
-  font-style: italic;
-}
-.prose95 ul { list-style: square; margin: 0.75rem 0 0.75rem 1.5rem; }
-.prose95 ol { margin: 0.75rem 0 0.75rem 1.5rem; list-style: decimal; }
-.prose95 hr { border: 0; border-top: 2px inset #fff; margin: 1rem 0; }
-
-/* Flickr photo embeds: rendered as static, script-free figures */
-.flickr-embed {
-  margin: 1rem 0;
-  border: 3px inset #fff;
-  background: #000;
-  padding: 4px;
-}
-.flickr-embed img {
-  display: block;
-  max-width: 100%;
-  height: auto;
-  margin: 0 auto;
+/* Flickr photo embeds — static, script-free, both themes */
+.flickr-embed { margin: 1rem 0; }
+.flickr-embed img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+.theme-retro .flickr-embed { border: 3px inset #fff; background: #000; padding: 4px; }
+.theme-sucre .flickr-embed {
+  border: 1px solid var(--su-line); border-radius: 4px;
+  background: #fff; padding: 6px;
+  box-shadow: 0 4px 14px rgba(51,48,43,0.06);
 }

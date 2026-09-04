@@ -465,6 +465,9 @@ n_esite:   db 'esite'
 n_eppp:    db 'eppp'
 n_banner:  db 'banner'
 n_ebanner: db 'ebanner'
+n_theme:   db 'theme'
+n_selretro: db 'selretro'
+n_selsucre: db 'selsucre'
 
 align 8
 marker_names:                   ; {ptr, len, pad} triplets, indexed by id
@@ -491,6 +494,9 @@ marker_names:                   ; {ptr, len, pad} triplets, indexed by id
     dq n_eppp, 4, 0
     dq n_banner, 6, 0
     dq n_ebanner, 7, 0
+    dq n_theme, 5, 0
+    dq n_selretro, 8, 0
+    dq n_selsucre, 8, 0
 
 f_shell:    db 'templates/shell.html', 0
 f_card:     db 'templates/card.html', 0

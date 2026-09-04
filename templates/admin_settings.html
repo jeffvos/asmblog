@@ -1,19 +1,24 @@
-<div class="bevel-out bg-[#c0c0c0] text-black px-5 py-4 max-w-md mx-auto">
-  <h1 class="text-xl font-bold text-[#000080] mt-0 mb-2">settings</h1>
-  <p class="text-xs text-[#8b0000] font-bold mb-2">{{err}}</p>
+<div class="card max-w-md mx-auto">
+  <h1 class="article-title text-xl mt-0 mb-2">settings</h1>
+  <p class="error text-xs mb-2">{{err}}</p>
   <form method="post" action="/admin/settings">
     <input type="hidden" name="csrf" value="{{csrf}}">
     <label class="text-xs block">site title</label>
-    <input name="title" value="{{esite}}" class="bevel-in bg-white text-black px-2 py-1 w-full mb-2">
+    <input name="title" value="{{esite}}" class="field w-full mb-2">
     <label class="text-xs block">posts per page (1-50)</label>
-    <input name="ppp" value="{{eppp}}" class="bevel-in bg-white text-black px-2 py-1 w-24 mb-2">
+    <input name="ppp" value="{{eppp}}" class="field w-24 mb-2">
     <label class="text-xs block">scrolling banner message</label>
-    <input name="banner" value="{{ebanner}}" maxlength="200" class="bevel-in bg-white text-black px-2 py-1 w-full mb-2">
+    <input name="banner" value="{{ebanner}}" maxlength="200" class="field w-full mb-2">
+    <fieldset class="mb-3">
+      <legend class="text-xs mb-1">theme</legend>
+      <label class="block text-sm mb-1"><input type="radio" name="theme" value="retro" {{selretro}}> Retro &mdash; 1990s web, polished</label>
+      <label class="block text-sm"><input type="radio" name="theme" value="sucre" {{selsucre}}> Sucre &mdash; whitewashed colonial</label>
+    </fieldset>
     <label class="text-xs block">new password (blank = keep current)</label>
-    <input type="password" name="password" class="bevel-in bg-white text-black px-2 py-1 w-full mb-2">
+    <input type="password" name="password" class="field w-full mb-2">
     <label class="text-xs block">confirm new password</label>
-    <input type="password" name="password2" class="bevel-in bg-white text-black px-2 py-1 w-full mb-3">
-    <button class="btn95" type="submit">Save Settings</button>
-    <a class="postlink text-sm ml-3" href="/admin">cancel</a>
+    <input type="password" name="password2" class="field w-full mb-3">
+    <button class="btn" type="submit">Save Settings</button>
+    <a class="backlink text-sm ml-3" href="/admin">cancel</a>
   </form>
 </div>

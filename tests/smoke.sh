@@ -110,6 +110,14 @@ check "hostile markdown stays escaped"     bash -c "P=\$(curl -s -b '$JAR' --dat
 expect_code "settings save with banner" 303 -b "$JAR" --data-urlencode "csrf=$CSRF" \
     --data-urlencode "title=Smoke Blog" --data-urlencode ppp=5 --data-urlencode "banner=CUSTOM-BANNER-XYZ" "$A/admin/settings"
 check "custom banner shows on the site"    bash -c "curl -s $A/ | grep -q 'CUSTOM-BANNER-XYZ'"
+# theme switching
+check "default theme is retro"             bash -c "curl -s $A/ | grep -q 'class=\"min-h-screen theme-retro\"'"
+expect_code "switch to sucre theme"    303 -b "$JAR" --data-urlencode "csrf=$CSRF" \
+    --data-urlencode "title=Smoke Blog" --data-urlencode ppp=5 --data-urlencode theme=sucre "$A/admin/settings"
+check "sucre theme now on the site"        bash -c "curl -s $A/ | grep -q 'class=\"min-h-screen theme-sucre\"'"
+check "sucre radio pre-checked in form"    bash -c "curl -s -b '$JAR' $A/admin/settings | grep -q 'value=\"sucre\" checked'"
+expect_code "switch back to retro"     303 -b "$JAR" --data-urlencode "csrf=$CSRF" \
+    --data-urlencode "title=Smoke Blog" --data-urlencode ppp=5 --data-urlencode theme=retro "$A/admin/settings"
 # flickr embed: valid one renders static, script stripped; spoof rejected
 FL='<a data-flickr-embed="true" href="https://www.flickr.com/photos/x/1/"><img src="https://live.staticflickr.com/1/2_b.jpg" alt="pic"/></a><script src="//embedr.flickr.com/x.js"></script>'
 curl -s -b "$JAR" -o /dev/null --data-urlencode "csrf=$CSRF" --data-urlencode id=0 --data-urlencode "title=Pic" \
