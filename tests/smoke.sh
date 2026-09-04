@@ -152,6 +152,23 @@ expect_code "save publishes a post"    303 -b "$JAR" --data-urlencode "csrf=$CSR
     --data-urlencode "title=Smoke Post" --data-urlencode slug= --data-urlencode tags=smoke \
     --data-urlencode 'md=Hello **world** from [here](/about)' --data-urlencode action=publish "$A/admin/save"
 check "markdown rendered on public site"   bash -c "curl -s $A/post/smoke-post | grep -q '<strong>world</strong>'"
+# markdown: images (CSP-shaped allowlist), heading anchors, code classes
+MDX='## Hello World!
+
+```rust
+fn main() {}
+```
+
+![A photo](https://live.staticflickr.com/1/2_b.jpg)
+
+Inline ![local](/static/og.png) and ![evil](https://evil.example/x.png) and ![pr](//evil.example/x).'
+MDP="$(curl -s -b "$JAR" --data-urlencode "csrf=$CSRF" --data-urlencode title=t --data-urlencode "md=$MDX" "$A/admin/preview")"
+export MDP    # check() runs bash -c
+check "headings get id anchors"             bash -c "echo \"\$MDP\" | grep -q '<h2 id=\"hello-world\">Hello World!</h2>'"
+check "fenced code carries language class"  bash -c "echo \"\$MDP\" | grep -q '<pre><code class=\"language-rust\">fn main() {}'"
+check "lone image line becomes a figure"    bash -c "echo \"\$MDP\" | grep -q '<figure><img src=\"https://live.staticflickr.com/1/2_b.jpg\" alt=\"A photo\" loading=\"lazy\" decoding=\"async\"></figure>'"
+check "site-relative image is allowed"      bash -c "echo \"\$MDP\" | grep -q '<img src=\"/static/og.png\" alt=\"local\"'"
+check "foreign image hosts render as text"  bash -c "! echo \"\$MDP\" | grep -q 'evil.example/x.png\"' && ! echo \"\$MDP\" | grep -q 'src=\"//evil' && echo \"\$MDP\" | grep -qF '![evil](https://evil.example/x.png)'"
 check "hostile markdown stays escaped"     bash -c "P=\$(curl -s -b '$JAR' --data-urlencode csrf=$CSRF --data-urlencode 'md=[x](javascript:alert(1)) <script>' --data-urlencode title=t '$A/admin/preview'); echo \"\$P\" | grep -q '&lt;script&gt;' && ! echo \"\$P\" | grep -q 'href=\"javascript'"
 # configurable banner
 expect_code "settings save with banner" 303 -b "$JAR" --data-urlencode "csrf=$CSRF" \

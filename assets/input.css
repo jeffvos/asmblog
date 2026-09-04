@@ -13,7 +13,16 @@
    here, because Tailwind only scans the HTML templates.
    ============================================================ */
 
-body { min-height: 100vh; margin: 0; }
+body { min-height: 100vh; min-height: 100dvh; margin: 0; }
+
+/* Cross-document view transitions: page-to-page navigation crossfades
+   (the masthead stays put) with zero JavaScript. Browsers without
+   support, and readers who prefer reduced motion, get plain loads. */
+@view-transition { navigation: auto; }
+.masthead { view-transition-name: masthead; }
+@media (prefers-reduced-motion: reduce) {
+  @view-transition { navigation: none; }
+}
 .card, .article, .masthead { box-sizing: border-box; }
 
 /* =====================================================================
@@ -361,6 +370,53 @@ body { min-height: 100vh; margin: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .banner span { animation: none !important; padding-left: 0 !important; }
+  .theme-sucre .card, .theme-sucre .btn { transition: none; }
+  .theme-sucre .card:hover { transform: none; }
+}
+
+/* post images (markdown ![alt](url)) and figures, both themes */
+.content figure { margin: 1rem 0; }
+.content img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+.theme-retro .content figure { border: 3px inset #fff; background: #000; padding: 4px; }
+.theme-sucre .content figure {
+  border: 1px solid var(--su-line); border-radius: 4px;
+  background: #fff; padding: 6px;
+  box-shadow: 0 4px 14px rgba(51,48,43,0.06);
+}
+.theme-retro .content pre code { background: none; color: inherit; padding: 0; }
+.content h1:target, .content h2:target, .content h3:target { text-decoration: underline; }
+
+/* Sucre after dark: the same building at night */
+.theme-sucre { color-scheme: light dark; }
+@media (prefers-color-scheme: dark) {
+  .theme-sucre {
+    --su-wall:   #1f1b17;
+    --su-panel:  #2a2520;
+    --su-ink:    #ece3d3;
+    --su-soft:   #bfb3a0;
+    --su-faint:  #8f8474;
+    --su-line:   #3d362e;
+    --su-roof:   #d0644a;
+    --su-roof-d: #b04d34;
+    --su-green:  #8fb89f;
+    --su-ochre:  #d9a24e;
+  }
+  .theme-sucre .field, .theme-sucre .pglink { background: #211d19; color: var(--su-ink); }
+  .theme-sucre .tag, .theme-sucre .badge { background: #352e27; }
+  .theme-sucre .content code { background: #3a3128; color: #f0c9b8; }
+  .theme-sucre .content figure, .theme-sucre .flickr-embed { background: #211d19; }
+  .theme-sucre .masthead, .theme-sucre .card, .theme-sucre .article, .theme-sucre .notice {
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  }
+}
+
+/* print: the article, nothing else */
+@media print {
+  body, .theme-retro, .theme-sucre { background: #fff; color: #000; }
+  .banner, form[action="/search"], .footer, .pager, .hits, .backlink { display: none; }
+  .masthead, .card, .article { box-shadow: none; border-color: #999; }
+  .theme-retro .masthead, .theme-retro .card, .theme-retro .article { background: #fff; }
+  .content a::after { content: " (" attr(href) ")"; font-size: 0.85em; }
 }
 
 /* Flickr photo embeds — static, script-free, both themes */

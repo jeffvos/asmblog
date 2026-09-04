@@ -1,21 +1,25 @@
 ; md.asm — Markdown-subset -> HTML renderer.
 ;
 ; Line-based block state machine + per-line inline pass. Supported:
-;   blocks: # ## ### headings, ``` fenced code, > blockquote,
-;           -/* unordered lists, N. ordered lists, --- hr, paragraphs
-;   inline: **strong**, *em*, `code`, [text](url)
+;   blocks: # ## ### headings (with id anchors), ```lang fenced code,
+;           > blockquote, -/* unordered lists, N. ordered lists,
+;           --- hr, paragraphs, a lone ![image](url) line as <figure>
+;   inline: **strong**, *em*, `code`, [text](url), ![alt](url)
 ;
 ; Safety model: every byte of user text goes through the HTML escaper;
 ; the only raw emissions are tags this file generates. Link URLs are
 ; scheme-allowlisted (http/https/mailto, site-relative, #fragment) and
 ; attribute-escaped, which closes both javascript: and attribute-
-; breakout injection. Inline markers left unclosed at end of line are
-; closed automatically — output is always well-formed.
+; breakout injection. Image URLs are limited to what the CSP lets the
+; browser load anyway: site-relative paths and the Flickr CDN. Inline
+; markers left unclosed at end of line are closed automatically —
+; output is always well-formed.
 
 BITS 64
 
 extern emit
 extern emit_esc
+extern slugify
 
 global md_render
 global md_excerpt
@@ -97,6 +101,65 @@ md_render:
     mov rsi, t_pre_o
     mov edx, t_pre_o_len
     call emit
+    ; info string -> class="language-x" ([A-Za-z0-9+_-], up to 16)
+    lea rsi, [r13+3]
+    lea rdx, [r15-3]
+.info_sp:
+    test rdx, rdx
+    jz .info_done
+    cmp byte [rsi], ' '
+    jne .info_scan
+    inc rsi
+    dec rdx
+    jmp .info_sp
+.info_scan:
+    xor ecx, ecx
+.info_ch:
+    cmp rcx, rdx
+    jae .info_have
+    cmp rcx, 16
+    jae .info_have
+    mov al, [rsi+rcx]
+    cmp al, '+'
+    je .info_ok
+    cmp al, '-'
+    je .info_ok
+    cmp al, '_'
+    je .info_ok
+    cmp al, '0'
+    jb .info_have
+    cmp al, '9'
+    jbe .info_ok
+    or al, 0x20
+    cmp al, 'a'
+    jb .info_have
+    cmp al, 'z'
+    ja .info_have
+.info_ok:
+    inc rcx
+    jmp .info_ch
+.info_have:
+    test rcx, rcx
+    jz .info_done
+    push rsi
+    push rcx
+    mov rdi, r12
+    mov rsi, t_lang
+    mov edx, t_lang_len
+    call emit
+    pop rdx
+    pop rsi
+    mov rdi, r12
+    call emit_esc
+    mov rdi, r12
+    mov rsi, t_q
+    mov edx, 1
+    call emit
+.info_done:
+    mov rdi, r12
+    mov rsi, t_gt
+    mov edx, 1
+    call emit
     mov ebx, 5
     jmp .advance
 .not_fence:
@@ -128,17 +191,10 @@ md_render:
     jne .try_h2
     call close_block
     mov rdi, r12
-    mov rsi, t_h1_o
-    mov edx, t_h1_o_len
-    call emit
     lea rsi, [r13+2]
     lea rdx, [r15-2]
-    mov rdi, r12
-    call inline_render
-    mov rdi, r12
-    mov rsi, t_h1_c
-    mov edx, t_h1_c_len
-    call emit
+    mov ecx, '1'
+    call heading
     jmp .advance
 .try_h2:
     cmp r15, 3
@@ -149,17 +205,10 @@ md_render:
     jne .try_h3
     call close_block
     mov rdi, r12
-    mov rsi, t_h2_o
-    mov edx, t_h2_o_len
-    call emit
     lea rsi, [r13+3]
     lea rdx, [r15-3]
-    mov rdi, r12
-    call inline_render
-    mov rdi, r12
-    mov rsi, t_h2_c
-    mov edx, t_h2_c_len
-    call emit
+    mov ecx, '2'
+    call heading
     jmp .advance
 .try_h3:
     cmp r15, 4
@@ -170,17 +219,10 @@ md_render:
     jne .not_h
     call close_block
     mov rdi, r12
-    mov rsi, t_h3_o
-    mov edx, t_h3_o_len
-    call emit
     lea rsi, [r13+4]
     lea rdx, [r15-4]
-    mov rdi, r12
-    call inline_render
-    mov rdi, r12
-    mov rsi, t_h3_c
-    mov edx, t_h3_c_len
-    call emit
+    mov ecx, '3'
+    call heading
     jmp .advance
 .not_h:
     ; --- blockquote ---
@@ -324,6 +366,30 @@ md_render:
     call emit
     jmp .advance
 .not_hr:
+    ; --- a line that is just ![alt](url) becomes a <figure> ---
+    cmp ebx, 1
+    je .p_join                  ; inside a paragraph it stays inline
+    cmp r15, 5
+    jb .not_fig
+    cmp word [r13], '!['
+    jne .not_fig
+    cmp byte [r13+r15-1], ')'
+    jne .not_fig
+    call close_block
+    mov rdi, r12
+    mov rsi, t_fig_o
+    mov edx, t_fig_o_len
+    call emit
+    mov rdi, r12
+    mov rsi, r13
+    mov rdx, r15
+    call inline_render
+    mov rdi, r12
+    mov rsi, t_fig_c
+    mov edx, t_fig_c_len
+    call emit
+    jmp .advance
+.not_fig:
     ; --- paragraph text ---
     cmp ebx, 1
     je .p_join
@@ -358,6 +424,77 @@ md_render:
     jmp .line
 .eof:
     call close_block
+    pop rbx
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    ret
+
+; heading(w, text_p, text_l, level char) — <hN id="slug">…</hN>, the id
+; being the slugified heading text (omitted when nothing survives), so
+; sections are deep-linkable without any script.
+heading:
+    push r12
+    push r13
+    push r14
+    push r15
+    push rbx
+    sub rsp, 80                 ; [0..64) slug, [64] level, [72] pad
+    mov r12, rdi
+    mov r13, rsi
+    mov r14, rdx
+    mov [rsp+64], cl
+    mov rdi, rsp
+    mov rsi, r13
+    mov rdx, r14
+    mov ecx, 64
+    call slugify
+    mov rbx, rax                ; slug length
+    mov rdi, r12
+    mov rsi, t_h_o
+    mov edx, 2
+    call emit
+    mov rdi, r12
+    lea rsi, [rsp+64]
+    mov edx, 1
+    call emit
+    test rbx, rbx
+    jz .noid
+    mov rdi, r12
+    mov rsi, t_id
+    mov edx, t_id_len
+    call emit
+    mov rdi, r12
+    mov rsi, rsp
+    mov rdx, rbx
+    call emit
+    mov rdi, r12
+    mov rsi, t_q
+    mov edx, 1
+    call emit
+.noid:
+    mov rdi, r12
+    mov rsi, t_gt
+    mov edx, 1
+    call emit
+    mov rdi, r12
+    mov rsi, r13
+    mov rdx, r14
+    call inline_render
+    mov rdi, r12
+    mov rsi, t_h_c
+    mov edx, 3
+    call emit
+    mov rdi, r12
+    lea rsi, [rsp+64]
+    mov edx, 1
+    call emit
+    mov rdi, r12
+    mov rsi, t_gtnl
+    mov edx, 2
+    call emit
+    add rsp, 80
     pop rbx
     pop r15
     pop r14
@@ -427,6 +564,8 @@ inline_render:
     je .special
     cmp al, '['
     je .special
+    cmp al, '!'
+    je .special
     cmp al, '&'
     je .special
     cmp al, '<'
@@ -454,6 +593,8 @@ inline_render:
     je .tick
     cmp al, '['
     je .link
+    cmp al, '!'
+    je .bang
     ; plain escapable char
     mov rdi, r12
     mov rsi, r13
@@ -613,6 +754,96 @@ inline_render:
     inc r13
     mov r15, r13
     jmp .scan
+.bang:
+    ; ![alt](url) — same shape as a link; rbp = ']' pos, then ')'
+    lea rax, [r13+1]
+    cmp rax, r14
+    jae .bang_lit
+    cmp byte [rax], '['
+    jne .bang_lit
+    lea rbp, [r13+2]
+.ibscan:
+    cmp rbp, r14
+    jae .bang_lit
+    cmp byte [rbp], ']'
+    je .ibhit
+    inc rbp
+    jmp .ibscan
+.ibhit:
+    lea rax, [rbp+1]
+    cmp rax, r14
+    jae .bang_lit
+    cmp byte [rax], '('
+    jne .bang_lit
+    push rbp                    ; ']' pos
+    lea rbp, [rbp+2]            ; url start
+    mov rax, rbp
+.ipscan:
+    cmp rax, r14
+    jae .bang_lit_pop
+    cmp byte [rax], ')'
+    je .iphit
+    inc rax
+    jmp .ipscan
+.iphit:
+    push rax                    ; ')' pos
+    mov rdi, rbp
+    mov rsi, rax
+    sub rsi, rbp
+    call img_allowed
+    test eax, eax
+    jz .bang_lit_pop2
+    mov rdi, r12
+    mov rsi, t_img_o            ; <img src="
+    mov edx, t_img_o_len
+    call emit
+    mov rax, [rsp]
+    mov rdi, r12
+    mov rsi, rbp
+    mov rdx, rax
+    sub rdx, rbp
+    call emit_esc               ; src
+    mov rdi, r12
+    mov rsi, t_img_m            ; " alt="
+    mov edx, t_img_m_len
+    call emit
+    mov rax, [rsp+8]            ; ']' pos
+    lea rsi, [r13+2]
+    mov rdx, rax
+    sub rdx, r13
+    sub rdx, 2
+    mov rdi, r12
+    call emit_esc               ; alt
+    mov rdi, r12
+    mov rsi, t_img_c            ; " loading="lazy" decoding="async">
+    mov edx, t_img_c_len
+    call emit
+    pop r13                     ; ')' pos
+    inc r13
+    pop rax
+    mov r15, r13
+    jmp .scan
+.bang_lit_pop2:                 ; well-formed but not an allowed host:
+    pop rax                     ; the whole ![alt](url) stays visible text
+    pop rcx
+    mov rdi, r12
+    mov rsi, r13
+    lea rdx, [rax+1]
+    sub rdx, r13
+    call emit_esc
+    lea r13, [rax+1]
+    mov r15, r13
+    jmp .scan
+.bang_lit_pop:
+    pop rax
+.bang_lit:
+    mov rdi, r12
+    mov rsi, r13
+    mov edx, 1
+    call emit                   ; '!' is HTML-safe
+    inc r13
+    mov r15, r13
+    jmp .scan
 .fin:
     mov rdx, r13
     sub rdx, r15
@@ -677,6 +908,31 @@ url_allowed:
     mov eax, 1
     ret
 
+; img_allowed(p, l) -> 1 for a site-relative path ("/x", not "//host")
+; or a Flickr CDN URL — exactly what the CSP's img-src permits.
+img_allowed:
+    test rsi, rsi
+    jz .no
+    cmp byte [rdi], '/'
+    jne .flickr
+    cmp rsi, 2
+    jb .yes
+    cmp byte [rdi+1], '/'
+    je .no
+    jmp .yes
+.flickr:
+    cmp rsi, fl_img_host_len
+    jb .no
+    mov rdx, fl_img_host
+    mov rcx, fl_img_host_len
+    jmp host_ok
+.no:
+    xor eax, eax
+    ret
+.yes:
+    mov eax, 1
+    ret
+
 ; md_excerpt(dst, cap, md_p, md_l) -> rax = length written.
 ; Plain-text synopsis of a markdown source for cards and feed summaries:
 ; skips Flickr embed lines, code fences and blank lines; strips block
@@ -730,12 +986,15 @@ md_excerpt:
     inc r10
     jmp .flcmp
 .notfl:
-    ; skip fence lines
+    ; skip fence lines and image lines
     cmp rcx, 3
     jb .prefix
     cmp word [r14], '``'
-    jne .prefix
+    jne .notfence
     cmp byte [r14+2], '`'
+    je .nextline
+.notfence:
+    cmp word [r14], '!['
     je .nextline
 .prefix:
     mov r8, r14                 ; strip leading # > and spaces
@@ -1062,18 +1321,25 @@ t_p_o:  db '<p>'
 t_p_o_len equ $-t_p_o
 t_p_c:  db '</p>', 10
 t_p_c_len equ $-t_p_c
-t_h1_o: db '<h1>'
-t_h1_o_len equ $-t_h1_o
-t_h1_c: db '</h1>', 10
-t_h1_c_len equ $-t_h1_c
-t_h2_o: db '<h2>'
-t_h2_o_len equ $-t_h2_o
-t_h2_c: db '</h2>', 10
-t_h2_c_len equ $-t_h2_c
-t_h3_o: db '<h3>'
-t_h3_o_len equ $-t_h3_o
-t_h3_c: db '</h3>', 10
-t_h3_c_len equ $-t_h3_c
+t_h_o:  db '<h'
+t_h_c:  db '</h'
+t_id:   db ' id="'
+t_id_len equ $-t_id
+t_q:    db '"'
+t_gt:   db '>'
+t_gtnl: db '>', 10
+t_lang: db ' class="language-'
+t_lang_len equ $-t_lang
+t_fig_o: db '<figure>'
+t_fig_o_len equ $-t_fig_o
+t_fig_c: db '</figure>', 10
+t_fig_c_len equ $-t_fig_c
+t_img_o: db '<img src="'
+t_img_o_len equ $-t_img_o
+t_img_m: db '" alt="'
+t_img_m_len equ $-t_img_m
+t_img_c: db '" loading="lazy" decoding="async">'
+t_img_c_len equ $-t_img_c
 t_ul_o: db '<ul>', 10
 t_ul_o_len equ $-t_ul_o
 t_ul_c: db '</ul>', 10
@@ -1090,9 +1356,9 @@ t_bq_o: db '<blockquote>', 10
 t_bq_o_len equ $-t_bq_o
 t_bq_c: db '</blockquote>', 10
 t_bq_c_len equ $-t_bq_c
-t_pre_o: db '<pre>'
+t_pre_o: db '<pre><code'
 t_pre_o_len equ $-t_pre_o
-t_pre_c: db '</pre>', 10
+t_pre_c: db '</code></pre>', 10
 t_pre_c_len equ $-t_pre_c
 t_hr:   db '<hr>', 10
 t_hr_len equ $-t_hr

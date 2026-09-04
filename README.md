@@ -6,6 +6,13 @@ in hand-written x86_64 Linux assembly (NASM, raw syscalls, no libc).
 libsodium is linked solely for Argon2id password hashing. TLS is terminated
 by a reverse proxy in front; `blogd` binds 127.0.0.1 only.
 
+It is also a well-behaved citizen of the modern web: every page carries
+description/canonical/Open Graph/JSON-LD metadata for crawlers and link
+previews, validators (`ETag`, `Last-Modified`) let clients and proxies
+revalidate with 304s that cost no render, and there is a sitemap, a
+robots.txt, an Atom feed with full content, a web app manifest and an
+icon set — all emitted by the server, still with zero JavaScript.
+
 See [PLAN.md](PLAN.md) for the full architecture.
 
 ## Build & run
@@ -52,6 +59,7 @@ front of the container. Environment:
 | `BLOGD_ADMIN_PASSWORD` | `changeme-blogd` | admin password on first boot (min 8 chars) |
 | `BLOGD_SITE_TITLE` | `My Retro Blog` | site title on first boot |
 | `BLOGD_POSTS_PER_PAGE` | `5` | posts per page on first boot |
+| `BLOGD_SITE_URL` | *(unset)* | public origin, e.g. `https://blog.example.com` (also editable in `/admin/settings`) |
 | `BLOGD_SEED` | `0` | `1` seeds demo posts on first boot |
 | `BLOGD_THREADS` | `2` | worker threads |
 | `BLOGD_PORT` | `8080` | listen port inside the container |
@@ -64,7 +72,63 @@ The admin panel lives at `/admin` (log in with the password set by
 `blogd init`). It offers a post dashboard, a markdown editor with live
 preview and draft/publish, delete-with-confirm, and a settings page for
 the site title, posts-per-page, the scrolling banner message, the theme,
-and the password.
+the language, the public site URL, and the password.
+
+### SEO, link previews and caching
+
+Everything below is rendered by the server at request time; there is no
+client-side code involved.
+
+- **`<head>` metadata on every public page**: `meta description` (the
+  post's excerpt, or "Latest posts from …"), `rel=canonical`,
+  `rel=prev/next` on paginated lists, Open Graph (`og:title`,
+  `og:description`, `og:url`, `og:image`, `og:site_name`, `og:locale`,
+  `article:published_time`/`modified_time`/`tag`), a Twitter card, and
+  JSON-LD (`BlogPosting` on posts, `WebSite` + `SearchAction` on the
+  front page). JSON-LD is a data block, not a script, so the CSP's
+  `script-src 'none'` — and the "0 BYTES OF JS" badge — still hold.
+  Search results are `noindex,follow`; the admin panel is `noindex`.
+- **`og:image`** is the first Flickr photo in the post, else
+  `/static/og.png` (regenerate the icon set with `make icons`, which
+  needs only Python's standard library).
+- **Absolute URLs** (canonical, Open Graph, the feed's links, the
+  sitemap) come from the **site URL** setting. When it is blank, blogd
+  derives them from the request's `Host` and `X-Forwarded-Proto`, which
+  both shipped proxy configs forward; when neither is known the
+  absolute-URL tags are simply omitted.
+- **`/robots.txt`** (disallows `/admin`, `/search`, `/hits.svg`, links
+  the sitemap), **`/sitemap.xml`** (every published post with `lastmod`;
+  a sitemap index of `/sitemap-N.xml` slices past 500 posts),
+  **`/manifest.webmanifest`** (named after the site), `/favicon.ico`,
+  `/static/favicon.svg`, `/static/icon-192.png`, `/static/icon-512.png`.
+- **One URL per page**: trailing slashes, `/page/1` and `/tag/x/page/1`
+  301 to the canonical form.
+- **Validators**: HTML, the feed, the sitemap and `robots.txt` carry a
+  weak `ETag` (`W/"<store generation>-<crc32c of host+path+query>"`)
+  and `Last-Modified`; static assets carry a strong `ETag`. The
+  generation changes on every write and every restart (templates and
+  CSS load at boot), so an `If-None-Match` hit is answered with a 304
+  before anything is rendered. Pages are `public, max-age=0,
+  must-revalidate`; the feed is cacheable for five minutes; the versioned
+  stylesheet (`/static/main.css?v=<crc>`) is `immutable` for a year;
+  icons for a day; `/admin` and the counter are `no-store`.
+- **`HEAD`** is supported everywhere; `Date`, `Content-Language`,
+  `Vary: Accept-Encoding` (on negotiated assets) and `Allow` (on 405)
+  are emitted; `Accept-Encoding` is tokenised (`;q=0` is honoured, and a
+  `static/main.css.br` is served to clients that accept brotli when the
+  `brotli` CLI was available at build time).
+- **Atom feed**: absolute links, `<author>`, `<published>`,
+  `<category>` per tag, `<summary type="text">` plus
+  `<content type="html">` for posts up to 16 KB, `xml:lang`, and
+  `<updated>` from the store rather than the clock. Entry ids are the
+  stable `tag:blogd:post-N` URIs, so configuring the site URL later
+  never duplicates entries in readers.
+- **Visitor counter**: the footer shows `/hits.svg`, a tiny `no-store`
+  SVG the server renders per view, so the HTML itself stays byte-stable
+  and cacheable. The count persists across restarts in
+  `data/hits.blg`, a 4 KiB `MAP_SHARED` page that the kernel writes back
+  by itself — bumping it is one `lock xadd`, no syscall. Crawlers
+  fetching HTML no longer count; browsers loading the image do.
 
 ### Themes
 
@@ -82,7 +146,11 @@ stylesheet, so switching is instant and needs no rebuild):
 
 Templates use semantic classes (`.masthead`, `.card`, `.btn`, `.tag`, …)
 that each theme restyles under a `.theme-retro` / `.theme-sucre` scope in
-[assets/input.css](assets/input.css).
+[assets/input.css](assets/input.css). Sucre follows
+`prefers-color-scheme: dark`; both themes respect
+`prefers-reduced-motion`, have a print stylesheet, and use cross-document
+view transitions for page-to-page navigation where the browser supports
+them (no script involved).
 
 ### Localization
 
@@ -98,6 +166,19 @@ per visitor). Two locales ship: **en-US** (default) and **es-BO**.
   in [src/i18n.asm](src/i18n.asm), and dates render in the locale's
   long form (`September 4, 2026` / `4 de septiembre de 2026`).
 - The Atom feed keeps RFC 3339 timestamps regardless of locale.
+
+### Markdown
+
+The renderer supports `#`/`##`/`###` headings (each gets an `id` slug,
+so sections are deep-linkable), fenced code blocks with an optional
+language (```` ```rust ```` becomes `<pre><code class="language-rust">`),
+blockquotes, lists, `---`, `**strong**`, `*em*`, `` `code` ``,
+`[text](url)` links and `![alt](url)` images. Image URLs are limited to
+what the Content-Security-Policy lets the browser load anyway:
+site-relative paths and `https://live.staticflickr.com/…`; anything
+else is rendered as text. An image alone on a line becomes a
+`<figure>`. Images get `loading="lazy"` and `decoding="async"`; Flickr
+URLs do not encode dimensions, so no `width`/`height` is emitted.
 
 ### Embedding Flickr photos
 
@@ -116,9 +197,11 @@ Flickr is left as escaped text, never rendered as a live tag. This is
 the only remote content the app allows, and it never relaxes
 `script-src 'none'`.
 
-Requires: `nasm`, GNU binutils, `libsodium-dev`, `curl` (tests only), and
-the Tailwind standalone CLI at `tools/tailwindcss` (gitignored; download
-`tailwindcss-linux-x64` from the Tailwind GitHub releases and `chmod +x`).
+Requires: `nasm`, GNU binutils, `libsodium-dev`, `curl`, `python3` and
+`xmllint` (tests only), and the Tailwind standalone CLI at
+`tools/tailwindcss` (gitignored; download `tailwindcss-linux-x64` from the
+Tailwind GitHub releases and `chmod +x`). Optional: `brotli` (a `.br`
+sibling of the stylesheet is produced when present).
 
 ## Roadmap
 
@@ -138,6 +221,10 @@ the Tailwind standalone CLI at `tools/tailwindcss` (gitignored; download
       readiness barrier + `BLOGD_NO_SECCOMP` escape hatch), security
       headers on every response, mutation fuzzing of both parsers,
       load test, and reverse-proxy + systemd deploy configs
+- [x] Milestone 7 — the modern web: `<head>` metadata / Open Graph /
+      JSON-LD, robots + sitemap + manifest + icons, ETag/304 validators
+      and cache policy, HEAD, canonical redirects, richer Atom, markdown
+      images/anchors/code classes, persistent visitor counter
 
 ## Code conventions
 

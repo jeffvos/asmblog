@@ -79,6 +79,7 @@ extern sec_headers
 extern sec_headers_len
 
 global admin_route
+global slugify
 
 ; form field indices
 %define FI_PASSWORD  0

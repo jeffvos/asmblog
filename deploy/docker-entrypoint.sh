@@ -5,6 +5,10 @@
 # the admin password from BLOGD_ADMIN_PASSWORD (min 8 chars), then serve.
 # Every later boot just serves. The password is never baked into an
 # image layer — it lives only in the volume as an Argon2id hash.
+# BLOGD_SITE_URL (optional) is read by `blogd init` from the environment
+# and becomes the public origin for canonical/Open Graph/feed/sitemap
+# URLs; it can be changed later in /admin/settings. The visitor counter
+# lives in the same volume (data/hits.blg).
 set -eu
 cd /var/lib/blogd
 
