@@ -1,0 +1,117 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+# The admin password used when the published image is smoke-tested.
+# Set the BLOGD_ADMIN_PASSWORD repository secret to override the default.
+env:
+  ADMIN_PASSWORD: ${{ secrets.BLOGD_ADMIN_PASSWORD || 'changeme-blogd' }}
+
+jobs:
+  build-test:
+    name: build + test (glibc)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: toolchain
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends nasm binutils libsodium-dev gzip curl
+
+      - name: tailwind standalone cli
+        run: |
+          mkdir -p tools
+          curl -fsSL -o tools/tailwindcss \
+            https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64
+          chmod +x tools/tailwindcss
+
+      - name: build
+        run: make
+
+      - name: smoke suite (store selftest, HTTP, content, admin, i18n)
+        run: make test
+
+      - name: fuzz (short)
+        run: ./tests/fuzz.sh 800 8140
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: blogd-glibc-x86_64
+          path: build/blogd
+
+  image:
+    name: docker image (alpine/musl)
+    needs: build-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: image name (ghcr requires lowercase)
+        id: meta
+        run: |
+          echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/blogd" >> "$GITHUB_OUTPUT"
+          echo "sha=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      # The Dockerfile's build stage runs the selftest and an in-image
+      # login (seccomp + musl + Argon2id), so a passing build is a tested build.
+      - name: build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: blogd:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: run the container and log in with the predefined password
+        run: |
+          docker run -d --name blogd -p 8080:8080 \
+            -e BLOGD_ADMIN_PASSWORD="$ADMIN_PASSWORD" -e BLOGD_SEED=1 blogd:test
+          for i in $(seq 1 30); do
+            curl -fsS -o /dev/null http://127.0.0.1:8080/health && break
+            sleep 0.5
+          done
+          curl -fsS -o /dev/null http://127.0.0.1:8080/health
+          code=$(curl -s -o /dev/null -w '%{http_code}' -d "password=$ADMIN_PASSWORD" http://127.0.0.1:8080/admin/login)
+          echo "login -> $code"; [ "$code" = "303" ]
+          bad=$(curl -s -o /dev/null -w '%{http_code}' -d "password=definitely-wrong-1" http://127.0.0.1:8080/admin/login)
+          echo "wrong password -> $bad"; [ "$bad" = "200" ]
+          articles=$(curl -s http://127.0.0.1:8080/ | grep -c '<article')
+          echo "seeded articles on home -> $articles"; [ "$articles" = "5" ]
+          docker inspect --format '{{.State.Health.Status}}' blogd || true
+          echo "image size: $(docker image inspect blogd:test --format '{{.Size}}' | awk '{printf "%.1f MB", $1/1e6}')"
+          docker logs blogd
+          docker rm -f blogd
+
+      - name: login to ghcr
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: push
+        if: github.event_name != 'pull_request'
+        run: |
+          IMAGE="${{ steps.meta.outputs.image }}"
+          docker tag blogd:test "$IMAGE:sha-${{ steps.meta.outputs.sha }}"
+          docker push "$IMAGE:sha-${{ steps.meta.outputs.sha }}"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            docker tag blogd:test "$IMAGE:${GITHUB_REF_NAME}"
+            docker push "$IMAGE:${GITHUB_REF_NAME}"
+          fi
+          if [ "${GITHUB_REF}" = "refs/heads/main" ] || [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            docker tag blogd:test "$IMAGE:latest"
+            docker push "$IMAGE:latest"
+          fi

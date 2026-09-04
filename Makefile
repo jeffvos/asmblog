@@ -4,8 +4,9 @@ NASM      := nasm
 NASMFLAGS := -f elf64 -g -F dwarf -Wall -w-reloc-rel-dword -w-reloc-abs-qword -w-reloc-abs-dword
 LD        := ld
 # Dynamic solely for libsodium (Argon2id); everything else is raw syscalls.
-LDFLAGS   := -z noexecstack -z relro -z now \
-             -dynamic-linker /lib64/ld-linux-x86-64.so.2
+# The loader path follows the host libc: musl (Alpine) or glibc.
+DYNLINK   ?= $(shell test -e /lib/ld-musl-x86_64.so.1 && echo /lib/ld-musl-x86_64.so.1 || echo /lib64/ld-linux-x86-64.so.2)
+LDFLAGS   := -z noexecstack -z relro -z now -dynamic-linker $(DYNLINK)
 LDLIBS    := -lsodium
 
 SRC := src/main.asm src/net.asm src/http.asm src/threads.asm src/util.asm \
@@ -39,7 +40,10 @@ test: all
 fuzz: all
 	./tests/fuzz.sh
 
+image:
+	docker build -t blogd .
+
 clean:
 	rm -rf build static/main.css static/main.css.gz
 
-.PHONY: all css run test fuzz clean
+.PHONY: all css run test fuzz image clean

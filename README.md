@@ -23,7 +23,42 @@ make fuzz       # mutation-fuzz the HTTP and markdown parsers
 Deployment configs (TLS reverse proxy + hardened systemd unit) live in
 [deploy/](deploy/). blogd installs its own seccomp syscall allowlist at
 startup; set `BLOGD_NO_SECCOMP=1` to disable it if a kernel needs a
-different set.
+different set. blogd binds `127.0.0.1` unless `BLOGD_BIND_ALL=1` is set
+(containers).
+
+## Docker
+
+A minimal Alpine image (the binary, templates, stylesheet, libsodium,
+busybox — no reverse proxy) is built and published by
+[GitHub Actions](.github/workflows/ci.yml) to `ghcr.io/<owner>/blogd`
+on every push to `main` and every `v*` tag. The Docker build is also the
+musl test gate: it runs the selftest and a real login through the
+seccomp sandbox before the runtime stage is assembled.
+
+```bash
+docker run -d --name blogd -p 8080:8080 \
+  -e BLOGD_ADMIN_PASSWORD='a-long-password' \
+  -v blogd-data:/var/lib/blogd/data \
+  ghcr.io/<owner>/blogd:latest
+```
+
+On first boot the entrypoint initializes the store in the volume with
+`BLOGD_ADMIN_PASSWORD` (stored only as an Argon2id hash — never in an
+image layer); later boots just serve. Terminate TLS with Caddy/nginx in
+front of the container. Environment:
+
+| variable | default | purpose |
+|---|---|---|
+| `BLOGD_ADMIN_PASSWORD` | `changeme-blogd` | admin password on first boot (min 8 chars) |
+| `BLOGD_SITE_TITLE` | `My Retro Blog` | site title on first boot |
+| `BLOGD_POSTS_PER_PAGE` | `5` | posts per page on first boot |
+| `BLOGD_SEED` | `0` | `1` seeds demo posts on first boot |
+| `BLOGD_THREADS` | `2` | worker threads |
+| `BLOGD_PORT` | `8080` | listen port inside the container |
+
+CI's container smoke test logs in with the `BLOGD_ADMIN_PASSWORD`
+repository secret (falling back to the default). `make image` builds
+the image locally.
 
 The admin panel lives at `/admin` (log in with the password set by
 `blogd init`). It offers a post dashboard, a markdown editor with live

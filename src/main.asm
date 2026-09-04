@@ -108,13 +108,23 @@ _start:
     mov rax, r15
     xchg al, ah                 ; htons
     mov [listen_addr+2], ax
-    mov dword [listen_addr+4], 0x0100007F   ; 127.0.0.1
+    mov dword [listen_addr+4], 0x0100007F   ; 127.0.0.1 ...
+    mov qword [bind_msg], msg_listen
+    mov qword [bind_msg_len], msg_listen_len
+    mov rdi, env_bindall        ; ... unless BLOGD_BIND_ALL (containers:
+    call getenv_present         ; the TLS proxy lives outside the image)
+    test eax, eax
+    jz .bind_done
+    mov dword [listen_addr+4], 0            ; INADDR_ANY
+    mov qword [bind_msg], msg_listen_all
+    mov qword [bind_msg_len], msg_listen_all_len
+.bind_done:
     mov qword [listen_addr+8], 0
 
     ; "blogd 0.6 listening on http://127.0.0.1:P (threads: N)\n"
     mov rdi, banner_buf
-    mov rsi, msg_listen
-    mov edx, msg_listen_len
+    mov rsi, [bind_msg]
+    mov rdx, [bind_msg_len]
     call mem_copy
     mov rdi, r15
     mov rsi, rax
@@ -253,6 +263,9 @@ section .data
 
 msg_listen: db 'blogd 0.6 listening on http://127.0.0.1:'
 msg_listen_len equ $-msg_listen
+msg_listen_all: db 'blogd 0.6 listening on http://0.0.0.0:'
+msg_listen_all_len equ $-msg_listen_all
+env_bindall: db 'BLOGD_BIND_ALL', 0
 msg_thr: db ' (threads: '
 msg_thr_len equ $-msg_thr
 msg_usage: db 'usage: blogd [init|selftest] | blogd [port 1-65535] [threads 1-16]', 10
@@ -277,5 +290,7 @@ section .bss
 listen_addr: resb 16
 banner_buf:  resb 96
 envp:        resq 1
+bind_msg:    resq 1
+bind_msg_len: resq 1
 
 section .note.GNU-stack noalloc noexec nowrite progbits
