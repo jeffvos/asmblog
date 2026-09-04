@@ -45,6 +45,8 @@ global set_ppp
 global set_ttl
 global set_title_p
 global set_title_l
+global set_banner_p
+global set_banner_l
 global set_hash
 global set_present
 
@@ -142,6 +144,8 @@ store_open:
     mov dword [set_ttl], 86400
     mov byte [set_present], 0
     mov qword [set_title_l], 0
+    mov qword [set_banner_p], def_banner    ; default until settings load
+    mov qword [set_banner_l], def_banner_len
     test r12, r12
     jnz .load
     mov rdi, [store_fd]         ; brand new store: write the file header
@@ -309,9 +313,16 @@ apply_record:
 .ttl_done:
     mov ecx, [rax+8]            ; title length
     mov [set_title_l], rcx
-    lea rdx, [rax+16]
+    mov r8d, [rax+12]           ; banner length
+    lea rdx, [rax+SET_HDR]      ; title
     mov [set_title_p], rdx
-    lea rsi, [rdx+rcx]
+    lea rdx, [rdx+rcx]          ; banner follows the title
+    test r8, r8
+    jz .banner_default          ; empty stored banner keeps the default
+    mov [set_banner_p], rdx
+    mov [set_banner_l], r8
+.banner_default:
+    lea rsi, [rdx+r8]           ; hash follows the banner
     mov rdi, set_hash
     mov edx, 128
     call mem_copy
@@ -737,8 +748,12 @@ store_delete_post:
     pop r12
     ret
 
-; write_settings_locked(ppp, ttl, title_p, title_l, hash_p128) -> 0 / -1
-; Appends a settings record to store_fd. Caller holds wr lock.
+; write_settings_locked(ppp, ttl, title_p, title_l, banner_p, banner_l)
+;   -> 0 / -1. The admin password hash always comes from [set_hash], so
+;   the caller must stage a new hash there before a password change.
+;   Appends a settings record to store_fd. Caller holds wr lock.
+; Stack scratch: [rsp+0]=scratch ptr, [rsp+8]=payload len,
+;                [rsp+16]=banner ptr, [rsp+24]=banner len (padded to 32)
 write_settings_locked:
     push r12
     push r13
@@ -750,11 +765,13 @@ write_settings_locked:
     mov r13, rsi                ; ttl
     mov r14, rdx                ; title ptr
     mov r15, rcx                ; title len
-    mov rbx, r8                 ; hash ptr
-    lea rax, [r15+16+128]       ; payload
+    sub rsp, 32
+    mov [rsp+16], r8            ; banner ptr
+    mov [rsp+24], r9            ; banner len
+    lea rax, [r15+r9+SET_HDR+128]   ; payload = 20 + title + banner + 128
+    mov [rsp+8], rax
     lea rbp, [rax+R_HDR+7]
-    and rbp, -8                 ; padded total
-    push rax                    ; keep payload length
+    and rbp, -8                 ; padded total record size
     xor edi, edi
     mov rsi, rbp
     mov edx, PROT_READ | PROT_WRITE
@@ -764,56 +781,61 @@ write_settings_locked:
     mov eax, SYS_mmap
     syscall
     cmp rax, -4095
-    jae .fail_pop
+    jae .fail
+    mov [rsp], rax             ; scratch ptr
     mov rdi, rax
-    pop rdx                     ; payload length
-    push rdi                    ; keep scratch ptr
     mov dword [rdi+R_MAGIC], 'REC1'
     mov dword [rdi+R_TYPE], TYPE_SETTINGS
-    mov [rdi+R_TLEN], edx
+    mov rax, [rsp+8]
+    mov [rdi+R_TLEN], eax       ; whole payload length (settings convention)
     call time_now
-    mov rdx, [rsp]
-    mov [rdx+R_CREATED], rax
-    mov [rdx+R_UPDATED], rax
-    mov rdi, rdx
+    mov rdi, [rsp]
+    mov [rdi+R_CREATED], rax
+    mov [rdi+R_UPDATED], rax
     mov [rdi+R_HDR], r12d       ; posts per page
     mov [rdi+R_HDR+4], r13d     ; ttl
     mov [rdi+R_HDR+8], r15d     ; title len
-    mov dword [rdi+R_HDR+12], 128
-    lea rdi, [rdi+R_HDR+16]
-    mov rsi, r14
+    mov rax, [rsp+24]
+    mov [rdi+R_HDR+12], eax     ; banner len
+    mov dword [rdi+R_HDR+16], 128
+    lea rdi, [rdi+R_HDR+SET_HDR]
+    mov rsi, r14               ; title
     mov rdx, r15
     call mem_copy
-    mov rdi, rax
-    mov rsi, rbx
+    mov rdi, rax               ; banner
+    mov rsi, [rsp+16]
+    mov rdx, [rsp+24]
+    call mem_copy
+    mov rdi, rax               ; hash from the live setting
+    mov rsi, set_hash
     mov edx, 128
     call mem_copy
-    mov rdi, [rsp]              ; crc over the payload
+    mov rdi, [rsp]
     lea rdi, [rdi+R_HDR]
-    lea rsi, [r15+16+128]
+    mov rsi, [rsp+8]           ; crc over the payload
     call crc32c
-    mov rdx, [rsp]
-    mov [rdx+R_CRC], eax
+    mov rdi, [rsp]
+    mov [rdi+R_CRC], eax
     mov rdi, [store_fd]
-    mov rsi, rdx
+    mov rsi, [rsp]
     mov rdx, rbp
     call write_all
     mov r12, rax
     mov rdi, [store_fd]
     mov eax, SYS_fsync
     syscall
-    pop rdi                     ; scratch
+    mov rdi, [rsp]             ; scratch
     mov rsi, rbp
     mov eax, SYS_munmap
     syscall
     test r12, r12
     jnz .fail
     add [store_size], rbp
+    add rsp, 32
     xor eax, eax
     jmp .ret
-.fail_pop:
-    pop rax
 .fail:
+    add rsp, 32
     mov rax, -1
 .ret:
     pop rbp
@@ -824,19 +846,24 @@ write_settings_locked:
     pop r12
     ret
 
-; store_save_settings(ppp, ttl, title_p, title_l, hash_p128) -> 0 / -1
+; store_save_settings(ppp, ttl, title_p, title_l, banner_p, banner_l)
+;   -> 0 / -1. Persists the current [set_hash]; a caller changing the
+;   password stages the new hash there first. Mirrors title and banner
+;   into arena-held copies so the live pointers outlive the request.
 store_save_settings:
     push r12
     push r13
     push r14
     push r15
     push rbx
-    push rbp                    ; keep stack layout symmetric
+    push rbp
+    sub rsp, 16
     mov r12, rdi
     mov r13, rsi
-    mov r14, rdx
-    mov r15, rcx
-    mov rbx, r8
+    mov r14, rdx                ; title ptr
+    mov r15, rcx                ; title len
+    mov rbx, r8                 ; banner ptr
+    mov rbp, r9                 ; banner len
     mov rdi, store_lock
     call wr_lock
     mov rdi, r12
@@ -844,35 +871,51 @@ store_save_settings:
     mov rdx, r14
     mov rcx, r15
     mov r8, rbx
+    mov r9, rbp
     call write_settings_locked
     test rax, rax
     jnz .fail
     mov [set_ppp], r12d         ; mirror into live settings
     mov [set_ttl], r13d
-    mov rdi, [st_arena]
+    mov rdi, [st_arena]         ; arena copy of the title
     mov rsi, r15
     call arena_alloc
     test rax, rax
     jz .fail
-    mov rbp, rax
+    mov [rsp], rax
     mov rdi, rax
     mov rsi, r14
     mov rdx, r15
     call mem_copy
-    mov [set_title_p], rbp
-    mov [set_title_l], r15
-    mov rdi, set_hash
+    test rbp, rbp              ; arena copy of the banner (if any)
+    jz .no_banner
+    mov rdi, [st_arena]
+    mov rsi, rbp
+    call arena_alloc
+    test rax, rax
+    jz .fail
+    mov [rsp+8], rax
+    mov rdi, rax
     mov rsi, rbx
-    mov edx, 128
+    mov rdx, rbp
     call mem_copy
+    mov rax, [rsp+8]
+    mov [set_banner_p], rax
+    mov [set_banner_l], rbp
+.no_banner:
+    mov rax, [rsp]
+    mov [set_title_p], rax
+    mov [set_title_l], r15
     mov byte [set_present], 1
     mov rdi, store_lock
     call wr_unlock
+    add rsp, 16
     xor eax, eax
     jmp .ret
 .fail:
     mov rdi, store_lock
     call wr_unlock
+    add rsp, 16
     mov rax, -1
 .ret:
     pop rbp
@@ -927,7 +970,8 @@ store_compact:
     mov esi, [set_ttl]
     mov rdx, [set_title_p]
     mov rcx, [set_title_l]
-    mov r8, set_hash
+    mov r8, [set_banner_p]
+    mov r9, [set_banner_l]
     call write_settings_locked
     test rax, rax
     jnz .undo
@@ -996,6 +1040,9 @@ path_tmp:   db 'data/store.tmp', 0
 file_hdr:   db 'BLG1'
             dd 1
             dq 0
+def_banner: db '*** WELCOME *** SERVED FRESH BY HAND-WRITTEN x86_64 ASSEMBLY '
+            db '*** NO JAVASCRIPT WAS HARMED IN THE MAKING OF THIS PAGE ***'
+def_banner_len equ $-def_banner
 
 section .bss
 
@@ -1009,6 +1056,8 @@ set_ppp:     resd 1
 set_ttl:     resd 1
 set_title_p: resq 1
 set_title_l: resq 1
+set_banner_p: resq 1
+set_banner_l: resq 1
 set_hash:    resb 128
 set_present: resb 1
 store_lock:  resd 1

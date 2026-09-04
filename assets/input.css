@@ -162,3 +162,17 @@ header .navlink:hover {
 .prose95 ul { list-style: square; margin: 0.75rem 0 0.75rem 1.5rem; }
 .prose95 ol { margin: 0.75rem 0 0.75rem 1.5rem; list-style: decimal; }
 .prose95 hr { border: 0; border-top: 2px inset #fff; margin: 1rem 0; }
+
+/* Flickr photo embeds: rendered as static, script-free figures */
+.flickr-embed {
+  margin: 1rem 0;
+  border: 3px inset #fff;
+  background: #000;
+  padding: 4px;
+}
+.flickr-embed img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}

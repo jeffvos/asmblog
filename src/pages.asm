@@ -22,6 +22,8 @@ extern posts_cnt
 extern set_ppp
 extern set_title_p
 extern set_title_l
+extern set_banner_p
+extern set_banner_l
 extern w_init
 extern w_ovf
 extern emit
@@ -170,6 +172,10 @@ page_list:
 .site_ok:
     mov [rsp+L_VALS+V_SITE*16], rax
     mov [rsp+L_VALS+V_SITE*16+8], rcx
+    mov rax, [set_banner_p]
+    mov [rsp+L_VALS+V_BANNER*16], rax
+    mov rax, [set_banner_l]
+    mov [rsp+L_VALS+V_BANNER*16+8], rax
 
     ; heading panel for tag/search pages
     cmp qword [rsp+L_MODE], 0
@@ -752,6 +758,10 @@ page_post:
 .site_ok:
     mov [rsp+Q_VALS+V_SITE*16], rax
     mov [rsp+Q_VALS+V_SITE*16+8], rcx
+    mov rax, [set_banner_p]
+    mov [rsp+Q_VALS+V_BANNER*16], rax
+    mov rax, [set_banner_l]
+    mov [rsp+Q_VALS+V_BANNER*16+8], rax
     ; title
     mov rax, [r15+P_TITLE_P]
     mov [rsp+Q_VALS+V_TITLE*16], rax

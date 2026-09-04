@@ -463,6 +463,8 @@ n_err:     db 'err'
 n_rows:    db 'rows'
 n_esite:   db 'esite'
 n_eppp:    db 'eppp'
+n_banner:  db 'banner'
+n_ebanner: db 'ebanner'
 
 align 8
 marker_names:                   ; {ptr, len, pad} triplets, indexed by id
@@ -487,6 +489,8 @@ marker_names:                   ; {ptr, len, pad} triplets, indexed by id
     dq n_rows, 4, 0
     dq n_esite, 5, 0
     dq n_eppp, 4, 0
+    dq n_banner, 6, 0
+    dq n_ebanner, 7, 0
 
 f_shell:    db 'templates/shell.html', 0
 f_card:     db 'templates/card.html', 0

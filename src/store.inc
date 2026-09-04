@@ -25,7 +25,9 @@
 %define FLAG_TOMBSTONE  2
 
 ; Settings payload: dword posts_per_page | dword session_ttl |
-;                   dword title_len | dword hash_len(128) | title | hash[128]
+;   dword title_len | dword banner_len | dword hash_len(128) |
+;   title | banner | hash[128]
+%define SET_HDR 20                 ; fixed prefix before the strings
 
 ; In-memory post struct (112 bytes, allocated from the store arena;
 ; string pointers point either into the loaded file image or into

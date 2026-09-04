@@ -25,6 +25,8 @@ extern store_find_by_id
 extern posts_cnt
 extern next_id
 extern set_ppp
+extern set_hash
+extern set_banner_l
 extern crypto_init
 extern crypto_hash_password
 extern crypto_verify_password
@@ -220,7 +222,7 @@ init_main:
     call print
     mov rdi, pw1_buf
     mov rsi, [pw1_len]
-    mov rdx, hash_buf
+    mov rdx, set_hash          ; stage the hash where the store reads it
     call crypto_hash_password
     test rax, rax
     jnz .hash_fail
@@ -229,7 +231,8 @@ init_main:
     mov esi, 86400              ; session ttl: 24h
     mov rdx, title_buf
     mov rcx, [title_len]
-    mov r8, hash_buf
+    xor r8d, r8d               ; no custom banner: keep the default
+    xor r9d, r9d
     call store_save_settings
     test rax, rax
     jnz .store_fail
@@ -402,11 +405,16 @@ selftest_main:
     CHECK je, 6
 
     ; 7: save settings (ppp 7)
+    mov rdi, set_hash          ; stage a fake hash for the store to persist
+    mov rsi, t_fakehash
+    mov edx, 128
+    call mem_copy
     mov edi, 7
     mov esi, 3600
     mov rdx, t_site
     mov ecx, t_site_len
-    mov r8, t_fakehash
+    mov r8, t_banner
+    mov r9, t_banner_len
     call store_save_settings
     test rax, rax
     CHECK jz, 7
@@ -421,6 +429,8 @@ selftest_main:
     cmp qword [next_id], 4
     CHECK je, 10
     cmp dword [set_ppp], 7
+    CHECK je, 11
+    cmp qword [set_banner_l], t_banner_len   ; banner survived reload
     CHECK je, 11
     mov edi, 1
     call store_find_by_id
@@ -673,6 +683,8 @@ t_html: db '<h1>Hi</h1><p>Body text.</p>'
 t_html_len equ $-t_html
 t_site: db 'Test Blog'
 t_site_len equ $-t_site
+t_banner: db 'welcome to the test banner'
+t_banner_len equ $-t_banner
 t_fakehash: times 128 db 'x'
 t_pw: db 'correct horse battery'
 t_pw_len equ $-t_pw

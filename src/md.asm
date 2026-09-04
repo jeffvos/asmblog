@@ -99,6 +99,25 @@ md_render:
     mov ebx, 5
     jmp .advance
 .not_fence:
+    ; --- Flickr embed: a pasted <a data-flickr-embed ...> line is
+    ; sanitized into a static, script-free <figure>. ---
+    cmp r15, FL_MARK_len
+    jb .not_flickr
+    mov rdi, r13
+    mov rsi, fl_marker
+    mov edx, FL_MARK_len
+    call bytes_eq
+    test eax, eax
+    jz .not_flickr
+    call close_block
+    mov rdi, r12
+    mov rsi, r13
+    mov rdx, r15
+    call flickr_render
+    test eax, eax
+    jz .not_flickr             ; not a valid embed: fall through to text
+    jmp .advance
+.not_flickr:
     ; --- headings ---
     cmp r15, 2
     jb .not_h
@@ -657,7 +676,236 @@ url_allowed:
     mov eax, 1
     ret
 
+; bytes_eq(a, b, len) -> 1/0 (local copy; mem_eq lives in util)
+bytes_eq:
+    test rdx, rdx
+    jz .y
+.l:
+    mov al, [rdi]
+    cmp al, [rsi]
+    jne .n
+    inc rdi
+    inc rsi
+    dec rdx
+    jnz .l
+.y:
+    mov eax, 1
+    ret
+.n:
+    xor eax, eax
+    ret
+
+; attr_val(hay_p, hay_l, needle_p, needle_l) -> rax=value ptr, rdx=value
+; len (span after needle up to the next '"'); rax=0 if needle absent.
+attr_val:
+    push r12
+    push r13
+    push r14
+    push r15
+    mov r12, rdi               ; hay
+    mov r13, rsi               ; hay len
+    mov r14, rdx               ; needle
+    mov r15, rcx               ; needle len
+    cmp r13, r15
+    jb .no
+    mov r8, r13
+    sub r8, r15                ; last valid start
+    xor r9d, r9d
+.outer:
+    cmp r9, r8
+    ja .no
+    xor r10d, r10d
+.inner:
+    cmp r10, r15
+    jae .hit
+    lea r11, [r9+r10]
+    mov al, [r12+r11]
+    cmp al, [r14+r10]
+    jne .next
+    inc r10
+    jmp .inner
+.next:
+    inc r9
+    jmp .outer
+.hit:
+    lea rax, [r9+r15]          ; value start index
+    mov rcx, rax               ; scan to closing quote
+.vq:
+    cmp rcx, r13
+    jae .no
+    cmp byte [r12+rcx], '"'
+    je .done
+    inc rcx
+    jmp .vq
+.done:
+    mov rdx, rcx
+    sub rdx, rax               ; value length
+    lea rax, [r12+rax]         ; value pointer
+    jmp .ret
+.no:
+    xor eax, eax
+    xor edx, edx
+.ret:
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    ret
+
+; host_ok(p, l, prefix_p, prefix_l) -> 1 if p starts with prefix
+host_ok:
+    cmp rsi, rcx
+    jb .no
+    mov rsi, rdx               ; prefix
+    mov rdx, rcx               ; len
+    call bytes_eq
+    ret
+.no:
+    xor eax, eax
+    ret
+
+; flickr_render(w, line_p, line_l) -> 1 handled / 0 not a valid embed.
+; Extracts href (Flickr photo page) and img src (staticflickr CDN),
+; validates both hosts, and emits a static, script-free figure. The
+; original <script> tag in the paste is simply ignored.
+flickr_render:
+    push r12
+    push r13
+    push r14
+    push r15
+    push rbx
+    push rbp
+    sub rsp, 40
+    mov r12, rdi               ; writer
+    mov r13, rsi               ; line
+    mov r14, rdx               ; line len
+    ; href="
+    mov rdi, r13
+    mov rsi, r14
+    mov rdx, fl_href
+    mov rcx, fl_href_len
+    call attr_val
+    test rax, rax
+    jz .no
+    mov [rsp], rax             ; href ptr
+    mov [rsp+8], rdx           ; href len
+    mov rdi, rax               ; validate host
+    mov rsi, rdx
+    mov rdx, fl_page_host
+    mov rcx, fl_page_host_len
+    call host_ok
+    test eax, eax
+    jnz .href_ok
+    mov rdi, [rsp]
+    mov rsi, [rsp+8]
+    mov rdx, fl_page_host2
+    mov rcx, fl_page_host2_len
+    call host_ok
+    test eax, eax
+    jz .no
+.href_ok:
+    ; src="
+    mov rdi, r13
+    mov rsi, r14
+    mov rdx, fl_src
+    mov rcx, fl_src_len
+    call attr_val
+    test rax, rax
+    jz .no
+    mov [rsp+16], rax          ; src ptr
+    mov [rsp+24], rdx          ; src len
+    mov rdi, rax
+    mov rsi, rdx
+    mov rdx, fl_img_host
+    mov rcx, fl_img_host_len
+    call host_ok
+    test eax, eax
+    jz .no
+    ; alt=" (optional)
+    mov rdi, r13
+    mov rsi, r14
+    mov rdx, fl_alt
+    mov rcx, fl_alt_len
+    call attr_val
+    mov [rsp+32], rax          ; alt ptr (may be 0)
+    mov rbx, rdx               ; alt len
+    ; --- emit the figure ---
+    mov rdi, r12
+    mov rsi, fl_o1             ; <figure...><a href="
+    mov edx, fl_o1_len
+    call emit
+    mov rdi, r12
+    mov rsi, [rsp]
+    mov rdx, [rsp+8]
+    call emit_esc              ; href, attribute-escaped
+    mov rdi, r12
+    mov rsi, fl_o2             ; " target=_blank rel=...><img src="
+    mov edx, fl_o2_len
+    call emit
+    mov rdi, r12
+    mov rsi, [rsp+16]
+    mov rdx, [rsp+24]
+    call emit_esc              ; src
+    mov rdi, r12
+    mov rsi, fl_o3             ; " alt="
+    mov edx, fl_o3_len
+    call emit
+    mov rax, [rsp+32]
+    test rax, rax
+    jz .noalt
+    mov rdi, r12
+    mov rsi, rax
+    mov rdx, rbx
+    call emit_esc              ; alt
+.noalt:
+    mov rdi, r12
+    mov rsi, fl_o4             ; " loading=lazy></a></figure>
+    mov edx, fl_o4_len
+    call emit
+    add rsp, 40
+    mov eax, 1
+    pop rbp
+    pop rbx
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    ret
+.no:
+    add rsp, 40
+    xor eax, eax
+    pop rbp
+    pop rbx
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    ret
+
 section .data
+
+fl_marker: db '<a data-flickr-embed'
+FL_MARK_len equ $-fl_marker
+fl_href: db 'href="'
+fl_href_len equ $-fl_href
+fl_src: db 'src="'
+fl_src_len equ $-fl_src
+fl_alt: db 'alt="'
+fl_alt_len equ $-fl_alt
+fl_page_host: db 'https://www.flickr.com/'
+fl_page_host_len equ $-fl_page_host
+fl_page_host2: db 'https://flickr.com/'
+fl_page_host2_len equ $-fl_page_host2
+fl_img_host: db 'https://live.staticflickr.com/'
+fl_img_host_len equ $-fl_img_host
+fl_o1: db '<figure class="flickr-embed"><a href="'
+fl_o1_len equ $-fl_o1
+fl_o2: db '" target="_blank" rel="noopener noreferrer"><img src="'
+fl_o2_len equ $-fl_o2
+fl_o3: db '" alt="'
+fl_o3_len equ $-fl_o3
+fl_o4: db '" loading="lazy"></a></figure>', 10
+fl_o4_len equ $-fl_o4
 
 t_p_o:  db '<p>'
 t_p_o_len equ $-t_p_o

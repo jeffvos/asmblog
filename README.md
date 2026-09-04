@@ -28,7 +28,25 @@ different set.
 The admin panel lives at `/admin` (log in with the password set by
 `blogd init`). It offers a post dashboard, a markdown editor with live
 preview and draft/publish, delete-with-confirm, and a settings page for
-the site title, posts-per-page, and password.
+the site title, posts-per-page, the scrolling banner message, and the
+password.
+
+### Embedding Flickr photos
+
+Paste a Flickr "embed" snippet as its own line in a post's markdown:
+
+```
+<a data-flickr-embed="true" href="https://www.flickr.com/photos/.../"><img src="https://live.staticflickr.com/.../..._b.jpg" alt="..."/></a><script async src="//embedr.flickr.com/assets/client-code.js"></script>
+```
+
+blogd extracts only the photo-page link and the image URL, verifies both
+are genuine Flickr hosts, and re-emits a **static, script-free** figure —
+the `<script>` is discarded and nothing is stored or proxied locally
+(the browser loads the image straight from Flickr's CDN, permitted by a
+narrow `img-src` CSP allowance). A snippet whose hosts don't match
+Flickr is left as escaped text, never rendered as a live tag. This is
+the only remote content the app allows, and it never relaxes
+`script-src 'none'`.
 
 Requires: `nasm`, GNU binutils, `libsodium-dev`, `curl` (tests only), and
 the Tailwind standalone CLI at `tools/tailwindcss` (gitignored; download

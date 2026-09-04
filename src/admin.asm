@@ -29,6 +29,8 @@ extern set_ppp
 extern set_ttl
 extern set_title_p
 extern set_title_l
+extern set_banner_p
+extern set_banner_l
 extern set_present
 extern set_hash
 extern store_find_by_id
@@ -78,7 +80,8 @@ global admin_route
 %define FI_ACTION    7
 %define FI_CSRF      8
 %define FI_PPP       9
-%define FIELD_N      10
+%define FI_BANNER    10
+%define FIELD_N      11
 
 ; frame
 %define A_VALS    0
@@ -137,6 +140,10 @@ admin_route:
 .site_ok:
     mov [rsp+A_VALS+V_SITE*16], rax
     mov [rsp+A_VALS+V_SITE*16+8], rcx
+    mov rax, [set_banner_p]     ; banner for the shell marquee
+    mov [rsp+A_VALS+V_BANNER*16], rax
+    mov rax, [set_banner_l]
+    mov [rsp+A_VALS+V_BANNER*16+8], rax
 
     ; session from the sid cookie
     mov qword [rsp+A_SESS], -1
@@ -777,6 +784,10 @@ admin_route:
     sub rax, rcx
     mov [rsp+A_VALS+V_EPPP*16], rcx
     mov [rsp+A_VALS+V_EPPP*16+8], rax
+    mov rax, [set_banner_p]     ; current banner into the form
+    mov [rsp+A_VALS+V_EBANNER*16], rax
+    mov rax, [set_banner_l]
+    mov [rsp+A_VALS+V_EBANNER*16+8], rax
     mov qword [rsp+A_VALS+V_TITLE*16], a_t_settings
     mov qword [rsp+A_VALS+V_TITLE*16+8], a_t_settings_len
     mov rdi, r12
@@ -806,10 +817,12 @@ admin_route:
     cmp rax, 50
     ja .st_err
     mov [rsp+A_ID], rax         ; borrow the slot for ppp
+    cmp qword [rsp+A_FLD+FI_BANNER*16+8], 200   ; banner bound
+    ja .st_err
     ; optional password change
     mov rax, [rsp+A_FLD+FI_PASSWORD*16+8]
     test rax, rax
-    jz .keep_hash
+    jz .save_settings          ; blank: keep the current [set_hash]
     cmp rax, 8
     jb .st_epw
     cmp rax, [rsp+A_FLD+FI_PASSWORD2*16+8]
@@ -826,15 +839,17 @@ admin_route:
     call crypto_hash_remote
     test rax, rax
     jnz .st_err
-    lea r8, [rsp+A_HASH]
-    jmp .save_settings
-.keep_hash:
-    mov r8, set_hash
+    lea rdi, set_hash          ; stage the new hash for the store to persist
+    lea rsi, [rsp+A_HASH]
+    mov edx, 128
+    call mem_copy
 .save_settings:
-    mov rdi, [rsp+A_ID]         ; ppp
+    mov rdi, [rsp+A_ID]        ; ppp
     mov esi, [set_ttl]
     mov rdx, [rsp+A_FLD+FI_TITLE*16]
     mov rcx, [rsp+A_FLD+FI_TITLE*16+8]
+    mov r8, [rsp+A_FLD+FI_BANNER*16]
+    mov r9, [rsp+A_FLD+FI_BANNER*16+8]
     call store_save_settings
     test rax, rax
     jnz .st_err
@@ -857,6 +872,10 @@ admin_route:
     mov [rsp+A_VALS+V_EPPP*16], rax
     mov rax, [rsp+A_FLD+FI_PPP*16+8]
     mov [rsp+A_VALS+V_EPPP*16+8], rax
+    mov rax, [rsp+A_FLD+FI_BANNER*16]
+    mov [rsp+A_VALS+V_EBANNER*16], rax
+    mov rax, [rsp+A_FLD+FI_BANNER*16+8]
+    mov [rsp+A_VALS+V_EBANNER*16+8], rax
     mov qword [rsp+A_VALS+V_TITLE*16], a_t_settings
     mov qword [rsp+A_VALS+V_TITLE*16+8], a_t_settings_len
     mov rdi, r12
@@ -1487,6 +1506,7 @@ n_fid:       db 'id'
 n_faction:   db 'action'
 n_fcsrf:     db 'csrf'
 n_fppp:      db 'ppp'
+n_fbanner:   db 'banner'
 
 align 8
 fld_names:                      ; {ptr, len, pad}, indexed by FI_*
@@ -1500,6 +1520,7 @@ fld_names:                      ; {ptr, len, pad}, indexed by FI_*
     dq n_faction, 6, 0
     dq n_fcsrf, 4, 0
     dq n_fppp, 3, 0
+    dq n_fbanner, 6, 0
 
 ; dashboard row fragments
 r_tr1: db '<tr class="border-t border-neutral-400"><td class="py-1 pr-2"><a class="postlink" href="/admin/edit/'

@@ -919,9 +919,10 @@ sec_headers:
  db 'X-Content-Type-Options: nosniff', 13, 10
  db 'X-Frame-Options: DENY', 13, 10
  db 'Referrer-Policy: no-referrer', 13, 10
- db "Content-Security-Policy: default-src 'self'; img-src 'self' data:; "
- db "style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; "
- db "frame-ancestors 'none'; form-action 'self'", 13, 10
+ db "Content-Security-Policy: default-src 'self'; "
+ db "img-src 'self' data: https://live.staticflickr.com; "
+ db "style-src 'self' 'unsafe-inline'; script-src 'none'; object-src 'none'; "
+ db "base-uri 'none'; frame-ancestors 'none'; form-action 'self'", 13, 10
 sec_headers_len equ $-sec_headers
 hdr_ka: db 'Connection: keep-alive', 13, 10
 hdr_ka_len equ $-hdr_ka

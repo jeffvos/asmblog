@@ -106,6 +106,21 @@ expect_code "save publishes a post"    303 -b "$JAR" --data-urlencode "csrf=$CSR
     --data-urlencode 'md=Hello **world** from [here](/about)' --data-urlencode action=publish "$A/admin/save"
 check "markdown rendered on public site"   bash -c "curl -s $A/post/smoke-post | grep -q '<strong>world</strong>'"
 check "hostile markdown stays escaped"     bash -c "P=\$(curl -s -b '$JAR' --data-urlencode csrf=$CSRF --data-urlencode 'md=[x](javascript:alert(1)) <script>' --data-urlencode title=t '$A/admin/preview'); echo \"\$P\" | grep -q '&lt;script&gt;' && ! echo \"\$P\" | grep -q 'href=\"javascript'"
+# configurable banner
+expect_code "settings save with banner" 303 -b "$JAR" --data-urlencode "csrf=$CSRF" \
+    --data-urlencode "title=Smoke Blog" --data-urlencode ppp=5 --data-urlencode "banner=CUSTOM-BANNER-XYZ" "$A/admin/settings"
+check "custom banner shows on the site"    bash -c "curl -s $A/ | grep -q 'CUSTOM-BANNER-XYZ'"
+# flickr embed: valid one renders static, script stripped; spoof rejected
+FL='<a data-flickr-embed="true" href="https://www.flickr.com/photos/x/1/"><img src="https://live.staticflickr.com/1/2_b.jpg" alt="pic"/></a><script src="//embedr.flickr.com/x.js"></script>'
+curl -s -b "$JAR" -o /dev/null --data-urlencode "csrf=$CSRF" --data-urlencode id=0 --data-urlencode "title=Pic" \
+    --data-urlencode slug=pic --data-urlencode tags=p --data-urlencode "md=$FL" --data-urlencode action=publish "$A/admin/save"
+check "flickr embed becomes static figure"  bash -c "curl -s $A/post/pic | grep -qF '<figure class=\"flickr-embed\">'"
+check "flickr script tag is stripped"       bash -c "! curl -s $A/post/pic | grep -q 'embedr.flickr.com'"
+check "flickr image host allowed by CSP"    bash -c "curl -s -D - -o /dev/null $A/ | grep -qi 'live.staticflickr.com'"
+FLBAD='<a data-flickr-embed="true" href="https://phish.example/"><img src="https://evil.com/x.jpg" alt="x"/></a>'
+curl -s -b "$JAR" -o /dev/null --data-urlencode "csrf=$CSRF" --data-urlencode id=0 --data-urlencode "title=Bad" \
+    --data-urlencode slug=badpic --data-urlencode tags=p --data-urlencode "md=$FLBAD" --data-urlencode action=publish "$A/admin/save"
+check "spoofed flickr host is rejected"     bash -c "! curl -s $A/post/badpic | grep -qF '<figure class=\"flickr-embed\">' && ! curl -s $A/post/badpic | grep -q 'evil.com/x.jpg\"'"
 expect_code "csrf mismatch is rejected" 400 -b "$JAR" -d "csrf=deadbeef&id=1" "$A/admin/delete"
 expect_code "logout works"             303 -b "$JAR" --data-urlencode "csrf=$CSRF" "$A/admin/logout"
 expect_code "session is gone after logout" 303 -b "$JAR" "$A/admin"
