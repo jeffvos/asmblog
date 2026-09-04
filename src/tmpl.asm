@@ -23,6 +23,7 @@ extern set_locale
 global w_init
 global emit
 global emit_esc
+global emit_json_esc
 global emit_u64
 global w_len
 global w_ovf
@@ -147,6 +148,87 @@ emit_esc:
     mov rsi, r15
     call emit
 .done:
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    ret
+
+; emit_json_esc(w, ptr, len) — JSON string body: escapes " and \, and
+; writes controls (< 0x20) plus '<' as \u00XX so the value is safe
+; inside a <script type="application/ld+json"> data block.
+emit_json_esc:
+    push r12
+    push r13
+    push r14
+    push r15
+    sub rsp, 8
+    mov r12, rdi
+    mov r13, rsi
+    lea r14, [rsi+rdx]
+    mov r15, rsi                ; run start
+.scan:
+    cmp r13, r14
+    jae .flush_end
+    mov al, [r13]
+    cmp al, '"'
+    je .special
+    cmp al, '\'
+    je .special
+    cmp al, '<'
+    je .special
+    cmp al, 0x20
+    jb .special
+    inc r13
+    jmp .scan
+.special:
+    mov rdx, r13
+    sub rdx, r15
+    jz .ent
+    mov rdi, r12
+    mov rsi, r15
+    call emit
+.ent:
+    mov al, [r13]
+    cmp al, '"'
+    je .bs
+    cmp al, '\'
+    jne .ctl
+.bs:
+    mov byte [rsp], '\'
+    mov [rsp+1], al
+    mov rdi, r12
+    mov rsi, rsp
+    mov edx, 2
+    call emit
+    jmp .adv
+.ctl:
+    mov dword [rsp], '\u00'
+    movzx eax, al
+    mov ecx, eax
+    shr ecx, 4
+    mov cl, [json_hex + rcx]
+    mov [rsp+4], cl
+    and eax, 15
+    mov cl, [json_hex + rax]
+    mov [rsp+5], cl
+    mov rdi, r12
+    mov rsi, rsp
+    mov edx, 6
+    call emit
+.adv:
+    inc r13
+    mov r15, r13
+    jmp .scan
+.flush_end:
+    mov rdx, r13
+    sub rdx, r15
+    jz .done
+    mov rdi, r12
+    mov rsi, r15
+    call emit
+.done:
+    add rsp, 8
     pop r15
     pop r14
     pop r13
@@ -445,6 +527,7 @@ ent_quot: db '&quot;'
 ent_quot_len equ $-ent_quot
 ent_apos: db '&#39;'
 ent_apos_len equ $-ent_apos
+json_hex: db '0123456789abcdef'
 
 n_site:    db 'site'
 n_title:   db 'title'

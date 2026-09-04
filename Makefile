@@ -21,6 +21,10 @@ css: static/main.css
 static/main.css: assets/input.css $(wildcard templates/*/*.html) tools/tailwindcss
 	tools/tailwindcss -i assets/input.css -o static/main.css --minify
 	gzip -9 -kf static/main.css
+	@command -v brotli >/dev/null 2>&1 && brotli -kf -q 11 static/main.css || true
+
+icons:
+	python3 tools/mkicons.py
 
 build:
 	mkdir -p build
@@ -44,6 +48,6 @@ image:
 	docker build -t blogd .
 
 clean:
-	rm -rf build static/main.css static/main.css.gz
+	rm -rf build static/main.css static/main.css.gz static/main.css.br
 
-.PHONY: all css run test fuzz image clean
+.PHONY: all css icons run test fuzz image clean

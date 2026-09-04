@@ -206,7 +206,11 @@ STR e_set,      'check the fields: title 1-120 chars, posts per page 1-50.', \
                 'revisa los campos: título 1-120 caracteres, entradas por página 1-50.'
 STR e_pw,       'passwords must match and be at least 8 characters.', \
                 'las contraseñas deben coincidir y tener al menos 8 caracteres.'
-STR count,      'since boot',      'desde el arranque'
+STR d_home,     'Latest posts from ', 'Últimas entradas de '
+STR d_tag,      'Posts tagged #',   'Entradas con la etiqueta #'
+STR d_on,       ' on ',             ' en '
+STR t_page,     ' · page ',         ' · página '
+STR t_searchq,  'search: ',         'búsqueda: '
 
 %macro ROW 1
     dq %1_en, %1_en_len, %1_es, %1_es_len
@@ -242,6 +246,10 @@ i18n_tbl:                       ; indexed by S_* id (order must match i18n.inc)
     ROW e_save
     ROW e_set
     ROW e_pw
-    ROW count
+    ROW d_home
+    ROW d_tag
+    ROW d_on
+    ROW t_page
+    ROW t_searchq
 
 section .note.GNU-stack noalloc noexec nowrite progbits

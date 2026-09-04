@@ -22,6 +22,7 @@ COPY Makefile ./
 COPY src ./src
 COPY assets ./assets
 COPY templates ./templates
+COPY static ./static
 COPY tests ./tests
 
 # Tailwind standalone CLI (musl build) for the CSS step

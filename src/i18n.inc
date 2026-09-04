@@ -30,4 +30,8 @@
 %define S_E_SAVE     25
 %define S_E_SET      26
 %define S_E_PW       27
-%define S_COUNT      28
+%define S_D_HOME     28         ; "Latest posts from "
+%define S_D_TAG      29         ; "Posts tagged #"
+%define S_D_ON       30         ; " on "
+%define S_T_PAGE     31         ; " · page "
+%define S_T_SEARCHQ  32         ; "search: "

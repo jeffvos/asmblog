@@ -27,8 +27,11 @@ extern theme_class
 extern page_list
 extern page_post
 extern page_feed
-extern page_css
+extern page_static
 extern page_hits
+extern page_robots
+extern page_sitemap
+extern page_manifest
 extern admin_route
 
 global http_handle
@@ -68,6 +71,7 @@ http_handle:
     mov qword [r12+CTX_HOST_L], 0
     mov qword [r12+CTX_LM], 0
     mov dword [r12+CTX_ETAG_L], 0   ; etag_l, cache, https, inm
+    mov byte [r12+CTX_VARY], 0
 
     ; request line ends at the first CR
     xor ebx, ebx
@@ -242,6 +246,17 @@ http_handle:
     mov edx, 3
     jmp .build
 .is_get:
+    ; one URL per page: a trailing slash redirects to the bare path
+    cmp r15, 1
+    jbe .no_slash
+    cmp byte [r14+r15-1], '/'
+    jne .no_slash
+    mov rdi, r12
+    mov rsi, r14
+    lea rdx, [r15-1]
+    call finish_301
+    jmp .fin
+.no_slash:
     ; validator for every public GET: generation + crc(host, path, query).
     ; Handlers answer 304 when the client already holds it.
     mov rdi, r12
@@ -290,33 +305,108 @@ http_handle:
     jmp .fin
 .r_css:
     cmp r15, 9
-    jne .r_css2
+    jne .r_static
     mov rdi, r14
     mov rsi, str_hits
     mov edx, 9
     call mem_eq
     test eax, eax
-    jz .r_css2
+    jz .r_static
     mov rdi, r12
     call page_hits
     jmp .fin
-.r_css2:
-    cmp r15, 16
-    jne .r_page
+.r_static:
+    cmp r15, 9                  ; "/static/x" minimum
+    jb .r_robots
     mov rdi, r14
-    mov rsi, str_css
-    mov edx, 16
+    mov rsi, str_staticp
+    mov edx, 8
     call mem_eq
     test eax, eax
-    jz .r_page                  ; a 16-char /post/ URL also lands here
-    ; versioned (?v=) requests are immutable; the bare URL revalidates hourly
-    mov byte [r12+CTX_CACHE], CACHE_HOUR
-    test rbp, rbp
-    jz .css_go
+    jz .r_fav
+    test rbp, rbp               ; ?v=<hash> requests are immutable;
+    jz .st_go                   ; page_static picks the default otherwise
     mov byte [r12+CTX_CACHE], CACHE_IMMUTABLE
-.css_go:
+.st_go:
     mov rdi, r12
-    call page_css
+    lea rsi, [r14+8]
+    lea rdx, [r15-8]
+    call page_static
+    jmp .fin
+.r_fav:
+    cmp r15, 12
+    jne .r_robots
+    mov rdi, r14
+    mov rsi, str_favicon
+    mov edx, 12
+    call mem_eq
+    test eax, eax
+    jz .r_sitemap
+    mov rdi, r12
+    lea rsi, [str_favicon+1]
+    mov edx, 11
+    call page_static
+    jmp .fin
+.r_robots:
+    cmp r15, 11
+    jne .r_sitemap
+    mov rdi, r14
+    mov rsi, str_robots
+    mov edx, 11
+    call mem_eq
+    test eax, eax
+    jz .r_sitemap
+    mov rdi, r12
+    call page_robots
+    jmp .fin
+.r_sitemap:
+    cmp r15, 12
+    jne .r_sitemap_n
+    mov rdi, r14
+    mov rsi, str_sitemap
+    mov edx, 12
+    call mem_eq
+    test eax, eax
+    jz .r_sitemap_n
+    mov rdi, r12
+    xor esi, esi
+    call page_sitemap
+    jmp .fin
+.r_sitemap_n:                   ; /sitemap-N.xml
+    cmp r15, 14
+    jb .r_manifest
+    mov rdi, r14
+    mov rsi, str_sitemapp
+    mov edx, 9
+    call mem_eq
+    test eax, eax
+    jz .r_manifest
+    lea rdi, [r14+r15-4]
+    mov rsi, str_dotxml
+    mov edx, 4
+    call mem_eq
+    test eax, eax
+    jz .r_manifest
+    lea rdi, [r14+9]
+    lea rsi, [r15-13]
+    call parse_dec
+    test rax, rax
+    jz .r404
+    mov rdi, r12
+    mov rsi, rax
+    call page_sitemap
+    jmp .fin
+.r_manifest:
+    cmp r15, 21
+    jne .r_page
+    mov rdi, r14
+    mov rsi, str_manifest
+    mov edx, 21
+    call mem_eq
+    test eax, eax
+    jz .r_page
+    mov rdi, r12
+    call page_manifest
     jmp .fin
 .r_page:
     cmp r15, 7                  ; "/page/N" minimum
@@ -332,6 +422,14 @@ http_handle:
     call parse_dec
     test rax, rax
     jz .r404
+    cmp rax, 1                  ; /page/1 is /
+    jne .pg_go
+    mov rdi, r12
+    mov rsi, str_root
+    mov edx, 1
+    call finish_301
+    jmp .fin
+.pg_go:
     mov rdi, r12
     mov rsi, rax
     xor edx, edx
@@ -424,6 +522,15 @@ http_handle:
     call valid_seg
     test eax, eax
     jz .r404
+    cmp qword [rsp+152], 1      ; /tag/x/page/1 is /tag/x
+    jne .tg_go
+    mov rdi, r12
+    mov rsi, r14
+    mov rdx, [rsp+136]
+    add rdx, 5
+    call finish_301
+    jmp .fin
+.tg_go:
     mov rdi, r12
     mov rsi, [rsp+152]
     mov rdx, [rsp+128]
@@ -1096,49 +1203,197 @@ inm_check:
     pop r12
     ret
 
-; scan_gzip(headers, len) -> 1 if Accept-Encoding mentions gzip
+; scan_gzip(headers, len) -> eax bitmask of accepted encodings: 1 gzip
+; (or x-gzip), 2 br. Tokenises Accept-Encoding and honours ;q=0.
 scan_gzip:
     push r12
     push r13
     push r14
-    mov r12, rdi
-    mov r13, rsi
-.line:
+    push r15
+    push rbx
+    push rbp
+    mov rdx, str_ae_lc
+    mov ecx, 16
+    call find_header
+    xor ebx, ebx                ; mask
+    test rax, rax
+    jz .done
+    mov r12, rax
+    mov r13, rdx
+.tok:
     test r13, r13
-    jz .no
-    xor r14d, r14d
-.findcr:
-    cmp r14, r13
-    jae .no
-    cmp byte [r12+r14], 13
-    je .have
-    inc r14
-    jmp .findcr
-.have:
-    cmp r14, 16
-    jb .advance
+    jz .done
+    mov al, [r12]
+    cmp al, ' '
+    je .skip1
+    cmp al, ','
+    je .skip1
+    cmp al, 9
+    jne .name
+.skip1:
+    inc r12
+    dec r13
+    jmp .tok
+.name:
+    xor ecx, ecx
+.ne:
+    cmp rcx, r13
+    jae .nend
+    mov al, [r12+rcx]
+    cmp al, ';'
+    je .nend
+    cmp al, ','
+    je .nend
+    cmp al, ' '
+    je .nend
+    inc rcx
+    jmp .ne
+.nend:
+    mov r14, rcx                ; name length
+    mov r15, rcx
+.te:
+    cmp r15, r13
+    jae .tend
+    cmp byte [r12+r15], ','
+    je .tend
+    inc r15
+    jmp .te
+.tend:                          ; token [r12, r12+r15), params after r14
+    mov ebp, 1                  ; accepted unless q=0
+    lea rdi, [r12+r14]
+    mov rsi, r15
+    sub rsi, r14
+.qs:
+    cmp rsi, 2
+    jb .qdone
+    mov al, [rdi]
+    or al, 0x20
+    cmp al, 'q'
+    jne .qn
+    cmp byte [rdi+1], '='
+    jne .qn
+    add rdi, 2
+    sub rsi, 2
+    jz .qdone
+    cmp byte [rdi], '0'
+    jne .qdone                  ; q starts 1..9: accepted
+.qv:                            ; zero unless a nonzero digit follows
+    inc rdi
+    dec rsi
+    jz .qzero
+    mov al, [rdi]
+    cmp al, '1'
+    jb .qv                      ; '0', '.'
+    cmp al, '9'
+    ja .qzero
+    jmp .qdone                  ; nonzero digit
+.qzero:
+    xor ebp, ebp
+    jmp .qdone
+.qn:
+    inc rdi
+    dec rsi
+    jmp .qs
+.qdone:
+    test ebp, ebp
+    jz .next
+    cmp r14, 4
+    jne .n_br
     mov rdi, r12
-    mov rsi, str_ae_lc
-    mov edx, 16
+    mov rsi, str_gzip_lc
+    mov edx, 4
     call ci_prefix
     test eax, eax
-    jz .advance
-    lea rdi, [r12+16]
-    lea rsi, [r14-16]
-    mov rdx, str_gzip_lc
-    mov ecx, 4
-    call ci_find
-    jmp .ret
-.advance:
-    lea rax, [r14+2]
-    cmp rax, r13
-    ja .no
-    add r12, rax
-    sub r13, rax
-    jmp .line
-.no:
-    xor eax, eax
-.ret:
+    jz .next
+    or ebx, 1
+    jmp .next
+.n_br:
+    cmp r14, 2
+    jne .n_xgzip
+    mov rdi, r12
+    mov rsi, str_br_lc
+    mov edx, 2
+    call ci_prefix
+    test eax, eax
+    jz .next
+    or ebx, 2
+    jmp .next
+.n_xgzip:
+    cmp r14, 6
+    jne .next
+    mov rdi, r12
+    mov rsi, str_xgzip_lc
+    mov edx, 6
+    call ci_prefix
+    test eax, eax
+    jz .next
+    or ebx, 1
+.next:
+    add r12, r15
+    sub r13, r15
+    jmp .tok
+.done:
+    mov eax, ebx
+    pop rbp
+    pop rbx
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    ret
+
+; finish_301(ctx, loc_p, loc_l) — permanent redirect, no body.
+finish_301:
+    push r12
+    push r13
+    push r14
+    push rbx
+    mov r12, rdi
+    mov r13, rsi
+    mov r14, rdx
+    lea rbx, [r12+CTX_OUT]
+    mov rdi, rbx
+    mov rsi, st301
+    mov edx, st301_len
+    call mem_copy
+    mov rdi, rax
+    mov rsi, hdr_server
+    mov edx, hdr_server_len
+    call mem_copy
+    mov rdi, rax
+    call emit_date_hdr
+    mov rdi, rax
+    mov rsi, sec_headers
+    mov edx, sec_headers_len
+    call mem_copy
+    cmp byte [r12+CTX_KEEP], 0
+    je .cl
+    mov rsi, hdr_ka
+    mov edx, hdr_ka_len
+    jmp .conn
+.cl:
+    mov rsi, hdr_cl
+    mov edx, hdr_cl_len
+.conn:
+    mov rdi, rax
+    call mem_copy
+    mov rdi, rax
+    mov rsi, hdr_loc
+    mov edx, hdr_loc_len
+    call mem_copy
+    mov rdi, rax
+    mov rsi, r13
+    mov rdx, r14
+    call mem_copy
+    mov rdi, rax
+    mov rsi, hdr_301_tail
+    mov edx, hdr_301_tail_len
+    call mem_copy
+    sub rax, rbx
+    mov [r12+CTX_OUT_LEN], rax
+    mov qword [r12+CTX_OUT_START], 0
+    mov qword [r12+CTX_OUT_SENT], 0
+    pop rbx
     pop r14
     pop r13
     pop r12
@@ -1332,7 +1587,14 @@ str_inm_lc:   db 'if-none-match:'
 str_health:   db '/health'
 str_feed:     db '/feed.xml'
 str_hits:     db '/hits.svg'
-str_css:      db '/static/main.css'
+str_staticp:  db '/static/'
+str_favicon:  db '/favicon.ico'
+str_robots:   db '/robots.txt'
+str_sitemap:  db '/sitemap.xml'
+str_sitemapp: db '/sitemap-'
+str_dotxml:   db '.xml'
+str_manifest: db '/manifest.webmanifest'
+str_root:     db '/'
 str_pagep:    db '/page/'
 str_postp:    db '/post/'
 str_tagp:     db '/tag/'
@@ -1342,6 +1604,8 @@ str_close_lc: db 'close'
 str_ka_lc:    db 'keep-alive'
 str_ae_lc:    db 'accept-encoding:'
 str_gzip_lc:  db 'gzip'
+str_xgzip_lc: db 'x-gzip'
+str_br_lc:    db 'br'
 
 st200: db 'HTTP/1.1 200 OK', 13, 10
 st200_len equ $-st200
@@ -1353,6 +1617,13 @@ st400: db 'HTTP/1.1 400 Bad Request', 13, 10
 st400_len equ $-st400
 st500: db 'HTTP/1.1 500 Internal Server Error', 13, 10
 st500_len equ $-st500
+st301: db 'HTTP/1.1 301 Moved Permanently', 13, 10
+st301_len equ $-st301
+hdr_loc: db 'Location: '
+hdr_loc_len equ $-hdr_loc
+hdr_301_tail: db 13, 10, 'Cache-Control: public, max-age=86400', 13, 10
+              db 'Content-Length: 0', 13, 10, 13, 10
+hdr_301_tail_len equ $-hdr_301_tail
 
 hdr_server: db 'Server: blogd/0.7', 13, 10
 hdr_server_len equ $-hdr_server

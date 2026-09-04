@@ -24,6 +24,7 @@ global civil
 global parse_dec
 global mem_copy
 global mem_eq
+global mem_find
 global u64_to_dec
 global parse_u64
 
@@ -121,6 +122,37 @@ mem_eq:
     jnz .loop
 .yes:
     mov eax, 1
+    ret
+.no:
+    xor eax, eax
+    ret
+
+; mem_find(hay, hlen, needle, nlen) -> rax = first match ptr, or 0.
+; Case-sensitive; an empty needle matches at hay.
+mem_find:
+    cmp rsi, rcx
+    jb .no
+    mov r8, rsi
+    sub r8, rcx                 ; last valid start offset
+    xor r9d, r9d
+.outer:
+    cmp r9, r8
+    ja .no
+    xor r10d, r10d
+.inner:
+    cmp r10, rcx
+    jae .yes
+    lea r11, [r9+r10]
+    mov al, [rdi+r11]
+    cmp al, [rdx+r10]
+    jne .next
+    inc r10
+    jmp .inner
+.next:
+    inc r9
+    jmp .outer
+.yes:
+    lea rax, [rdi+r9]
     ret
 .no:
     xor eax, eax

@@ -27,16 +27,20 @@ extern set_banner_p
 extern set_banner_l
 extern set_theme
 extern set_locale
+extern set_url
+extern set_url_l
 extern store_mtime
 extern crc32c
 extern put_hex
 extern fmt_httpdate
 extern emit_date_hdr
 extern inm_check
+extern mem_find
 extern w_init
 extern w_ovf
 extern emit
 extern emit_esc
+extern emit_json_esc
 extern emit_u64
 extern tmpl_render
 extern fmt_date
@@ -57,8 +61,11 @@ extern md_excerpt
 global page_list
 global page_post
 global page_feed
-global page_css
+global page_static
 global page_hits
+global page_robots
+global page_sitemap
+global page_manifest
 global load_static
 global hits_init
 global hits_p
@@ -91,7 +98,16 @@ global theme_class
 %define L_HEAD    (L_TW + 24)    ; 256
 %define L_NUM     (L_HEAD + 256) ; 32
 %define L_EXC     (L_NUM + 32)   ; 192 (excerpt cap 180)
-%define L_FRAME   ((L_EXC + 192 + 15) & -16)
+%define L_TITLE   (L_EXC + 192)  ; 256 (composed page title)
+%define L_FRAME   ((L_TITLE + 256 + 15) & -16)
+
+; EMITS literal[, writer-reg] — emit a .data literal (label + _len)
+%macro EMITS 1-2 r12
+    mov rdi, %2
+    mov rsi, %1
+    mov edx, %1_len
+    call emit
+%endmacro
 
 section .text
 
@@ -333,6 +349,10 @@ page_list:
     mov rax, [rsp+L_PAGE]
     cmp rax, 1
     jbe .no_newer
+    lea rdi, [rsp+L_W]
+    mov rsi, s_pgr_prev
+    mov edx, s_pgr_prev_len
+    call emit
     mov edi, S_NEWER
     call i18n_get
     mov r8, rax
@@ -347,6 +367,10 @@ page_list:
     mov rax, [rsp+L_PAGE]
     cmp rax, [rsp+L_NPAGES]
     jae .no_older
+    lea rdi, [rsp+L_W]
+    mov rsi, s_pgr_next
+    mov edx, s_pgr_next_len
+    call emit
     mov edi, S_OLDER
     call i18n_get
     mov r8, rax
@@ -373,6 +397,21 @@ page_list:
     mov rcx, [rsp+L_W]
     sub rcx, rax
     mov [rsp+L_VALS+V_CONTENT*16+8], rcx
+    ; <head> block, appended to the scratch region after the content
+    mov rax, [rsp+L_W]
+    mov [rsp+L_VALS+V_META*16], rax
+    lea rdi, [rsp+L_W]
+    mov rsi, r12
+    mov rdx, rsp
+    call meta_list
+    mov rax, [rsp+L_W]
+    sub rax, [rsp+L_VALS+V_META*16]
+    mov [rsp+L_VALS+V_META*16+8], rax
+    lea rdi, [rsp+L_W]
+    call w_ovf
+    test eax, eax
+    jnz .fail500
+    ; title: "home", "home · page N", "#tag", "search: q"
     mov rax, [rsp+L_MODE]
     cmp rax, 1
     je .t_tag
@@ -380,19 +419,48 @@ page_list:
     je .t_search
     mov edi, S_T_HOME
     call i18n_get
-    mov rcx, rdx
-    jmp .t_set
-.t_tag:
-    mov rax, [rsp+L_TAGP]
-    mov rcx, [rsp+L_TAGL]
-    jmp .t_set
-.t_search:
-    mov edi, S_T_SEARCH
+    lea rdi, [rsp+L_TITLE]
+    mov rsi, rax
+    call mem_copy
+    cmp qword [rsp+L_PAGE], 1
+    jbe .t_fin
+    push rax
+    mov edi, S_T_PAGE
     call i18n_get
-    mov rcx, rdx
-.t_set:
-    mov [rsp+L_VALS+V_TITLE*16], rax
-    mov [rsp+L_VALS+V_TITLE*16+8], rcx
+    pop rdi
+    mov rsi, rax
+    call mem_copy
+    mov rdi, [rsp+L_PAGE]
+    mov rsi, rax
+    call u64_to_dec
+    jmp .t_fin
+.t_tag:
+    lea rdi, [rsp+L_TITLE]
+    mov byte [rdi], '#'
+    inc rdi
+    mov rsi, [rsp+L_TAGP]
+    mov rdx, [rsp+L_TAGL]
+    call mem_copy
+    jmp .t_fin
+.t_search:
+    mov edi, S_T_SEARCHQ
+    call i18n_get
+    lea rdi, [rsp+L_TITLE]
+    mov rsi, rax
+    call mem_copy
+    mov rsi, [rsp+L_QP]
+    mov rdx, [rsp+L_QL]
+    cmp rdx, 100
+    jbe .t_q
+    mov edx, 100
+.t_q:
+    mov rdi, rax
+    call mem_copy
+.t_fin:
+    lea rcx, [rsp+L_TITLE]
+    sub rax, rcx
+    mov [rsp+L_VALS+V_TITLE*16], rcx
+    mov [rsp+L_VALS+V_TITLE*16+8], rax
     ; echo the query back into the search box (escaped by renderer)
     mov rax, [rsp+L_QP]
     test rax, rax
@@ -461,59 +529,62 @@ page_list:
     pop r12
     ret
 
-; pager_link(w, tag_p, tag_l, n, label_p, label_l)
-pager_link:
+; list_path(w, tag_p, tag_l, page) — the canonical path of a list page:
+; "/", "/page/N", "/tag/x", "/tag/x/page/N" (page 1 never says /page/1)
+list_path:
     push r12
     push r13
     push r14
     push r15
-    push rbx
-    push rbp
     mov r12, rdi
     mov r13, rsi
     mov r14, rdx
     mov r15, rcx
-    mov rbx, r8
-    mov rbp, r9
-    mov rdi, r12
-    mov rsi, s_pgr_a
-    mov edx, s_pgr_a_len
-    call emit
     test r14, r14
-    jz .base
-    mov rdi, r12
-    mov rsi, s_tagbase
-    mov edx, s_tagbase_len
-    call emit
+    jz .notag
+    EMITS s_tagbase
     mov rdi, r12
     mov rsi, r13
     mov rdx, r14
     call emit
-.base:
-    mov rdi, r12
-    mov rsi, s_pagebase
-    mov edx, s_pagebase_len
-    call emit
+    cmp r15, 1
+    jbe .done
+    jmp .paged
+.notag:
+    cmp r15, 1
+    ja .paged
+    EMITS s_slash
+    jmp .done
+.paged:
+    EMITS s_pagebase
     mov rdi, r12
     mov rsi, r15
     call emit_u64
-    mov rdi, r12
-    mov rsi, s_pgr_b
-    mov edx, s_pgr_b_len
-    call emit
+.done:
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    ret
+
+; pager_link(w, tag_p, tag_l, n, label_p, label_l) — the caller has
+; already opened the anchor up to href="; this emits path">label</a>
+pager_link:
+    push r12
+    push rbx
+    push rbp
+    mov r12, rdi
+    mov rbx, r8
+    mov rbp, r9
+    call list_path
+    EMITS s_pgr_b
     mov rdi, r12
     mov rsi, rbx
     mov rdx, rbp
     call emit
-    mov rdi, r12
-    mov rsi, s_pgr_c
-    mov edx, s_pgr_c_len
-    call emit
+    EMITS s_pgr_c
     pop rbp
     pop rbx
-    pop r15
-    pop r14
-    pop r13
     pop r12
     ret
 
@@ -716,7 +787,8 @@ build_tags_html:
 %define Q_TAGB  (Q_DATE + 32)
 %define Q_TW    (Q_TAGB + 512)
 %define Q_NUM   (Q_TW + 24)
-%define Q_FRAME ((Q_NUM + 32 + 15) & -16)
+%define Q_DESC  (Q_NUM + 32)    ; 192 (meta description, cap 160)
+%define Q_FRAME ((Q_DESC + 192 + 15) & -16)
 
 ; page_post(ctx, slug_p, slug_l)
 page_post:
@@ -811,6 +883,27 @@ page_post:
     mov rcx, [rsp+Q_W]
     sub rcx, rax
     mov [rsp+Q_VALS+V_CONTENT*16+8], rcx
+    ; <head> block after the content: description from the markdown
+    lea rdi, [rsp+Q_DESC]
+    mov esi, 160
+    mov rdx, [r15+P_MD_P]
+    mov rcx, [r15+P_MD_L]
+    call md_excerpt
+    mov r8, rax
+    mov rax, [rsp+Q_W]
+    mov [rsp+Q_VALS+V_META*16], rax
+    lea rdi, [rsp+Q_W]
+    mov rsi, r12
+    mov rdx, r15
+    lea rcx, [rsp+Q_DESC]
+    call meta_post
+    mov rax, [rsp+Q_W]
+    sub rax, [rsp+Q_VALS+V_META*16]
+    mov [rsp+Q_VALS+V_META*16+8], rax
+    lea rdi, [rsp+Q_W]
+    call w_ovf
+    test eax, eax
+    jnz .fail500
     lea rdi, [rsp+Q_BW]
     lea rsi, [r12+CTX_OUT+CTX_BODY_OFF]
     lea rdx, [r12+CTX_OUT+CTX_BODY_END]
@@ -872,7 +965,9 @@ page_post:
 %define F_EXC   56              ; 192 (excerpt cap 180)
 %define F_FRAME 256
 
-; page_feed(ctx) — Atom, latest 20 published posts
+; page_feed(ctx) — Atom, latest 20 published posts. Links are absolute
+; when the site URL (or Host) is known; ids stay the stable tag: URIs
+; so configuring the URL later never duplicates entries in readers.
 page_feed:
     push r12
     push r13
@@ -890,38 +985,54 @@ page_feed:
     lea rsi, [r12+CTX_OUT+CTX_BODY_OFF]
     lea rdx, [r12+CTX_OUT+CTX_BODY_END]
     call w_init
-    lea rdi, [rsp+F_W]
-    mov rsi, a_head1
-    mov edx, a_head1_len
+    lea rbx, [rsp+F_W]          ; writer for EMITS
+    EMITS a_head1, rbx          ; <?xml ...><feed ... xml:lang="
+    mov rsi, a_lang_en
+    mov edx, a_lang_en_len
+    cmp dword [set_locale], 1
+    jne .lang
+    mov rsi, a_lang_es
+    mov edx, a_lang_es_len
+.lang:
+    mov rdi, rbx
     call emit
-    ; site title
-    mov rsi, [set_title_p]
-    mov rdx, [set_title_l]
-    test rdx, rdx
-    jnz .site_ok
-    mov rsi, def_site
-    mov edx, def_site_len
-.site_ok:
-    lea rdi, [rsp+F_W]
+    EMITS a_head1b, rbx         ; "><title>
+    call site_name
+    mov rdi, rbx
+    mov rsi, rax
     call emit_esc
-    lea rdi, [rsp+F_W]
-    mov rsi, a_head2
-    mov edx, a_head2_len
-    call emit
-    xor edi, edi
-    mov eax, SYS_time
-    syscall
-    mov rdi, rax
+    EMITS a_head2, rbx          ; </title><link rel="alternate" ... href="
+    mov rdi, rbx
+    mov rsi, r12
+    call emit_base
+    EMITS a_head2b, rbx         ; /"/><link rel="self" ... href="
+    mov rdi, rbx
+    mov rsi, r12
+    call emit_base
+    EMITS a_head2c, rbx         ; /feed.xml"/><id>tag:blogd:feed</id><updated>
+    mov rdi, [store_mtime]
     lea rsi, [rsp+F_DATE]
     call fmt_datetime
-    lea rdi, [rsp+F_W]
+    mov rdi, rbx
     lea rsi, [rsp+F_DATE]
     mov edx, 20
     call emit
-    lea rdi, [rsp+F_W]
-    mov rsi, a_head3
-    mov edx, a_head3_len
-    call emit
+    EMITS a_head3, rbx          ; </updated><author><name>
+    call site_name
+    mov rdi, rbx
+    mov rsi, rax
+    call emit_esc
+    EMITS a_head3b, rbx         ; </name></author><generator>...</generator>
+    mov rdi, r12
+    call have_base
+    test eax, eax
+    jz .noicon
+    EMITS a_icon, rbx           ; <icon>
+    mov rdi, rbx
+    mov rsi, r12
+    call emit_base
+    EMITS a_icon2, rbx          ; /static/icon-192.png</icon>
+.noicon:
     xor r13d, r13d              ; index
     xor r14d, r14d              ; emitted
 .loop:
@@ -933,44 +1044,50 @@ page_feed:
     mov r15, [rax+r13*8]
     test qword [r15+P_FLAGS], FLAG_PUBLISHED
     jz .next
-    lea rdi, [rsp+F_W]
-    mov rsi, a_e1               ; <entry><title>
-    mov edx, a_e1_len
-    call emit
-    lea rdi, [rsp+F_W]
+    EMITS a_e1, rbx             ; <entry><title>
+    mov rdi, rbx
     mov rsi, [r15+P_TITLE_P]
     mov rdx, [r15+P_TITLE_L]
     call emit_esc
-    lea rdi, [rsp+F_W]
-    mov rsi, a_e2               ; </title><link href="/post/
-    mov edx, a_e2_len
-    call emit
-    lea rdi, [rsp+F_W]
+    EMITS a_e2, rbx             ; </title><link rel="alternate" type="text/html" href="
+    mov rdi, rbx
+    mov rsi, r12
+    call emit_base
+    EMITS m_postp, rbx          ; /post/
+    mov rdi, rbx
     mov rsi, [r15+P_SLUG_P]
     mov rdx, [r15+P_SLUG_L]
     call emit
-    lea rdi, [rsp+F_W]
-    mov rsi, a_e3               ; "/><id>tag:blogd:post-
-    mov edx, a_e3_len
-    call emit
-    lea rdi, [rsp+F_W]
+    EMITS a_e3, rbx             ; "/><id>tag:blogd:post-
+    mov rdi, rbx
     mov rsi, [r15+P_ID]
     call emit_u64
-    lea rdi, [rsp+F_W]
-    mov rsi, a_e4               ; </id><updated>
-    mov edx, a_e4_len
-    call emit
-    mov rdi, [r15+P_UPDATED]
+    EMITS a_e4, rbx             ; </id><published>
+    mov rdi, [r15+P_CREATED]
     lea rsi, [rsp+F_DATE]
     call fmt_datetime
-    lea rdi, [rsp+F_W]
+    mov rdi, rbx
     lea rsi, [rsp+F_DATE]
     mov edx, 20
     call emit
-    lea rdi, [rsp+F_W]
-    mov rsi, a_e5               ; </updated><summary>
-    mov edx, a_e5_len
+    EMITS a_e4b, rbx            ; </published><updated>
+    mov rdi, [r15+P_UPDATED]
+    lea rsi, [rsp+F_DATE]
+    call fmt_datetime
+    mov rdi, rbx
+    lea rsi, [rsp+F_DATE]
+    mov edx, 20
     call emit
+    EMITS a_e5, rbx             ; </updated>
+    mov rdi, rbx                ; <category term="tag"/> per tag
+    mov rsi, [r15+P_TAGS_P]
+    mov rdx, [r15+P_TAGS_L]
+    mov rcx, a_cat
+    mov r8, a_cat_len
+    mov r9, a_cat_c
+    mov r10d, a_cat_c_len
+    call emit_tag_list
+    EMITS a_e5b, rbx            ; <summary type="text">
     lea rdi, [rsp+F_EXC]        ; plain-text summary, same rules as cards
     mov esi, 180
     mov rdx, [r15+P_MD_P]
@@ -978,21 +1095,25 @@ page_feed:
     call md_excerpt
     mov rdx, rax
     lea rsi, [rsp+F_EXC]
-    lea rdi, [rsp+F_W]
+    mov rdi, rbx
     call emit_esc
-    lea rdi, [rsp+F_W]
-    mov rsi, a_e6               ; </summary></entry>
-    mov edx, a_e6_len
-    call emit
+    EMITS a_e6, rbx             ; </summary>
+    cmp qword [r15+P_HTML_L], 16384   ; full content for normal-sized posts
+    ja .nocontent
+    EMITS a_e7, rbx             ; <content type="html">
+    mov rdi, rbx
+    mov rsi, [r15+P_HTML_P]
+    mov rdx, [r15+P_HTML_L]
+    call emit_esc
+    EMITS a_e7b, rbx            ; </content>
+.nocontent:
+    EMITS a_e8, rbx             ; </entry>
     inc r14
 .next:
     inc r13
     jmp .loop
 .tail:
-    lea rdi, [rsp+F_W]
-    mov rsi, a_tail
-    mov edx, a_tail_len
-    call emit
+    EMITS a_tail, rbx
     mov rax, [store_mtime]
     mov [r12+CTX_LM], rax
     mov rdi, store_lock
@@ -1029,33 +1150,96 @@ page_feed:
     pop r12
     ret
 
-; ---- static css --------------------------------------------------------
+; ---- static assets ------------------------------------------------------
+; A fixed table of files under static/, loaded once at boot with their
+; optional .gz/.br siblings (pre-compressed at build time). Each variant
+; carries a strong ETag (crc32c of the bytes served).
+%define ST_PATH   0             ; cstr "static/<name>"
+%define ST_NAME   8             ; -> name part of ST_PATH
+%define ST_NLEN   16
+%define ST_CT     24            ; Content-Type header ptr/len
+%define ST_CTL    32
+%define ST_CACHE  40            ; default cache mode when unversioned
+%define ST_P      48            ; plain
+%define ST_L      56
+%define ST_GZP    64
+%define ST_GZL    72
+%define ST_BRP    80
+%define ST_BRL    88
+%define ST_CRC    96            ; dword x3: plain, gz, br
+%define ST_SIZE   112
+%define NSTATIC   6
 
-; page_css(ctx) — the stylesheet, gzip when accepted, with a strong
-; ETag (crc32c of the bytes served); CTX_CACHE was set by the router.
-page_css:
+; page_static(ctx, name_p, name_l)
+page_static:
     push r12
     push r13
     push r14
+    push r15
     push rbx
     push rbp
     mov r12, rdi
-    mov r13, [css_p]
-    mov r14, [css_l]
-    test r13, r13
-    jz .missing
+    xor ecx, ecx
+.find:
+    cmp rcx, NSTATIC
+    jae .missing
+    imul rax, rcx, ST_SIZE
+    lea r13, [static_tbl + rax]
+    cmp rdx, [r13+ST_NLEN]
+    jne .next
+    push rcx
+    push rsi
+    push rdx
+    mov rdi, rsi
+    mov rsi, [r13+ST_NAME]
+    call mem_eq
+    pop rdx
+    pop rsi
+    pop rcx
+    test eax, eax
+    jnz .found
+.next:
+    inc rcx
+    jmp .find
+.found:
+    mov r14, [r13+ST_P]
+    test r14, r14
+    jz .missing                 ; file absent at boot
+    mov r15, [r13+ST_L]
     xor ebx, ebx                ; extra headers (Content-Encoding)
     xor ebp, ebp
-    mov eax, [css_crc]
+    mov eax, [r13+ST_CRC]
+    cmp byte [r12+CTX_CACHE], 0
+    jne .cache_ok
+    mov rcx, [r13+ST_CACHE]
+    mov [r12+CTX_CACHE], cl
+.cache_ok:
+    cmp qword [r13+ST_GZL], 0
+    jne .negotiable
+    cmp qword [r13+ST_BRL], 0
+    je .chosen
+.negotiable:
+    mov byte [r12+CTX_VARY], 1
+    test byte [r12+CTX_GZIP], 2
+    jz .try_gz
+    cmp qword [r13+ST_BRL], 0
+    je .try_gz
+    mov r14, [r13+ST_BRP]
+    mov r15, [r13+ST_BRL]
+    mov rbx, x_br
+    mov ebp, x_br_len
+    mov eax, [r13+ST_CRC+8]
+    jmp .chosen
+.try_gz:
     test byte [r12+CTX_GZIP], 1
     jz .chosen
-    cmp qword [css_gz_l], 0
+    cmp qword [r13+ST_GZL], 0
     je .chosen
-    mov r13, [css_gz_p]
-    mov r14, [css_gz_l]
+    mov r14, [r13+ST_GZP]
+    mov r15, [r13+ST_GZL]
     mov rbx, x_gzip
     mov ebp, x_gzip_len
-    mov eax, [css_gz_crc]
+    mov eax, [r13+ST_CRC+4]
 .chosen:
     lea rsi, [r12+CTX_ETAG]
     mov byte [rsi], '"'
@@ -1069,17 +1253,17 @@ page_css:
     call inm_check
     test eax, eax
     jnz .notmod
-    lea rax, [r14+CTX_BODY_OFF+4096]
+    lea rax, [r15+CTX_BODY_OFF+4096]
     cmp rax, CTX_BODY_END
     ja .toobig
     lea rdi, [r12+CTX_OUT+CTX_BODY_OFF]
-    mov rsi, r13
-    mov rdx, r14
+    mov rsi, r14
+    mov rdx, r15
     call mem_copy
     mov rdi, r12
-    mov rsi, r14
-    mov rdx, ct_css
-    mov ecx, ct_css_len
+    mov rsi, r15
+    mov rdx, [r13+ST_CT]
+    mov rcx, [r13+ST_CTL]
     mov r8, rbx
     mov r9, rbp
     call finish_page
@@ -1100,10 +1284,799 @@ page_css:
 .done:
     pop rbp
     pop rbx
+    pop r15
     pop r14
     pop r13
     pop r12
     ret
+
+; ---- robots.txt / sitemap / manifest -------------------------------------
+
+; page_robots(ctx)
+page_robots:
+    push r12
+    push rbx
+    sub rsp, 32
+    mov r12, rdi
+    mov byte [r12+CTX_CACHE], CACHE_REVALIDATE
+    cmp byte [r12+CTX_INM], 0
+    jne .notmod
+    mov rdi, rsp
+    lea rsi, [r12+CTX_OUT+CTX_BODY_OFF]
+    lea rdx, [r12+CTX_OUT+CTX_BODY_END]
+    call w_init
+    mov rbx, rsp
+    EMITS rb_txt, rbx
+    mov rdi, r12
+    call have_base
+    test eax, eax
+    jz .nomap
+    EMITS rb_sitemap, rbx
+    mov rdi, rbx
+    mov rsi, r12
+    call emit_base
+    EMITS rb_sitemap2, rbx
+.nomap:
+    lea rsi, [r12+CTX_OUT+CTX_BODY_OFF]
+    mov rax, [rsp]
+    sub rax, rsi
+    mov rdi, r12
+    mov rsi, rax
+    mov rdx, ct_text
+    mov ecx, ct_text_len
+    xor r8d, r8d
+    xor r9d, r9d
+    call finish_page
+    jmp .done
+.notmod:
+    mov rdi, r12
+    call finish_304
+.done:
+    add rsp, 32
+    pop rbx
+    pop r12
+    ret
+
+; page_manifest(ctx) — web app manifest named after the site
+page_manifest:
+    push r12
+    push rbx
+    sub rsp, 32
+    mov r12, rdi
+    mov byte [r12+CTX_CACHE], CACHE_REVALIDATE
+    cmp byte [r12+CTX_INM], 0
+    jne .notmod
+    mov rdi, rsp
+    lea rsi, [r12+CTX_OUT+CTX_BODY_OFF]
+    lea rdx, [r12+CTX_OUT+CTX_BODY_END]
+    call w_init
+    mov rbx, rsp
+    EMITS mf_1, rbx             ; {"name":"
+    call site_name
+    mov rdi, rbx
+    mov rsi, rax
+    call emit_json_esc
+    EMITS mf_2, rbx             ; ","short_name":"
+    call site_name
+    mov rdi, rbx
+    mov rsi, rax
+    call emit_json_esc
+    mov rsi, mf_3_retro
+    mov edx, mf_3_retro_len
+    cmp dword [set_theme], 1
+    jne .colours
+    mov rsi, mf_3_sucre
+    mov edx, mf_3_sucre_len
+.colours:
+    mov rdi, rbx
+    call emit                   ; ","start_url":"/",...colours...,"icons":[...]}
+    lea rsi, [r12+CTX_OUT+CTX_BODY_OFF]
+    mov rax, [rsp]
+    sub rax, rsi
+    mov rdi, r12
+    mov rsi, rax
+    mov rdx, ct_manifest
+    mov ecx, ct_manifest_len
+    xor r8d, r8d
+    xor r9d, r9d
+    call finish_page
+    jmp .done
+.notmod:
+    mov rdi, r12
+    call finish_304
+.done:
+    add rsp, 32
+    pop rbx
+    pop r12
+    ret
+
+%define SM_PER 500              ; posts per sitemap file
+
+; page_sitemap(ctx, n) — n = 0: /sitemap.xml (a urlset, or a sitemap
+; index when there are more than SM_PER published posts); n >= 1:
+; /sitemap-n.xml, the n-th slice. Needs the absolute site URL.
+page_sitemap:
+    push r12
+    push r13
+    push r14
+    push r15
+    push rbx
+    push rbp
+    sub rsp, 64                 ; [0..24) writer, [24] post idx, [32..64) date
+    mov r12, rdi
+    mov r13, rsi
+    mov byte [r12+CTX_CACHE], CACHE_FEED
+    mov rdi, r12
+    call have_base
+    test eax, eax
+    jz .notfound
+    cmp byte [r12+CTX_INM], 0
+    jne .notmod
+    mov rdi, store_lock
+    call rd_lock
+    xor r14d, r14d              ; published count
+    xor ecx, ecx
+.count:
+    cmp rcx, [posts_cnt]
+    jae .counted
+    mov rax, [posts_arr]
+    mov rax, [rax+rcx*8]
+    test qword [rax+P_FLAGS], FLAG_PUBLISHED
+    jz .cnext
+    inc r14
+.cnext:
+    inc rcx
+    jmp .count
+.counted:
+    mov rdi, rsp
+    lea rsi, [r12+CTX_OUT+CTX_BODY_OFF]
+    lea rdx, [r12+CTX_OUT+CTX_BODY_END]
+    call w_init
+    mov rbx, rsp
+    test r13, r13
+    jnz .slice
+    cmp r14, SM_PER
+    ja .index
+    mov r13d, 1                 ; everything fits in one urlset
+.slice:
+    lea rax, [r13-1]
+    imul r15, rax, SM_PER       ; first published index in this slice
+    lea rbp, [r15+SM_PER]       ; one past the last
+    cmp r13, 1
+    je .in_range
+    cmp r15, r14
+    jae .notfound_unlock
+.in_range:
+    EMITS sm_open, rbx
+    cmp r13, 1
+    jne .posts
+    EMITS sm_url_o, rbx
+    mov rdi, rbx
+    mov rsi, r12
+    call emit_base
+    EMITS s_slash, rbx
+    EMITS sm_lastmod, rbx
+    mov rdi, [store_mtime]
+    lea rsi, [rsp+32]
+    call fmt_datetime
+    mov rdi, rbx
+    lea rsi, [rsp+32]
+    mov edx, 20
+    call emit
+    EMITS sm_url_c, rbx
+.posts:
+    xor r14d, r14d              ; published index seen so far
+    mov qword [rsp+24], 0
+.ploop:
+    mov rcx, [rsp+24]
+    cmp rcx, [posts_cnt]
+    jae .close
+    cmp r14, rbp
+    jae .close
+    mov rax, [posts_arr]
+    mov r13, [rax+rcx*8]
+    inc qword [rsp+24]
+    test qword [r13+P_FLAGS], FLAG_PUBLISHED
+    jz .ploop
+    inc r14
+    cmp r14, r15
+    jbe .ploop                  ; before this slice
+    EMITS sm_url_o, rbx
+    mov rdi, rbx
+    mov rsi, r12
+    call emit_base
+    EMITS m_postp, rbx
+    mov rdi, rbx
+    mov rsi, [r13+P_SLUG_P]
+    mov rdx, [r13+P_SLUG_L]
+    call emit
+    EMITS sm_lastmod, rbx
+    mov rdi, [r13+P_UPDATED]
+    lea rsi, [rsp+32]
+    call fmt_datetime
+    mov rdi, rbx
+    lea rsi, [rsp+32]
+    mov edx, 20
+    call emit
+    EMITS sm_url_c, rbx
+    jmp .ploop
+.close:
+    EMITS sm_close, rbx
+    jmp .finish
+.index:
+    EMITS si_open, rbx
+    lea rax, [r14+SM_PER-1]
+    xor edx, edx
+    mov ecx, SM_PER
+    div rcx
+    mov r15, rax                ; number of slices
+    mov r13d, 1
+.iloop:
+    cmp r13, r15
+    ja .iend
+    EMITS si_item_o, rbx
+    mov rdi, rbx
+    mov rsi, r12
+    call emit_base
+    EMITS si_path, rbx
+    mov rdi, rbx
+    mov rsi, r13
+    call emit_u64
+    EMITS si_item_c, rbx
+    inc r13
+    jmp .iloop
+.iend:
+    EMITS si_close, rbx
+.finish:
+    mov rax, [store_mtime]
+    mov [r12+CTX_LM], rax
+    mov rdi, store_lock
+    call rd_unlock
+    mov rdi, rbx
+    call w_ovf
+    test eax, eax
+    jnz .fail500
+    lea rsi, [r12+CTX_OUT+CTX_BODY_OFF]
+    mov rax, [rsp]
+    sub rax, rsi
+    mov rdi, r12
+    mov rsi, rax
+    mov rdx, ct_xml
+    mov ecx, ct_xml_len
+    xor r8d, r8d
+    xor r9d, r9d
+    call finish_page
+    jmp .done
+.notmod:
+    mov rdi, r12
+    call finish_304
+    jmp .done
+.notfound_unlock:
+    mov rdi, store_lock
+    call rd_unlock
+.notfound:
+    mov rdi, r12
+    mov esi, 2
+    call build_page
+    jmp .done
+.fail500:
+    mov rdi, r12
+    mov esi, 5
+    call build_page
+.done:
+    add rsp, 64
+    pop rbp
+    pop rbx
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    ret
+
+; ---- <head> metadata ------------------------------------------------------
+
+; site_name() -> rax = ptr, rdx = len (site title or the default)
+site_name:
+    mov rax, [set_title_p]
+    mov rdx, [set_title_l]
+    test rdx, rdx
+    jnz .ok
+    mov rax, def_site
+    mov edx, def_site_len
+.ok:
+    ret
+
+; have_base(ctx) -> 1 if an absolute site URL can be emitted
+have_base:
+    cmp qword [set_url_l], 0
+    jne .yes
+    cmp qword [rdi+CTX_HOST_L], 0
+    jne .yes
+    xor eax, eax
+    ret
+.yes:
+    mov eax, 1
+    ret
+
+; emit_base(w, ctx) — the site origin: the configured URL, else the
+; request's scheme (X-Forwarded-Proto) + validated Host; nothing if
+; neither is known. No trailing slash.
+emit_base:
+    push r12
+    push r13
+    mov r12, rdi
+    mov r13, rsi
+    mov rdx, [set_url_l]
+    test rdx, rdx
+    jz .host
+    mov rsi, set_url
+    call emit
+    jmp .done
+.host:
+    mov rdx, [r13+CTX_HOST_L]
+    test rdx, rdx
+    jz .done
+    mov rsi, s_http
+    mov edx, s_http_len
+    cmp byte [r13+CTX_HTTPS], 0
+    je .scheme
+    mov rsi, s_https
+    mov edx, s_https_len
+.scheme:
+    mov rdi, r12
+    call emit
+    mov rdi, r12
+    mov rsi, [r13+CTX_HOST_P]
+    mov rdx, [r13+CTX_HOST_L]
+    call emit
+.done:
+    pop r13
+    pop r12
+    ret
+
+; emit_tag_list(w, tags_p, tags_l, open_p, open_l, close_p, r10 = close_l)
+; For every non-empty comma-separated tag: open, escaped tag, close.
+emit_tag_list:
+    push r12
+    push r13
+    push r14
+    push r15
+    push rbx
+    push rbp
+    sub rsp, 8
+    mov [rsp], r10              ; close length
+    mov r12, rdi
+    mov r13, rsi
+    mov r14, rdx
+    mov r15, rcx
+    mov rbx, r8
+    mov rbp, r9
+.seg:
+    test r14, r14
+    jz .done
+    xor ecx, ecx
+.fc:
+    cmp rcx, r14
+    jae .have
+    cmp byte [r13+rcx], ','
+    je .have
+    inc rcx
+    jmp .fc
+.have:
+    test rcx, rcx
+    jz .adv
+    push rcx
+    mov rdi, r12
+    mov rsi, r15
+    mov rdx, rbx
+    call emit
+    mov rdi, r12
+    mov rsi, r13
+    mov rdx, [rsp]
+    call emit_esc
+    mov rdi, r12
+    mov rsi, rbp
+    mov rdx, [rsp+8]
+    call emit
+    pop rcx
+.adv:
+    lea rax, [rcx+1]
+    cmp rax, r14
+    ja .done
+    add r13, rax
+    sub r14, rax
+    jmp .seg
+.done:
+    add rsp, 8
+    pop rbp
+    pop rbx
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    ret
+
+; og_common(w, ctx) — og:site_name and og:locale
+og_common:
+    push r12
+    mov r12, rdi
+    EMITS m_ogsite
+    call site_name
+    mov rdi, r12
+    mov rsi, rax
+    call emit_esc
+    EMITS m_end
+    EMITS m_oglocale
+    mov rsi, m_loc_en
+    mov edx, m_loc_en_len
+    cmp dword [set_locale], 1
+    jne .loc
+    mov rsi, m_loc_es
+    mov edx, m_loc_es_len
+.loc:
+    mov rdi, r12
+    call emit
+    EMITS m_end
+    pop r12
+    ret
+
+; meta_post(w, ctx, post, desc_p, desc_l) — the <head> block for a post:
+; description, canonical, Open Graph / Twitter card, article times and
+; tags, and a BlogPosting JSON-LD data block. Absolute-URL fields are
+; omitted when no site URL is known; og:image is the first Flickr photo
+; in the post, else the site card (which needs the absolute URL).
+meta_post:
+    push r12
+    push r13
+    push r14
+    push r15
+    push rbx
+    push rbp
+    sub rsp, 48                 ; [0..32) datetime, [32] img ptr, [40] img len
+    mov r12, rdi
+    mov r13, rsi
+    mov r14, rdx
+    mov r15, rcx
+    mov rbx, r8
+    EMITS m_desc
+    mov rdi, r12
+    mov rsi, r15
+    mov rdx, rbx
+    call emit_esc
+    EMITS m_end
+    mov rdi, r13
+    call have_base
+    test eax, eax
+    jz .nocanon
+    EMITS m_canon
+    call .posturl
+    EMITS m_end
+    EMITS m_ogurl
+    call .posturl
+    EMITS m_end
+.nocanon:
+    EMITS m_ogarticle
+    EMITS m_ogtitle
+    mov rdi, r12
+    mov rsi, [r14+P_TITLE_P]
+    mov rdx, [r14+P_TITLE_L]
+    call emit_esc
+    EMITS m_end
+    EMITS m_ogdesc
+    mov rdi, r12
+    mov rsi, r15
+    mov rdx, rbx
+    call emit_esc
+    EMITS m_end
+    mov rdi, r12
+    mov rsi, r13
+    call og_common
+    mov qword [rsp+32], 0
+    mov rdi, [r14+P_HTML_P]
+    mov rsi, [r14+P_HTML_L]
+    mov rdx, m_flhost
+    mov ecx, m_flhost_len
+    call mem_find
+    test rax, rax
+    jz .noflickr
+    mov [rsp+32], rax
+    mov rcx, [r14+P_HTML_P]
+    add rcx, [r14+P_HTML_L]
+    mov rdx, rax
+.imglen:                        ; up to the closing quote
+    cmp rdx, rcx
+    jae .imgend
+    cmp byte [rdx], '"'
+    je .imgend
+    inc rdx
+    jmp .imglen
+.imgend:
+    sub rdx, rax
+    mov [rsp+40], rdx
+    EMITS m_ogimage
+    mov rdi, r12
+    mov rsi, [rsp+32]
+    mov rdx, [rsp+40]
+    call emit_esc
+    EMITS m_end
+    EMITS m_twlarge
+    jmp .times
+.noflickr:
+    mov rdi, r13
+    call have_base
+    test eax, eax
+    jz .twsmall
+    EMITS m_ogimage
+    mov rdi, r12
+    mov rsi, r13
+    call emit_base
+    EMITS m_ogpng
+    EMITS m_end
+    EMITS m_twlarge
+    jmp .times
+.twsmall:
+    EMITS m_twsmall
+.times:
+    EMITS m_pub
+    mov rdi, [r14+P_CREATED]
+    mov rsi, rsp
+    call fmt_datetime
+    mov rdi, r12
+    mov rsi, rsp
+    mov edx, 20
+    call emit
+    EMITS m_end
+    EMITS m_mod
+    mov rdi, [r14+P_UPDATED]
+    mov rsi, rsp
+    call fmt_datetime
+    mov rdi, r12
+    mov rsi, rsp
+    mov edx, 20
+    call emit
+    EMITS m_end
+    mov rdi, r12
+    mov rsi, [r14+P_TAGS_P]
+    mov rdx, [r14+P_TAGS_L]
+    mov rcx, m_ogtag
+    mov r8, m_ogtag_len
+    mov r9, m_end
+    mov r10d, m_end_len
+    call emit_tag_list
+    ; JSON-LD
+    EMITS j_post1
+    mov rdi, r12
+    mov rsi, [r14+P_TITLE_P]
+    mov rdx, [r14+P_TITLE_L]
+    call emit_json_esc
+    EMITS j_desc
+    mov rdi, r12
+    mov rsi, r15
+    mov rdx, rbx
+    call emit_json_esc
+    EMITS j_pub
+    mov rdi, [r14+P_CREATED]
+    mov rsi, rsp
+    call fmt_datetime
+    mov rdi, r12
+    mov rsi, rsp
+    mov edx, 20
+    call emit
+    EMITS j_mod
+    mov rdi, [r14+P_UPDATED]
+    mov rsi, rsp
+    call fmt_datetime
+    mov rdi, r12
+    mov rsi, rsp
+    mov edx, 20
+    call emit
+    mov rdi, r13
+    call have_base
+    test eax, eax
+    jz .jnourl
+    EMITS j_url
+    call .posturl
+    EMITS j_main
+    call .posturl
+.jnourl:
+    cmp qword [rsp+32], 0
+    je .jimg_default
+    EMITS j_img
+    mov rdi, r12
+    mov rsi, [rsp+32]
+    mov rdx, [rsp+40]
+    call emit_json_esc
+    jmp .jauthor
+.jimg_default:
+    mov rdi, r13
+    call have_base
+    test eax, eax
+    jz .jauthor
+    EMITS j_img
+    mov rdi, r12
+    mov rsi, r13
+    call emit_base
+    EMITS m_ogpng
+.jauthor:
+    EMITS j_author
+    call site_name
+    mov rdi, r12
+    mov rsi, rax
+    call emit_json_esc
+    EMITS j_publisher
+    call site_name
+    mov rdi, r12
+    mov rsi, rax
+    call emit_json_esc
+    EMITS j_end
+    add rsp, 48
+    pop rbp
+    pop rbx
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    ret
+.posturl:                       ; base + /post/ + slug
+    mov rdi, r12
+    mov rsi, r13
+    call emit_base
+    EMITS m_postp
+    mov rdi, r12
+    mov rsi, [r14+P_SLUG_P]
+    mov rdx, [r14+P_SLUG_L]
+    call emit
+    ret
+
+; meta_list(w, ctx, frame) — the <head> block for list pages; frame is
+; page_list's stack frame (L_MODE, L_TAGP/L, L_PAGE, L_NPAGES).
+; Search results are noindex; the front page also carries a WebSite
+; JSON-LD block with the search action.
+meta_list:
+    push r12
+    push r13
+    push r14
+    push r15
+    push rbx
+    mov r12, rdi
+    mov r13, rsi
+    mov r14, rdx
+    cmp qword [r14+L_MODE], 2
+    jne .indexable
+    EMITS m_noindex
+    jmp .done
+.indexable:
+    EMITS m_desc
+    call .desc
+    EMITS m_end
+    mov rdi, r13
+    call have_base
+    test eax, eax
+    jz .nocanon
+    EMITS m_canon
+    call .listurl_abs
+    EMITS m_end
+    EMITS m_ogurl
+    call .listurl_abs
+    EMITS m_end
+.nocanon:
+    mov rax, [r14+L_PAGE]
+    cmp rax, 1
+    jbe .noprev
+    EMITS m_prev
+    mov rcx, [r14+L_PAGE]
+    dec rcx
+    call .listpath_n
+    EMITS m_end
+.noprev:
+    mov rax, [r14+L_PAGE]
+    cmp rax, [r14+L_NPAGES]
+    jae .nonext
+    EMITS m_next
+    mov rcx, [r14+L_PAGE]
+    inc rcx
+    call .listpath_n
+    EMITS m_end
+.nonext:
+    EMITS m_ogwebsite
+    EMITS m_ogtitle
+    call .ogtitle
+    EMITS m_end
+    EMITS m_ogdesc
+    call .desc
+    EMITS m_end
+    mov rdi, r12
+    mov rsi, r13
+    call og_common
+    mov rdi, r13
+    call have_base
+    test eax, eax
+    jz .twsmall
+    EMITS m_ogimage
+    mov rdi, r12
+    mov rsi, r13
+    call emit_base
+    EMITS m_ogpng
+    EMITS m_end
+    EMITS m_twlarge
+    cmp qword [r14+L_MODE], 0
+    jne .done
+    cmp qword [r14+L_PAGE], 1
+    jne .done
+    EMITS j_site1
+    call site_name
+    mov rdi, r12
+    mov rsi, rax
+    call emit_json_esc
+    EMITS j_site2
+    mov rdi, r12
+    mov rsi, r13
+    call emit_base
+    EMITS j_site3
+    mov rdi, r12
+    mov rsi, r13
+    call emit_base
+    EMITS j_site4
+    jmp .done
+.twsmall:
+    EMITS m_twsmall
+.done:
+    pop rbx
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    ret
+.desc:                          ; "Latest posts from SITE" / "Posts tagged #x on SITE"
+    cmp qword [r14+L_MODE], 1
+    je .desc_tag
+    mov edi, S_D_HOME
+    call i18n_get
+    mov rdi, r12
+    mov rsi, rax
+    call emit
+    jmp .desc_site
+.desc_tag:
+    mov edi, S_D_TAG
+    call i18n_get
+    mov rdi, r12
+    mov rsi, rax
+    call emit
+    mov rdi, r12
+    mov rsi, [r14+L_TAGP]
+    mov rdx, [r14+L_TAGL]
+    call emit_esc
+    mov edi, S_D_ON
+    call i18n_get
+    mov rdi, r12
+    mov rsi, rax
+    call emit
+.desc_site:
+    call site_name
+    mov rdi, r12
+    mov rsi, rax
+    call emit_esc
+    ret
+.ogtitle:                       ; SITE, or "#tag · SITE"
+    cmp qword [r14+L_MODE], 1
+    jne .desc_site
+    EMITS s_hash
+    mov rdi, r12
+    mov rsi, [r14+L_TAGP]
+    mov rdx, [r14+L_TAGL]
+    call emit_esc
+    EMITS s_dot
+    jmp .desc_site
+.listurl_abs:
+    mov rdi, r12
+    mov rsi, r13
+    call emit_base
+    mov rcx, [r14+L_PAGE]
+.listpath_n:                    ; rcx = page number
+    mov rdi, r12
+    mov rsi, [r14+L_TAGP]
+    mov rdx, [r14+L_TAGL]
+    jmp list_path
 
 ; page_hits(ctx) — the visitor counter as a tiny no-store SVG, so the
 ; HTML pages stay byte-stable (and therefore cacheable). GET bumps the
@@ -1262,47 +2235,106 @@ hits_init:
     pop r12
     ret
 
-; load_static() -> 0 / -1. main.css required, main.css.gz optional.
-; Also derives the stylesheet version (crc32c) used for cache busting.
+; path_sfx(dst, path_cstr, sfx_cstr) — dst = path + sfx, NUL-terminated
+path_sfx:
+.p:
+    mov al, [rsi]
+    test al, al
+    jz .s
+    mov [rdi], al
+    inc rdi
+    inc rsi
+    jmp .p
+.s:
+    mov al, [rdx]
+    mov [rdi], al
+    inc rdi
+    inc rdx
+    test al, al
+    jnz .s
+    ret
+
+; load_static() -> 0 / -1. Loads every table entry (main.css required,
+; the rest optional) plus .gz/.br siblings, records crc32c validators,
+; and derives the stylesheet version token for cache busting.
 load_static:
     push r12
+    push r13
+    push r14
+    sub rsp, 64                 ; sibling path scratch
     mov edi, 0x100000
     call arena_create
     test rax, rax
     jz .fail
     mov r12, rax
-    mov rdi, f_css
+    xor r13d, r13d
+.ent:
+    cmp r13, NSTATIC
+    jae .ok
+    imul rax, r13, ST_SIZE
+    lea r14, [static_tbl + rax]
+    mov rdi, [r14+ST_PATH]
     mov rsi, r12
-    mov rdx, css_p
-    mov rcx, css_l
+    lea rdx, [r14+ST_P]
+    lea rcx, [r14+ST_L]
     call load_file
     test rax, rax
-    jnz .fail
-    mov rdi, [css_p]
-    mov rsi, [css_l]
+    jz .loaded
+    test r13, r13
+    jz .fail                    ; main.css is required
+    jmp .nextent
+.loaded:
+    mov rdi, [r14+ST_P]
+    mov rsi, [r14+ST_L]
     call crc32c
-    mov [css_crc], eax
-    mov edi, eax
+    mov [r14+ST_CRC], eax
+    mov rdi, rsp
+    mov rsi, [r14+ST_PATH]
+    mov rdx, sfx_gz
+    call path_sfx
+    mov rdi, rsp
+    mov rsi, r12
+    lea rdx, [r14+ST_GZP]
+    lea rcx, [r14+ST_GZL]
+    call load_file
+    test rax, rax
+    jnz .nogz
+    mov rdi, [r14+ST_GZP]
+    mov rsi, [r14+ST_GZL]
+    call crc32c
+    mov [r14+ST_CRC+4], eax
+.nogz:
+    mov rdi, rsp
+    mov rsi, [r14+ST_PATH]
+    mov rdx, sfx_br
+    call path_sfx
+    mov rdi, rsp
+    mov rsi, r12
+    lea rdx, [r14+ST_BRP]
+    lea rcx, [r14+ST_BRL]
+    call load_file
+    test rax, rax
+    jnz .nextent
+    mov rdi, [r14+ST_BRP]
+    mov rsi, [r14+ST_BRL]
+    call crc32c
+    mov [r14+ST_CRC+8], eax
+.nextent:
+    inc r13
+    jmp .ent
+.ok:
+    mov edi, [static_tbl + ST_CRC]  ; main.css version token
     mov rsi, css_ver
     mov edx, 8
     call put_hex
-    mov rdi, f_cssgz
-    mov rsi, r12
-    mov rdx, css_gz_p
-    mov rcx, css_gz_l
-    call load_file              ; optional: ignore failure
-    test rax, rax
-    jnz .ok
-    mov rdi, [css_gz_p]
-    mov rsi, [css_gz_l]
-    call crc32c
-    mov [css_gz_crc], eax
-.ok:
     xor eax, eax
-    pop r12
-    ret
+    jmp .ret
 .fail:
     mov rax, -1
+.ret:
+    add rsp, 64
+    pop r14
+    pop r13
     pop r12
     ret
 
@@ -1424,19 +2456,16 @@ resp_headers:
     mov r12, rsi
     movzx eax, byte [r12+CTX_CACHE]
     test eax, eax
-    jz .etag
+    jz .vary_chk
     shl eax, 4
     mov rsi, [cc_tbl + rax]
     mov rdx, [cc_tbl + rax + 8]
     mov rdi, rbx
     call mem_copy
     mov rbx, rax
-    movzx eax, byte [r12+CTX_CACHE]
-    cmp eax, CACHE_IMMUTABLE
-    je .vary
-    cmp eax, CACHE_HOUR
-    jne .etag
-.vary:
+.vary_chk:
+    cmp byte [r12+CTX_VARY], 0
+    je .etag
     mov rdi, rbx
     mov rsi, s_vary
     mov edx, s_vary_len
@@ -1642,13 +2671,25 @@ s_theme_retro_len equ $-s_theme_retro
 s_theme_sucre: db 'theme-sucre'
 s_theme_sucre_len equ $-s_theme_sucre
 s_posturl: db '/post/'
+s_slash: db '/'
+s_slash_len equ 1
+s_hash: db '#'
+s_hash_len equ 1
+s_dot: db ' ', 0xC2, 0xB7, ' '        ; " · "
+s_dot_len equ $-s_dot
+s_http: db 'http://'
+s_http_len equ $-s_http
+s_https: db 'https://'
+s_https_len equ $-s_https
 
 s_pgr_open: db '<div class="pager">'
 s_pgr_open_len equ $-s_pgr_open
 s_pgr_close: db '</div>'
 s_pgr_close_len equ $-s_pgr_close
-s_pgr_a: db '<a class="pglink" href="'
-s_pgr_a_len equ $-s_pgr_a
+s_pgr_prev: db '<a class="pglink" rel="prev" href="'
+s_pgr_prev_len equ $-s_pgr_prev
+s_pgr_next: db '<a class="pglink" rel="next" href="'
+s_pgr_next_len equ $-s_pgr_next
 s_tagbase: db '/tag/'
 s_tagbase_len equ $-s_tagbase
 s_pagebase: db '/page/'
@@ -1658,6 +2699,131 @@ s_pgr_b_len equ $-s_pgr_b
 s_pgr_c: db '</a> '
 s_pgr_c_len equ $-s_pgr_c
 
+; <head> metadata fragments (m_end closes an attribute-valued tag)
+m_end: db '">', 10
+m_end_len equ $-m_end
+m_desc: db '<meta name="description" content="'
+m_desc_len equ $-m_desc
+m_noindex: db '<meta name="robots" content="noindex,follow">', 10
+m_noindex_len equ $-m_noindex
+m_canon: db '<link rel="canonical" href="'
+m_canon_len equ $-m_canon
+m_prev: db '<link rel="prev" href="'
+m_prev_len equ $-m_prev
+m_next: db '<link rel="next" href="'
+m_next_len equ $-m_next
+m_ogarticle: db '<meta property="og:type" content="article">', 10
+m_ogarticle_len equ $-m_ogarticle
+m_ogwebsite: db '<meta property="og:type" content="website">', 10
+m_ogwebsite_len equ $-m_ogwebsite
+m_ogtitle: db '<meta property="og:title" content="'
+m_ogtitle_len equ $-m_ogtitle
+m_ogdesc: db '<meta property="og:description" content="'
+m_ogdesc_len equ $-m_ogdesc
+m_ogurl: db '<meta property="og:url" content="'
+m_ogurl_len equ $-m_ogurl
+m_ogsite: db '<meta property="og:site_name" content="'
+m_ogsite_len equ $-m_ogsite
+m_oglocale: db '<meta property="og:locale" content="'
+m_oglocale_len equ $-m_oglocale
+m_loc_en: db 'en_US'
+m_loc_en_len equ $-m_loc_en
+m_loc_es: db 'es_BO'
+m_loc_es_len equ $-m_loc_es
+m_ogimage: db '<meta property="og:image" content="'
+m_ogimage_len equ $-m_ogimage
+m_ogpng: db '/static/og.png'
+m_ogpng_len equ $-m_ogpng
+m_twlarge: db '<meta name="twitter:card" content="summary_large_image">', 10
+m_twlarge_len equ $-m_twlarge
+m_twsmall: db '<meta name="twitter:card" content="summary">', 10
+m_twsmall_len equ $-m_twsmall
+m_pub: db '<meta property="article:published_time" content="'
+m_pub_len equ $-m_pub
+m_mod: db '<meta property="article:modified_time" content="'
+m_mod_len equ $-m_mod
+m_ogtag: db '<meta property="article:tag" content="'
+m_ogtag_len equ $-m_ogtag
+m_postp: db '/post/'
+m_postp_len equ $-m_postp
+m_flhost: db 'https://live.staticflickr.com/'
+m_flhost_len equ $-m_flhost
+
+; JSON-LD (a data block: not a script, so script-src 'none' still holds)
+j_post1: db '<script type="application/ld+json">{"@context":"https://schema.org",'
+         db '"@type":"BlogPosting","headline":"'
+j_post1_len equ $-j_post1
+j_desc: db '","description":"'
+j_desc_len equ $-j_desc
+j_pub: db '","datePublished":"'
+j_pub_len equ $-j_pub
+j_mod: db '","dateModified":"'
+j_mod_len equ $-j_mod
+j_url: db '","url":"'
+j_url_len equ $-j_url
+j_main: db '","mainEntityOfPage":"'
+j_main_len equ $-j_main
+j_img: db '","image":"'
+j_img_len equ $-j_img
+j_author: db '","author":{"@type":"Person","name":"'
+j_author_len equ $-j_author
+j_publisher: db '"},"publisher":{"@type":"Organization","name":"'
+j_publisher_len equ $-j_publisher
+j_end: db '"}}</script>', 10
+j_end_len equ $-j_end
+j_site1: db '<script type="application/ld+json">{"@context":"https://schema.org",'
+         db '"@type":"WebSite","name":"'
+j_site1_len equ $-j_site1
+j_site2: db '","url":"'
+j_site2_len equ $-j_site2
+j_site3: db '/","potentialAction":{"@type":"SearchAction","target":"'
+j_site3_len equ $-j_site3
+j_site4: db '/search?q={search_term_string}","query-input":"required name=search_term_string"}}</script>', 10
+j_site4_len equ $-j_site4
+
+; robots.txt / sitemap / manifest
+rb_txt: db 'User-agent: *', 10, 'Disallow: /admin', 10, 'Disallow: /search', 10
+        db 'Disallow: /hits.svg', 10
+rb_txt_len equ $-rb_txt
+rb_sitemap: db 'Sitemap: '
+rb_sitemap_len equ $-rb_sitemap
+rb_sitemap2: db '/sitemap.xml', 10
+rb_sitemap2_len equ $-rb_sitemap2
+sm_open: db '<?xml version="1.0" encoding="utf-8"?>', 10
+         db '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">', 10
+sm_open_len equ $-sm_open
+sm_url_o: db '<url><loc>'
+sm_url_o_len equ $-sm_url_o
+sm_lastmod: db '</loc><lastmod>'
+sm_lastmod_len equ $-sm_lastmod
+sm_url_c: db '</lastmod></url>', 10
+sm_url_c_len equ $-sm_url_c
+sm_close: db '</urlset>', 10
+sm_close_len equ $-sm_close
+si_open: db '<?xml version="1.0" encoding="utf-8"?>', 10
+         db '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">', 10
+si_open_len equ $-si_open
+si_item_o: db '<sitemap><loc>'
+si_item_o_len equ $-si_item_o
+si_path: db '/sitemap-'
+si_path_len equ $-si_path
+si_item_c: db '.xml</loc></sitemap>', 10
+si_item_c_len equ $-si_item_c
+si_close: db '</sitemapindex>', 10
+si_close_len equ $-si_close
+mf_1: db '{"name":"'
+mf_1_len equ $-mf_1
+mf_2: db '","short_name":"'
+mf_2_len equ $-mf_2
+mf_3_retro: db '","start_url":"/","display":"minimal-ui","background_color":"#000080",'
+            db '"theme_color":"#000080","icons":[{"src":"/static/icon-192.png","sizes":"192x192",'
+            db '"type":"image/png"},{"src":"/static/icon-512.png","sizes":"512x512","type":"image/png"}]}', 10
+mf_3_retro_len equ $-mf_3_retro
+mf_3_sucre: db '","start_url":"/","display":"minimal-ui","background_color":"#f4ecdd",'
+            db '"theme_color":"#a0522d","icons":[{"src":"/static/icon-192.png","sizes":"192x192",'
+            db '"type":"image/png"},{"src":"/static/icon-512.png","sizes":"512x512","type":"image/png"}]}', 10
+mf_3_sucre_len equ $-mf_3_sucre
+
 s_tag_a: db '<a class="tag" href="/tag/'
 s_tag_a_len equ $-s_tag_a
 s_tag_b: db '">#'
@@ -1666,25 +2832,54 @@ s_tag_c: db '</a> '
 s_tag_c_len equ $-s_tag_c
 
 a_head1: db '<?xml version="1.0" encoding="utf-8"?>', 10
-         db '<feed xmlns="http://www.w3.org/2005/Atom"><title>'
+         db '<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="'
 a_head1_len equ $-a_head1
-a_head2: db '</title><link href="/"/><link rel="self" href="/feed.xml"/>'
-         db '<id>tag:blogd:feed</id><updated>'
+a_lang_en: db 'en'
+a_lang_en_len equ $-a_lang_en
+a_lang_es: db 'es-BO'
+a_lang_es_len equ $-a_lang_es
+a_head1b: db '"><title>'
+a_head1b_len equ $-a_head1b
+a_head2: db '</title>', 10, '<link rel="alternate" type="text/html" href="'
 a_head2_len equ $-a_head2
-a_head3: db '</updated>', 10
+a_head2b: db '/"/><link rel="self" type="application/atom+xml" href="'
+a_head2b_len equ $-a_head2b
+a_head2c: db '/feed.xml"/>', 10, '<id>tag:blogd:feed</id><updated>'
+a_head2c_len equ $-a_head2c
+a_head3: db '</updated>', 10, '<author><name>'
 a_head3_len equ $-a_head3
+a_head3b: db '</name></author><generator>blogd 0.7</generator>', 10
+a_head3b_len equ $-a_head3b
+a_icon: db '<icon>'
+a_icon_len equ $-a_icon
+a_icon2: db '/static/icon-192.png</icon>', 10
+a_icon2_len equ $-a_icon2
 a_e1: db '<entry><title>'
 a_e1_len equ $-a_e1
-a_e2: db '</title><link href="/post/'
+a_e2: db '</title><link rel="alternate" type="text/html" href="'
 a_e2_len equ $-a_e2
 a_e3: db '"/><id>tag:blogd:post-'
 a_e3_len equ $-a_e3
-a_e4: db '</id><updated>'
+a_e4: db '</id><published>'
 a_e4_len equ $-a_e4
-a_e5: db '</updated><summary>'
+a_e4b: db '</published><updated>'
+a_e4b_len equ $-a_e4b
+a_e5: db '</updated>'
 a_e5_len equ $-a_e5
-a_e6: db '</summary></entry>', 10
+a_cat: db '<category term="'
+a_cat_len equ $-a_cat
+a_cat_c: db '"/>', 10
+a_cat_c_len equ $-a_cat_c
+a_e5b: db '<summary type="text">'
+a_e5b_len equ $-a_e5b
+a_e6: db '</summary>'
 a_e6_len equ $-a_e6
+a_e7: db '<content type="html">'
+a_e7_len equ $-a_e7
+a_e7b: db '</content>'
+a_e7b_len equ $-a_e7b
+a_e8: db '</entry>', 10
+a_e8_len equ $-a_e8
 a_tail: db '</feed>', 10
 a_tail_len equ $-a_tail
 
@@ -1743,8 +2938,43 @@ ct_css: db 'Content-Type: text/css; charset=utf-8', 13, 10
 ct_css_len equ $-ct_css
 ct_svg: db 'Content-Type: image/svg+xml; charset=utf-8', 13, 10
 ct_svg_len equ $-ct_svg
+ct_text: db 'Content-Type: text/plain; charset=utf-8', 13, 10
+ct_text_len equ $-ct_text
+ct_xml: db 'Content-Type: application/xml; charset=utf-8', 13, 10
+ct_xml_len equ $-ct_xml
+ct_manifest: db 'Content-Type: application/manifest+json; charset=utf-8', 13, 10
+ct_manifest_len equ $-ct_manifest
+ct_ico: db 'Content-Type: image/x-icon', 13, 10
+ct_ico_len equ $-ct_ico
+ct_png: db 'Content-Type: image/png', 13, 10
+ct_png_len equ $-ct_png
 x_gzip: db 'Content-Encoding: gzip', 13, 10
 x_gzip_len equ $-x_gzip
+x_br: db 'Content-Encoding: br', 13, 10
+x_br_len equ $-x_br
+
+p_css: db 'static/main.css', 0
+p_favsvg: db 'static/favicon.svg', 0
+p_favico: db 'static/favicon.ico', 0
+p_i192: db 'static/icon-192.png', 0
+p_i512: db 'static/icon-512.png', 0
+p_og: db 'static/og.png', 0
+sfx_gz: db '.gz', 0
+sfx_br: db '.br', 0
+
+; STATIC path, name len, ctype, ctype len, default cache mode
+%macro STATIC 5
+    dq %1, %1+7, %2, %3, %4, %5, 0, 0, 0, 0, 0, 0
+    dd 0, 0, 0, 0
+%endmacro
+align 8
+static_tbl:                     ; main.css must stay first (css_ver)
+    STATIC p_css, 8, ct_css, ct_css_len, CACHE_HOUR
+    STATIC p_favsvg, 11, ct_svg, ct_svg_len, CACHE_DAY
+    STATIC p_favico, 11, ct_ico, ct_ico_len, CACHE_DAY
+    STATIC p_i192, 12, ct_png, ct_png_len, CACHE_DAY
+    STATIC p_i512, 12, ct_png, ct_png_len, CACHE_DAY
+    STATIC p_og, 6, ct_png, ct_png_len, CACHE_DAY
 
 svg1: db '<svg xmlns="http://www.w3.org/2000/svg" width="'
 svg1_len equ $-svg1
@@ -1760,20 +2990,12 @@ svg4: db '</text></svg>', 10
 svg4_len equ $-svg4
 svg_zero: db '0'
 
-f_css: db 'static/main.css', 0
-f_cssgz: db 'static/main.css.gz', 0
 f_hits: db 'data/hits.blg', 0
 
 section .bss
 
 hits_p:     resq 1              ; -> the counter qword (mapped file or local)
 hits_local: resq 1
-css_p:      resq 1
-css_l:      resq 1
-css_gz_p:   resq 1
-css_gz_l:   resq 1
-css_crc:    resd 1
-css_gz_crc: resd 1
 css_ver:    resb 8              ; crc32c of main.css as hex: ?v= token
 
 section .note.GNU-stack noalloc noexec nowrite progbits

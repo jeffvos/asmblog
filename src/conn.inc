@@ -23,6 +23,7 @@
 ;   +121 cache       byte    Cache-Control mode (CACHE_* below)
 ;   +122 https       byte    X-Forwarded-Proto said https
 ;   +123 inm         byte    If-None-Match matched etag → 304 eligible
+;   +124 vary        byte    emit Vary: Accept-Encoding (negotiated asset)
 ;   +128 inbuf       (request head <= 8 KiB + body <= 100 KB)
 ;   +131200 outbuf
 
@@ -46,6 +47,7 @@
 %define CTX_CACHE     121
 %define CTX_HTTPS     122
 %define CTX_INM       123
+%define CTX_VARY      124
 %define CTX_IN        128
 %define CTX_INBUF_SZ  131072
 %define CTX_OUT       131200

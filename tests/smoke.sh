@@ -77,6 +77,53 @@ check "atom feed lists 8 published"            bash -c "test \"\$(curl -s $B/fee
 check "css served with gzip when accepted"     bash -c "curl -s -H 'Accept-Encoding: gzip' -D - -o /dev/null $B/static/main.css | grep -qi '^content-encoding: gzip'"
 check "html escaping in search echo"           bash -c "curl -s '$B/search?q=%3Cscript%3E' | grep -q '&lt;script&gt;' && ! curl -s '$B/search?q=%3Cscript%3E' | grep -q '<script>'"
 check "security headers on every response"      bash -c "curl -s -D - -o /dev/null $B/ | grep -qi '^content-security-policy:' && curl -s -D - -o /dev/null $B/ | grep -qi '^x-content-type-options: nosniff'"
+# --- caching, validators, HEAD ---
+check "Date header on every response"           bash -c "curl -s -D - -o /dev/null $B/ | grep -qi '^date: ' && curl -s -D - -o /dev/null $B/nope | grep -qi '^date: '"
+check "HEAD returns headers, no body"           bash -c "curl -s -I $B/ | grep -qi '^content-length: [1-9]' && test \"\$(curl -s --head -o /dev/null -w '%{size_download}' $B/)\" = 0"
+check "405 carries Allow"                       bash -c "curl -s -D - -o /dev/null -X PUT $B/ | grep -qi '^allow: GET, HEAD'"
+check "HTML has ETag + must-revalidate"         bash -c "curl -s -D - -o /dev/null $B/ | grep -qi '^etag: W/\"' && curl -s -D - -o /dev/null $B/ | grep -qi '^cache-control: public, max-age=0, must-revalidate'"
+check "If-None-Match answers 304"               bash -c "ET=\$(curl -s -I $B/post/why-assembly | grep -i '^etag' | cut -d' ' -f2 | tr -d '\r'); test \"\$(curl -s -o /dev/null -w '%{http_code}' -H \"If-None-Match: \$ET\" $B/post/why-assembly)\" = 304"
+check "Content-Language on HTML only"           bash -c "curl -s -D - -o /dev/null $B/ | grep -qi '^content-language: en' && ! curl -s -D - -o /dev/null $B/feed.xml | grep -qi '^content-language'"
+check "versioned css is immutable + Vary"       bash -c "curl -s -D - -o /dev/null '$B/static/main.css?v=x' | grep -qi 'immutable' && curl -s -D - -o /dev/null '$B/static/main.css?v=x' | grep -qi '^vary: accept-encoding'"
+check "bare css revalidates hourly"             bash -c "curl -s -D - -o /dev/null $B/static/main.css | grep -qi 'max-age=3600'"
+check "Accept-Encoding gzip;q=0 is honoured"    bash -c "! curl -s -D - -o /dev/null -H 'Accept-Encoding: gzip;q=0' $B/static/main.css | grep -qi '^content-encoding'"
+check "static ETag round-trips to 304"          bash -c "ET=\$(curl -s -I $B/static/main.css | grep -i '^etag' | cut -d' ' -f2 | tr -d '\r'); test \"\$(curl -s -o /dev/null -w '%{http_code}' -H \"If-None-Match: \$ET\" $B/static/main.css)\" = 304"
+check "shell links the versioned stylesheet"    bash -c "curl -s $B/ | grep -q 'href=\"/static/main.css?v=[0-9a-f]\{8\}\"'"
+# --- discovery files ---
+expect_code "favicon.ico is served"          200 "$B/favicon.ico"
+expect_code "favicon.svg is served"          200 "$B/static/favicon.svg"
+expect_code "icon-192.png is served"         200 "$B/static/icon-192.png"
+expect_code "og.png is served"               200 "$B/static/og.png"
+check "manifest names the site"                 bash -c "curl -s -D - $B/manifest.webmanifest | grep -qi '^content-type: application/manifest+json' && curl -s $B/manifest.webmanifest | grep -q '\"name\":\"blogd\"'"
+check "robots.txt blocks admin, links sitemap"  bash -c "curl -s -H 'Host: t.example' -H 'X-Forwarded-Proto: https' $B/robots.txt | grep -q '^Disallow: /admin' && curl -s -H 'Host: t.example' -H 'X-Forwarded-Proto: https' $B/robots.txt | grep -q '^Sitemap: https://t.example/sitemap.xml'"
+check "sitemap lists published posts only"      bash -c "test \"\$(curl -s -H 'Host: t.example' $B/sitemap.xml | grep -c '<url>')\" = 9 && ! curl -s -H 'Host: t.example' $B/sitemap.xml | grep -q secret-draft"
+check "sitemap needs an absolute origin"        bash -c "test \"\$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: ' $B/sitemap.xml)\" = 404"
+check "sitemap is well-formed xml"              bash -c "curl -s -H 'Host: t.example' $B/sitemap.xml | xmllint --noout -"
+# --- canonical urls ---
+check "/page/1 redirects to /"                  bash -c "test \"\$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' $B/page/1)\" = '301 $B/'"
+check "trailing slash redirects"                bash -c "test \"\$(curl -s -o /dev/null -w '%{redirect_url}' $B/tag/asm/)\" = '$B/tag/asm'"
+check "pager links carry rel=prev/next"         bash -c "curl -s $B/page/2 | grep -q 'rel=\"prev\" href=\"/\"' && curl -s $B/ | grep -q 'rel=\"next\" href=\"/page/2\"'"
+# --- <head> metadata / link embeds ---
+check "post has description, canonical, OG"     bash -c "P=\$(curl -s -H 'Host: t.example' -H 'X-Forwarded-Proto: https' $B/post/why-assembly); echo \"\$P\" | grep -q '<meta name=\"description\" content=\"Because every' && echo \"\$P\" | grep -q '<link rel=\"canonical\" href=\"https://t.example/post/why-assembly\">' && echo \"\$P\" | grep -q 'og:title\" content=\"Why Assembly?\"' && echo \"\$P\" | grep -q 'article:tag\" content=\"asm\"' && echo \"\$P\" | grep -q 'twitter:card'"
+check "post JSON-LD parses as BlogPosting"      bash -c "curl -s -H 'Host: t.example' $B/post/why-assembly | grep -o '<script type=\"application/ld+json\">.*</script>' | sed 's/<script[^>]*>//;s/<\/script>//' | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d[\"@type\"]==\"BlogPosting\" and d[\"headline\"]==\"Why Assembly?\"'"
+check "home JSON-LD is a WebSite w/ search"     bash -c "curl -s -H 'Host: t.example' $B/ | grep -o '<script type=\"application/ld+json\">.*</script>' | sed 's/<script[^>]*>//;s/<\/script>//' | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d[\"@type\"]==\"WebSite\" and \"search_term_string\" in d[\"potentialAction\"][\"target\"]'"
+check "search results are noindex"              bash -c "curl -s '$B/search?q=mov' | grep -q 'content=\"noindex,follow\"' && ! curl -s $B/ | grep -q noindex"
+check "list titles: page N, #tag, search: q"    bash -c "curl -s $B/page/2 | grep -q '<title>home · page 2 ' && curl -s $B/tag/asm | grep -q '<title>#asm ' && curl -s '$B/search?q=mov' | grep -q '<title>search: mov '"
+check "no absolute urls without an origin"      bash -c "! curl -s -H 'Host: ' $B/post/why-assembly | grep -q 'rel=\"canonical\"' && curl -s -H 'Host: ' $B/post/why-assembly | grep -q 'twitter:card\" content=\"summary\"'"
+# --- feed ---
+check "feed: author, published, category, content" bash -c "F=\$(curl -s -H 'Host: t.example' $B/feed.xml); echo \"\$F\" | grep -q '<author><name>blogd</name></author>' && echo \"\$F\" | grep -q '<published>' && echo \"\$F\" | grep -q '<category term=\"asm\"/>' && echo \"\$F\" | grep -q '<content type=\"html\">' && echo \"\$F\" | grep -q 'href=\"http://t.example/post/why-assembly\"'"
+check "feed is well-formed xml (with and without origin)" bash -c "curl -s -H 'Host: t.example' $B/feed.xml | xmllint --noout - && curl -s -H 'Host: ' $B/feed.xml | xmllint --noout -"
+check "feed updated is the store time, not now" bash -c "A=\$(curl -s $B/feed.xml | grep -o '<updated>[^<]*' | head -1); sleep 1.1; B2=\$(curl -s $B/feed.xml | grep -o '<updated>[^<]*' | head -1); test \"\$A\" = \"\$B2\""
+# --- visitor counter ---
+check "hits.svg increments and is no-store"     bash -c "A=\$(curl -s $B/hits.svg | grep -o '>0*[0-9]*</text' | tr -dc 0-9); B2=\$(curl -s $B/hits.svg | grep -o '>0*[0-9]*</text' | tr -dc 0-9); test \$((10#\$A+1)) = \$((10#\$B2)) && curl -s -D - -o /dev/null $B/hits.svg | grep -qi '^cache-control: no-store'"
+check "HEAD on hits.svg peeks without counting" bash -c "A=\$(curl -s $B/hits.svg | grep -o '>0*[0-9]*</text' | tr -dc 0-9); curl -s -I $B/hits.svg >/dev/null; B2=\$(curl -s $B/hits.svg | grep -o '>0*[0-9]*</text' | tr -dc 0-9); test \$((10#\$A+1)) = \$((10#\$B2))"
+HITS_BEFORE="$(curl -s $B/hits.svg | grep -o '>0*[0-9]*</text' | tr -dc 0-9)"
+pkill -x blogd 2>/dev/null || true
+sleep 0.2
+(cd "$CTMP" && "$ROOT/build/blogd" "$CPORT" >/dev/null 2>&1 &)
+sleep 0.4
+HITS_AFTER="$(curl -s $B/hits.svg | grep -o '>0*[0-9]*</text' | tr -dc 0-9)"
+check "visitor counter survives a restart"      test "$((10#$HITS_AFTER))" = "$((10#$HITS_BEFORE + 1))"
 pkill -x blogd 2>/dev/null || true
 sleep 0.2
 
@@ -141,6 +188,14 @@ FLBAD='<a data-flickr-embed="true" href="https://phish.example/"><img src="https
 curl -s -b "$JAR" -o /dev/null --data-urlencode "csrf=$CSRF" --data-urlencode id=0 --data-urlencode "title=Bad" \
     --data-urlencode slug=badpic --data-urlencode tags=p --data-urlencode "md=$FLBAD" --data-urlencode action=publish "$A/admin/save"
 check "spoofed flickr host is rejected"     bash -c "! curl -s $A/post/badpic | grep -qF '<figure class=\"flickr-embed\">' && ! curl -s $A/post/badpic | grep -q 'evil.com/x.jpg\"'"
+# site url setting: validated, persisted, used for canonical links over the Host fallback
+expect_code "invalid site url is refused" 200 -b "$JAR" --data-urlencode "csrf=$CSRF" \
+    --data-urlencode "title=Smoke Blog" --data-urlencode ppp=5 --data-urlencode url=ftp://nope "$A/admin/settings"
+expect_code "site url saves"           303 -b "$JAR" --data-urlencode "csrf=$CSRF" \
+    --data-urlencode "title=Smoke Blog" --data-urlencode ppp=5 --data-urlencode "url=https://smoke.example/" "$A/admin/settings"
+check "site url echoed without trailing slash" bash -c "curl -s -b '$JAR' $A/admin/settings | grep -q 'name=\"url\" value=\"https://smoke.example\"'"
+check "configured url wins over Host"       bash -c "curl -s -H 'Host: other.example' $A/post/smoke-post | grep -q 'rel=\"canonical\" href=\"https://smoke.example/post/smoke-post\"'"
+check "admin pages are no-store + noindex"  bash -c "curl -s -D - -b '$JAR' $A/admin | grep -qi '^cache-control: no-store' && curl -s -b '$JAR' $A/admin | grep -q 'content=\"noindex\"'"
 expect_code "csrf mismatch is rejected" 400 -b "$JAR" -d "csrf=deadbeef&id=1" "$A/admin/delete"
 expect_code "logout works"             303 -b "$JAR" --data-urlencode "csrf=$CSRF" "$A/admin/logout"
 expect_code "session is gone after logout" 303 -b "$JAR" "$A/admin"
