@@ -36,7 +36,13 @@ global store_delete_post
 global store_save_settings
 global store_compact
 global store_find_by_id
+global settings_set_url
 global crc32c
+global crc32c_raw
+global store_gen
+global store_mtime
+global set_url
+global set_url_l
 global store_lock
 global posts_arr
 global posts_cnt
@@ -56,7 +62,19 @@ section .text
 
 ; crc32c(ptr, len) -> eax (Castagnoli, hardware crc32 instruction)
 crc32c:
-    mov eax, -1
+    mov rdx, rsi
+    mov rsi, rdi
+    mov edi, -1
+    call crc32c_raw
+    not eax
+    ret
+
+; crc32c_raw(state, ptr, len) -> eax = updated state (no init/finalize),
+; so several buffers can be chained into one checksum.
+crc32c_raw:
+    mov eax, edi
+    mov rdi, rsi
+    mov rsi, rdx
 .q:
     cmp rsi, 8
     jb .b
@@ -72,7 +90,88 @@ crc32c:
     dec rsi
     jmp .b
 .fin:
-    not eax
+    ret
+
+; store_touch(now) — record a mutation: bump the generation (the ETag
+; validator) and advance the last-modified time. Caller holds wr lock.
+; Preserves rax.
+store_touch:
+    inc qword [store_gen]
+    cmp rdi, [store_mtime]
+    jbe .ret
+    mov [store_mtime], rdi
+.ret:
+    ret
+
+; settings_set_url(p, l) -> 0 / -1. Validates and stages the public site
+; URL ("https://host[/prefix]", one trailing slash dropped, <= 255
+; bytes of [A-Za-z0-9.:/_-]) into [set_url]; the next settings write
+; persists it. l == 0 clears it.
+settings_set_url:
+    test rsi, rsi
+    jz .clear
+    cmp rsi, 255
+    ja .bad
+    cmp rsi, 8
+    jb .bad
+    cmp dword [rdi], 'http'
+    jne .bad
+    mov eax, 7                  ; host starts after "http://" ...
+    cmp byte [rdi+4], 's'
+    jne .sep
+    inc eax                     ; ... or "https://"
+.sep:
+    cmp byte [rdi+rax-3], ':'
+    jne .bad
+    cmp word [rdi+rax-2], '//'
+    jne .bad
+    cmp byte [rdi+rsi-1], '/'
+    jne .nostrip
+    dec rsi
+.nostrip:
+    cmp rsi, rax
+    jbe .bad                    ; no host
+    mov rcx, rax
+.chars:
+    cmp rcx, rsi
+    jae .ok
+    mov dl, [rdi+rcx]
+    cmp dl, '-'
+    je .okc
+    cmp dl, '.'
+    je .okc
+    cmp dl, '/'
+    je .okc
+    cmp dl, ':'
+    je .okc
+    cmp dl, '_'
+    je .okc
+    cmp dl, '0'
+    jb .bad
+    cmp dl, '9'
+    jbe .okc
+    or dl, 0x20
+    cmp dl, 'a'
+    jb .bad
+    cmp dl, 'z'
+    ja .bad
+.okc:
+    inc rcx
+    jmp .chars
+.ok:
+    mov [set_url_l], rsi
+    mov rdx, rsi
+    mov rsi, rdi
+    mov rdi, set_url
+    call mem_copy
+    xor eax, eax
+    ret
+.clear:
+    mov qword [set_url_l], 0
+    xor eax, eax
+    ret
+.bad:
+    mov rax, -1
     ret
 
 ; write_all(fd, buf, len) -> 0 / -1
@@ -150,6 +249,20 @@ store_open:
     mov qword [set_banner_l], def_banner_len
     mov dword [set_theme], 0                 ; 0 = retro (default)
     mov dword [set_locale], 0                ; 0 = en-US (default)
+    mov qword [set_url_l], 0
+    mov qword [store_mtime], 0
+    ; generation = boot nanoseconds, +1 per mutation: a restart (new
+    ; templates/CSS) and every write both change every ETag
+    sub rsp, 16
+    xor edi, edi                ; CLOCK_REALTIME
+    mov rsi, rsp
+    mov eax, SYS_clock_gettime
+    syscall
+    mov rax, [rsp]
+    imul rax, rax, 1000000000
+    add rax, [rsp+8]
+    add rsp, 16
+    mov [store_gen], rax
     test r12, r12
     jnz .load
     mov rdi, [store_fd]         ; brand new store: write the file header
@@ -300,6 +413,11 @@ apply_record:
     push r12
     push r13
     mov r12, rdi
+    mov rax, [r12+R_UPDATED]
+    cmp rax, [store_mtime]
+    jbe .mtime_ok
+    mov [store_mtime], rax
+.mtime_ok:
     cmp dword [r12+R_TYPE], TYPE_SETTINGS
     jne .post
     lea rax, [r12+R_HDR]
@@ -337,9 +455,30 @@ apply_record:
     mov [set_banner_l], r8
 .banner_default:
     lea rsi, [rdx+r8]           ; hash follows the banner
+    lea r9, [rsi+128]           ; optional extension follows the hash
     mov rdi, set_hash
     mov edx, 128
     call mem_copy
+    ; extension: dword url_len | url (records written before it existed
+    ; simply end at the hash)
+    mov qword [set_url_l], 0
+    lea rcx, [r12+R_HDR]
+    mov edx, [r12+R_TLEN]       ; settings: whole payload length
+    add rcx, rdx                ; payload end
+    lea rdx, [r9+4]
+    cmp rdx, rcx
+    ja .no_url
+    mov edx, [r9]
+    cmp rdx, 255
+    ja .no_url
+    lea rsi, [r9+4]
+    lea r8, [rsi+rdx]
+    cmp r8, rcx
+    ja .no_url
+    mov [set_url_l], rdx
+    mov rdi, set_url
+    call mem_copy
+.no_url:
     mov byte [set_present], 1
     jmp .done
 .post:
@@ -657,6 +796,8 @@ store_append_post:
     call wr_lock
     call time_now
     mov r14, rax                ; now
+    mov rdi, rax
+    call store_touch
     mov r13, [r12+S_ID]
     test r13, r13
     jnz .explicit
@@ -730,6 +871,8 @@ store_delete_post:
     je .fail
     mov r13, rax                ; index
     call time_now
+    mov rdi, rax
+    call store_touch
     sub rsp, P_SIZE
     mov rdi, rsp
     mov ecx, P_SIZE/8
@@ -782,7 +925,8 @@ write_settings_locked:
     sub rsp, 32
     mov [rsp+16], r8            ; banner ptr
     mov [rsp+24], r9            ; banner len
-    lea rax, [r15+r9+SET_HDR+128]   ; payload = SET_HDR + title + banner + 128
+    lea rax, [r15+r9+SET_HDR+128+4] ; payload = SET_HDR + title + banner
+    add rax, [set_url_l]            ;   + hash + url_len dword + url
     mov [rsp+8], rax
     lea rbp, [rax+R_HDR+7]
     and rbp, -8                 ; padded total record size
@@ -803,6 +947,8 @@ write_settings_locked:
     mov rax, [rsp+8]
     mov [rdi+R_TLEN], eax       ; whole payload length (settings convention)
     call time_now
+    mov rdi, rax
+    call store_touch
     mov rdi, [rsp]
     mov [rdi+R_CREATED], rax
     mov [rdi+R_UPDATED], rax
@@ -827,6 +973,12 @@ write_settings_locked:
     mov rdi, rax               ; hash from the live setting
     mov rsi, set_hash
     mov edx, 128
+    call mem_copy
+    mov ecx, [set_url_l]       ; extension: url_len dword + url
+    mov [rax], ecx
+    lea rdi, [rax+4]
+    mov rsi, set_url
+    mov edx, ecx
     call mem_copy
     mov rdi, [rsp]
     lea rdi, [rdi+R_HDR]
@@ -1079,7 +1231,11 @@ set_banner_l: resq 1
 set_theme:   resd 1
 set_locale:  resd 1
 set_hash:    resb 128
+set_url:     resb 256
+set_url_l:   resq 1
 set_present: resb 1
+store_gen:   resq 1
+store_mtime: resq 1
 store_lock:  resd 1
 
 section .note.GNU-stack noalloc noexec nowrite progbits

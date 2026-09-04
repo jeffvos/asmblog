@@ -9,6 +9,8 @@
     <input name="ppp" value="{{eppp}}" class="field w-24 mb-2">
     <label class="text-xs block">mensaje del letrero</label>
     <input name="banner" value="{{ebanner}}" maxlength="200" class="field w-full mb-2">
+    <label class="text-xs block">url del sitio (para enlaces canónicos, el feed y el sitemap; en blanco = usar la cabecera Host)</label>
+    <input name="url" value="{{eurl}}" maxlength="255" placeholder="https://blog.example.com" class="field w-full mb-2">
     <fieldset class="mb-3">
       <legend class="text-xs mb-1">tema</legend>
       <label class="block text-sm mb-1"><input type="radio" name="theme" value="retro" {{selretro}}> Retro &mdash; web de los 90, pulida</label>

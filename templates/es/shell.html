@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{title}} &mdash; {{site}}</title>
-<link rel="stylesheet" href="/static/main.css">
+<link rel="stylesheet" href="/static/main.css?v={{cssv}}">
 <link rel="alternate" type="application/atom+xml" href="/feed.xml" title="{{site}}">
-</head>
+{{meta}}</head>
 <body class="min-h-screen {{theme}}">
 <div class="mx-auto max-w-3xl px-3 py-6">
   <header class="masthead">
@@ -27,7 +27,7 @@
 {{content}}
   </main>
   <footer class="footer mt-10 text-center text-xs">
-    <div class="mb-3">eres el visitante número <span class="hits">{{count}}</span> desde el arranque</div>
+    <div class="mb-3">eres el visitante número <img class="hits" src="/hits.svg" alt="" width="56" height="18"></div>
     <div class="mb-3">
       <span class="badge badge-a">blogd 0.7</span>
       <span class="badge badge-b">100% ASM</span>

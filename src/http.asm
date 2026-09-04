@@ -18,10 +18,17 @@ extern mem_copy
 extern mem_eq
 extern u64_to_dec
 extern parse_dec
+extern put_hex
+extern emit_date_hdr
+extern crc32c_raw
+extern store_gen
+extern set_locale
+extern theme_class
 extern page_list
 extern page_post
 extern page_feed
 extern page_css
+extern page_hits
 extern admin_route
 
 global http_handle
@@ -29,6 +36,9 @@ global http_body_len
 global build_page
 global ci_find
 global ci_prefix
+global find_header
+global hdr_block
+global inm_check
 global percent_decode
 global valid_seg
 global sec_headers
@@ -52,6 +62,12 @@ http_handle:
     mov r13, rsi                ; head length (incl. CRLFCRLF)
     mov [rsp+160], rdx          ; body length
     lea r14, [r12+CTX_IN]
+    ; per-request response state
+    mov [r12+CTX_HLEN], r13
+    mov byte [r12+CTX_HEAD], 0
+    mov qword [r12+CTX_HOST_L], 0
+    mov qword [r12+CTX_LM], 0
+    mov dword [r12+CTX_ETAG_L], 0   ; etag_l, cache, https, inm
 
     ; request line ends at the first CR
     xor ebx, ebx
@@ -130,9 +146,15 @@ http_handle:
     sub rsi, 2
     call scan_gzip
     mov [r12+CTX_GZIP], al
+    mov rdi, r12                ; Host (validated) + X-Forwarded-Proto
+    lea rsi, [r14+rbx+2]
+    mov rdx, r13
+    sub rdx, rbx
+    sub rdx, 2
+    call scan_origin
 
-    cmp r15, 3                  ; method: GET or POST
-    jne .try_post
+    cmp r15, 3                  ; method: GET, HEAD or POST
+    jne .try4
     mov rdi, r14
     mov rsi, str_GET
     mov edx, 3
@@ -141,7 +163,7 @@ http_handle:
     jz .m405
     xor r10d, r10d              ; is_post = 0
     jmp .method_done
-.try_post:
+.try4:
     cmp r15, 4
     jne .m405
     mov rdi, r14
@@ -149,8 +171,18 @@ http_handle:
     mov edx, 4
     call mem_eq
     test eax, eax
-    jz .m405
+    jz .try_head
     mov r10d, 1
+    jmp .method_done
+.try_head:
+    mov rdi, r14
+    mov rsi, str_HEAD
+    mov edx, 4
+    call mem_eq
+    test eax, eax
+    jz .m405
+    mov byte [r12+CTX_HEAD], 1  ; routed as GET; builders drop the body
+    xor r10d, r10d
 .method_done:
     pop rdi                     ; path pointer
     pop rsi                     ; path length
@@ -210,6 +242,16 @@ http_handle:
     mov edx, 3
     jmp .build
 .is_get:
+    ; validator for every public GET: generation + crc(host, path, query).
+    ; Handlers answer 304 when the client already holds it.
+    mov rdi, r12
+    mov rsi, r14
+    mov rdx, r15
+    mov rcx, rbx
+    mov r8, rbp
+    call dyn_etag
+    mov rdi, r12
+    call inm_check
     ; "/"
     cmp r15, 1
     jne .r_health
@@ -247,6 +289,18 @@ http_handle:
     call page_feed
     jmp .fin
 .r_css:
+    cmp r15, 9
+    jne .r_css2
+    mov rdi, r14
+    mov rsi, str_hits
+    mov edx, 9
+    call mem_eq
+    test eax, eax
+    jz .r_css2
+    mov rdi, r12
+    call page_hits
+    jmp .fin
+.r_css2:
     cmp r15, 16
     jne .r_page
     mov rdi, r14
@@ -255,6 +309,12 @@ http_handle:
     call mem_eq
     test eax, eax
     jz .r_page                  ; a 16-char /post/ URL also lands here
+    ; versioned (?v=) requests are immutable; the bare URL revalidates hourly
+    mov byte [r12+CTX_CACHE], CACHE_HOUR
+    test rbp, rbp
+    jz .css_go
+    mov byte [r12+CTX_CACHE], CACHE_IMMUTABLE
+.css_go:
     mov rdi, r12
     call page_css
     jmp .fin
@@ -712,6 +772,330 @@ scan_connection:
     pop r12
     ret
 
+; find_header(headers, len, name_lc, name_len) -> rax = value ptr (0 if
+; absent), rdx = value length with surrounding blanks trimmed. name_lc
+; includes the colon ("host:") and follows ci_prefix's rules.
+find_header:
+    push r12
+    push r13
+    push r14
+    push r15
+    push rbx
+    mov r12, rdi
+    mov r13, rsi
+    mov r15, rdx
+    mov rbx, rcx
+.line:
+    test r13, r13
+    jz .none
+    xor r14d, r14d
+.fcr:
+    cmp r14, r13
+    jae .none
+    cmp byte [r12+r14], 13
+    je .have
+    inc r14
+    jmp .fcr
+.have:
+    cmp r14, rbx
+    jb .adv
+    mov rdi, r12
+    mov rsi, r15
+    mov rdx, rbx
+    call ci_prefix
+    test eax, eax
+    jz .adv
+    lea rax, [r12+rbx]
+    mov rdx, r14
+    sub rdx, rbx
+.ltrim:
+    test rdx, rdx
+    jz .ret
+    cmp byte [rax], ' '
+    je .lt1
+    cmp byte [rax], 9
+    jne .rtrim
+.lt1:
+    inc rax
+    dec rdx
+    jmp .ltrim
+.rtrim:
+    cmp byte [rax+rdx-1], ' '
+    je .rt1
+    cmp byte [rax+rdx-1], 9
+    jne .ret
+.rt1:
+    dec rdx
+    jnz .rtrim
+    jmp .ret
+.adv:
+    lea rax, [r14+2]
+    cmp rax, r13
+    ja .none
+    add r12, rax
+    sub r13, rax
+    jmp .line
+.none:
+    xor eax, eax
+    xor edx, edx
+.ret:
+    pop rbx
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    ret
+
+; hdr_block(ctx) -> rax = first header line ptr, rdx = length of the
+; header block (request line skipped), from the buffered request head.
+hdr_block:
+    mov rdx, [rdi+CTX_HLEN]
+    lea rax, [rdi+CTX_IN]
+    xor ecx, ecx
+.f:
+    cmp rcx, rdx
+    jae .none
+    cmp byte [rax+rcx], 13
+    je .hit
+    inc rcx
+    jmp .f
+.hit:
+    add rcx, 2
+    add rax, rcx
+    sub rdx, rcx
+    ret
+.none:
+    xor eax, eax
+    xor edx, edx
+    ret
+
+; host_valid(p, l) -> 1/0 — nonempty, <= 255, [A-Za-z0-9.:-] only
+host_valid:
+    test rsi, rsi
+    jz .no
+    cmp rsi, 255
+    ja .no
+.l:
+    mov al, [rdi]
+    cmp al, '-'
+    je .ok
+    cmp al, '.'
+    je .ok
+    cmp al, ':'
+    je .ok
+    cmp al, '0'
+    jb .no
+    cmp al, '9'
+    jbe .ok
+    or al, 0x20
+    cmp al, 'a'
+    jb .no
+    cmp al, 'z'
+    ja .no
+.ok:
+    inc rdi
+    dec rsi
+    jnz .l
+    mov eax, 1
+    ret
+.no:
+    xor eax, eax
+    ret
+
+; scan_origin(ctx, headers, len) — CTX_HOST_* from a well-formed Host,
+; CTX_HTTPS when the proxy says X-Forwarded-Proto: https.
+scan_origin:
+    push r12
+    push r13
+    push r14
+    mov r12, rdi
+    mov r13, rsi
+    mov r14, rdx
+    mov rdi, r13
+    mov rsi, r14
+    mov rdx, str_host_lc
+    mov ecx, 5
+    call find_header
+    test rax, rax
+    jz .proto
+    mov [r12+CTX_HOST_P], rax
+    mov [r12+CTX_HOST_L], rdx
+    mov rdi, rax
+    mov rsi, rdx
+    call host_valid
+    test eax, eax
+    jnz .proto
+    mov qword [r12+CTX_HOST_L], 0
+.proto:
+    mov rdi, r13
+    mov rsi, r14
+    mov rdx, str_xfp_lc
+    mov ecx, 18
+    call find_header
+    test rax, rax
+    jz .ret
+    cmp rdx, 5
+    jb .ret
+    mov rdi, rax
+    mov rsi, str_https_lc
+    mov edx, 5
+    call ci_prefix
+    mov [r12+CTX_HTTPS], al
+.ret:
+    pop r14
+    pop r13
+    pop r12
+    ret
+
+; dyn_etag(ctx, path, plen, qs, qslen) — stage the weak validator for a
+; dynamic page: W/"<store generation hex>-<crc32c(host,path,query) hex>".
+; Same generation + same URL => byte-identical page (the counter lives
+; in /hits.svg, not the HTML), so this is exact, and it costs no render.
+dyn_etag:
+    push r12
+    push r13
+    push r14
+    push r15
+    push rbx
+    mov r12, rdi
+    mov r13, rsi
+    mov r14, rdx
+    mov r15, rcx
+    mov rbx, r8
+    mov edi, -1
+    mov rsi, [r12+CTX_HOST_P]
+    mov rdx, [r12+CTX_HOST_L]
+    call crc32c_raw
+    mov edi, eax
+    mov rsi, r13
+    mov rdx, r14
+    call crc32c_raw
+    mov edi, eax
+    mov rsi, r15
+    mov rdx, rbx
+    call crc32c_raw
+    not eax
+    mov ebx, eax
+    lea rdi, [r12+CTX_ETAG]
+    mov word [rdi], 'W/'
+    mov byte [rdi+2], '"'
+    mov rdi, [store_gen]
+    lea rsi, [r12+CTX_ETAG+3]
+    mov edx, 16
+    call put_hex
+    mov byte [rax], '-'
+    mov edi, ebx
+    lea rsi, [rax+1]
+    mov edx, 8
+    call put_hex
+    mov byte [rax], '"'
+    mov byte [r12+CTX_ETAG_L], 29
+    pop rbx
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    ret
+
+; inm_check(ctx) -> 1 and CTX_INM = 1 if If-None-Match carries the staged
+; CTX_ETAG (or "*"); weak/strong prefixes are ignored on both sides.
+inm_check:
+    push r12
+    push r13
+    push r14
+    push r15
+    push rbx
+    mov r12, rdi
+    mov byte [r12+CTX_INM], 0
+    cmp byte [r12+CTX_ETAG_L], 0
+    je .no
+    mov rdi, r12
+    call hdr_block
+    test rax, rax
+    jz .no
+    mov rdi, rax
+    mov rsi, rdx
+    mov rdx, str_inm_lc
+    mov ecx, 14
+    call find_header
+    test rax, rax
+    jz .no
+    mov r13, rax                ; cursor
+    mov r14, rdx                ; remaining
+.tok:
+    test r14, r14
+    jz .no
+    mov al, [r13]
+    cmp al, ' '
+    je .skip1
+    cmp al, ','
+    je .skip1
+    cmp al, 9
+    jne .tokstart
+.skip1:
+    inc r13
+    dec r14
+    jmp .tok
+.tokstart:
+    xor ecx, ecx
+.te:
+    cmp rcx, r14
+    jae .tokend
+    mov al, [r13+rcx]
+    cmp al, ','
+    je .tokend
+    cmp al, ' '
+    je .tokend
+    inc rcx
+    jmp .te
+.tokend:
+    mov r15, rcx                ; token [r13, r13+r15)
+    cmp rcx, 1
+    jne .cmp
+    cmp byte [r13], '*'
+    je .yes
+.cmp:
+    mov rdi, r13
+    mov rsi, r15
+    cmp rsi, 2
+    jb .cmp2
+    cmp word [rdi], 'W/'
+    jne .cmp2
+    add rdi, 2
+    sub rsi, 2
+.cmp2:
+    lea rdx, [r12+CTX_ETAG]
+    movzx ecx, byte [r12+CTX_ETAG_L]
+    cmp word [rdx], 'W/'
+    jne .cmp3
+    add rdx, 2
+    sub rcx, 2
+.cmp3:
+    cmp rsi, rcx
+    jne .next
+    mov rsi, rdx
+    mov rdx, rcx
+    call mem_eq
+    test eax, eax
+    jnz .yes
+.next:
+    add r13, r15
+    sub r14, r15
+    jmp .tok
+.yes:
+    mov byte [r12+CTX_INM], 1
+    mov eax, 1
+    jmp .ret
+.no:
+    xor eax, eax
+.ret:
+    pop rbx
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    ret
+
 ; scan_gzip(headers, len) -> 1 if Accept-Encoding mentions gzip
 scan_gzip:
     push r12
@@ -818,14 +1202,42 @@ ci_find:
     ret
 
 ; build_page(ctx, page index) — full error/health response in outbuf.
+; The 404 body is themed and localized: prefix | theme class | suffix.
 build_page:
     push r12
     push r13
     push r14
+    push r15
     push rbx
-    mov r12, rdi
+    push rbp
+    sub rsp, 32                 ; [0] suffix ptr [8] suffix len
+    mov r12, rdi                ; [16] theme ptr [24] theme len
     mov r13, rsi
     mov qword [r12+CTX_OUT_START], 0
+    mov qword [rsp], 0
+    mov qword [rsp+8], 0
+    mov qword [rsp+24], 0
+    mov r15, [tbl_body + r13*8]
+    mov rbx, [tbl_body_len + r13*8]
+    cmp r13, 2
+    jne .body_known
+    call theme_class
+    mov [rsp+16], rax
+    mov [rsp+24], rdx
+    mov r15, b404a_en
+    mov rbx, b404a_en_len
+    mov qword [rsp], b404b_en
+    mov qword [rsp+8], b404b_en_len
+    cmp dword [set_locale], 1
+    jne .body_known
+    mov r15, b404a_es
+    mov rbx, b404a_es_len
+    mov qword [rsp], b404b_es
+    mov qword [rsp+8], b404b_es_len
+.body_known:
+    mov rbp, rbx                ; total body length
+    add rbp, [rsp+8]
+    add rbp, [rsp+24]
     lea r14, [r12+CTX_OUT]
     mov rdi, r14
     mov rsi, [tbl_status + r13*8]
@@ -835,6 +1247,8 @@ build_page:
     mov rsi, hdr_server
     mov edx, hdr_server_len
     call mem_copy
+    mov rdi, rax
+    call emit_date_hdr
     mov rdi, rax
     mov rsi, sec_headers
     mov edx, sec_headers_len
@@ -854,26 +1268,51 @@ build_page:
     mov rsi, [tbl_ctype + r13*8]
     mov rdx, [tbl_ctype_len + r13*8]
     call mem_copy
+    cmp r13, 3
+    jne .noallow
+    mov rdi, rax
+    mov rsi, hdr_allow
+    mov edx, hdr_allow_len
+    call mem_copy
+.noallow:
     mov rdi, rax
     mov rsi, hdr_clen
     mov edx, hdr_clen_len
     call mem_copy
-    mov rbx, [tbl_body_len + r13*8]
-    mov rdi, rbx
+    mov rdi, rbp
     mov rsi, rax
     call u64_to_dec
     mov rdi, rax
     mov rsi, crlf2
     mov edx, 4
     call mem_copy
+    mov rcx, rax
+    sub rcx, r14                ; header length
+    cmp byte [r12+CTX_HEAD], 0
+    jne .headonly
     mov rdi, rax
-    mov rsi, [tbl_body + r13*8]
+    mov rsi, r15
     mov rdx, rbx
+    call mem_copy
+    mov rdi, rax
+    mov rsi, [rsp+16]
+    mov rdx, [rsp+24]
+    call mem_copy
+    mov rdi, rax
+    mov rsi, [rsp]
+    mov rdx, [rsp+8]
     call mem_copy
     sub rax, r14
     mov [r12+CTX_OUT_LEN], rax
+    jmp .fin
+.headonly:
+    mov [r12+CTX_OUT_LEN], rcx
+.fin:
     mov qword [r12+CTX_OUT_SENT], 0
+    add rsp, 32
+    pop rbp
     pop rbx
+    pop r15
     pop r14
     pop r13
     pop r12
@@ -883,10 +1322,16 @@ section .data
 
 str_GET:      db 'GET'
 str_POST:     db 'POST'
+str_HEAD:     db 'HEAD'
 str_admin:    db '/admin'
 str_cl_lc:    db 'content-length:'
+str_host_lc:  db 'host:'
+str_xfp_lc:   db 'x-forwarded-proto:'
+str_https_lc: db 'https'
+str_inm_lc:   db 'if-none-match:'
 str_health:   db '/health'
 str_feed:     db '/feed.xml'
+str_hits:     db '/hits.svg'
 str_css:      db '/static/main.css'
 str_pagep:    db '/page/'
 str_postp:    db '/post/'
@@ -912,22 +1357,26 @@ st500_len equ $-st500
 hdr_server: db 'Server: blogd/0.7', 13, 10
 hdr_server_len equ $-hdr_server
 
-; Emitted on every response by all three builders. style-src allows
-; 'unsafe-inline' because the retro theme leans on inline style on a
-; couple of hardcoded error pages; everything else is same-origin only.
+; Emitted on every response by all the builders. Everything is
+; same-origin only (the error pages use the stylesheet, not inline
+; style); JSON-LD data blocks are not scripts and pass script-src 'none'.
+; strict-origin-when-cross-origin lets sites we link to see where their
+; visitors came from without leaking paths.
 sec_headers:
  db 'X-Content-Type-Options: nosniff', 13, 10
  db 'X-Frame-Options: DENY', 13, 10
- db 'Referrer-Policy: no-referrer', 13, 10
+ db 'Referrer-Policy: strict-origin-when-cross-origin', 13, 10
  db "Content-Security-Policy: default-src 'self'; "
  db "img-src 'self' data: https://live.staticflickr.com; "
- db "style-src 'self' 'unsafe-inline'; script-src 'none'; object-src 'none'; "
+ db "style-src 'self'; script-src 'none'; object-src 'none'; "
  db "base-uri 'none'; frame-ancestors 'none'; form-action 'self'", 13, 10
 sec_headers_len equ $-sec_headers
 hdr_ka: db 'Connection: keep-alive', 13, 10
 hdr_ka_len equ $-hdr_ka
 hdr_cl: db 'Connection: close', 13, 10
 hdr_cl_len equ $-hdr_cl
+hdr_allow: db 'Allow: GET, HEAD', 13, 10
+hdr_allow_len equ $-hdr_allow
 ct_html: db 'Content-Type: text/html; charset=utf-8', 13, 10
 ct_html_len equ $-ct_html
 ct_text: db 'Content-Type: text/plain; charset=utf-8', 13, 10
@@ -936,12 +1385,31 @@ hdr_clen: db 'Content-Length: '
 hdr_clen_len equ $-hdr_clen
 crlf2: db 13, 10, 13, 10
 
-body_404:
- db '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>404</title></head>'
- db '<body style="background:#000080;color:#fff;font-family:monospace;padding:40px">'
- db '<h1>404 &mdash; Not Found</h1><p>No such page. <a href="/" style="color:#0ff">Go home</a>.</p>'
- db '</body></html>'
-body_404_len equ $-body_404
+; 404: prefix | theme class | suffix, per locale
+b404a_en:
+ db '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+ db '<meta name="viewport" content="width=device-width,initial-scale=1">'
+ db '<title>404 &mdash; Not Found</title><meta name="robots" content="noindex">'
+ db '<link rel="stylesheet" href="/static/main.css"></head><body class="min-h-screen '
+b404a_en_len equ $-b404a_en
+b404b_en:
+ db '"><div class="mx-auto max-w-3xl px-3 py-6"><div class="card">'
+ db '<h1 class="article-title text-xl mt-0 mb-2">404 &mdash; Not Found</h1>'
+ db '<p class="text-sm">No such page. <a class="backlink" href="/">&larr; back to all posts</a></p>'
+ db '</div></div></body></html>'
+b404b_en_len equ $-b404b_en
+b404a_es:
+ db '<!doctype html><html lang="es-BO"><head><meta charset="utf-8">'
+ db '<meta name="viewport" content="width=device-width,initial-scale=1">'
+ db '<title>404 &mdash; No encontrado</title><meta name="robots" content="noindex">'
+ db '<link rel="stylesheet" href="/static/main.css"></head><body class="min-h-screen '
+b404a_es_len equ $-b404a_es
+b404b_es:
+ db '"><div class="mx-auto max-w-3xl px-3 py-6"><div class="card">'
+ db '<h1 class="article-title text-xl mt-0 mb-2">404 &mdash; No encontrado</h1>'
+ db '<p class="text-sm">No existe esa p', 0xC3, 0xA1, 'gina. <a class="backlink" href="/">&larr; volver a todas las entradas</a></p>'
+ db '</div></div></body></html>'
+b404b_es_len equ $-b404b_es
 
 body_ok: db 'ok', 10
 body_ok_len equ $-body_ok
@@ -957,7 +1425,7 @@ tbl_status:     dq st200, st200, st404, st405, st400, st500
 tbl_status_len: dq st200_len, st200_len, st404_len, st405_len, st400_len, st500_len
 tbl_ctype:      dq ct_html, ct_text, ct_html, ct_text, ct_text, ct_text
 tbl_ctype_len:  dq ct_html_len, ct_text_len, ct_html_len, ct_text_len, ct_text_len, ct_text_len
-tbl_body:       dq body_404, body_ok, body_404, body_405, body_400, body_500
-tbl_body_len:   dq body_404_len, body_ok_len, body_404_len, body_405_len, body_400_len, body_500_len
+tbl_body:       dq b404a_en, body_ok, b404a_en, body_405, body_400, body_500
+tbl_body_len:   dq b404a_en_len, body_ok_len, b404a_en_len, body_405_len, body_400_len, body_500_len
 
 section .note.GNU-stack noalloc noexec nowrite progbits

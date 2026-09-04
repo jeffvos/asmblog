@@ -27,8 +27,10 @@
 ; Settings payload: dword posts_per_page | dword session_ttl |
 ;   dword title_len | dword banner_len | dword theme | dword locale |
 ;   dword hash_len(128) | title | banner | hash[128]
-; theme, locale and hash come from the [set_theme]/[set_locale]/[set_hash]
-; globals at write time (not passed as args): callers stage them first.
+;   | dword url_len | url            (extension; absent in older records)
+; theme, locale, hash and url come from the [set_theme]/[set_locale]/
+; [set_hash]/[set_url] globals at write time (not passed as args):
+; callers stage them first (settings_set_url validates the url).
 %define SET_HDR 28                 ; fixed prefix before the strings
 
 ; In-memory post struct (112 bytes, allocated from the store arena;

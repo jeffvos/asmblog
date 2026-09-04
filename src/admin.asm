@@ -36,7 +36,12 @@ extern set_theme
 extern set_locale
 extern set_present
 extern set_hash
+extern set_url
+extern set_url_l
+extern settings_set_url
 extern theme_class
+extern shell_vals
+extern emit_date_hdr
 extern i18n_get
 extern fmt_date_local
 extern store_find_by_id
@@ -89,7 +94,8 @@ global admin_route
 %define FI_BANNER    10
 %define FI_THEME     11
 %define FI_LOCALE    12
-%define FIELD_N      13
+%define FI_URL       13
+%define FIELD_N      14
 
 ; frame
 %define A_VALS    0
@@ -139,22 +145,12 @@ admin_route:
     mov ecx, NVALS*2
     xor eax, eax
     rep stosq
-    mov rax, [set_title_p]
-    mov rcx, [set_title_l]
-    test rcx, rcx
-    jnz .site_ok
-    mov rax, a_def_site
-    mov rcx, a_def_site_len
-.site_ok:
-    mov [rsp+A_VALS+V_SITE*16], rax
-    mov [rsp+A_VALS+V_SITE*16+8], rcx
-    mov rax, [set_banner_p]     ; banner for the shell marquee
-    mov [rsp+A_VALS+V_BANNER*16], rax
-    mov rax, [set_banner_l]
-    mov [rsp+A_VALS+V_BANNER*16+8], rax
-    call theme_class
-    mov [rsp+A_VALS+V_THEME*16], rax
-    mov [rsp+A_VALS+V_THEME*16+8], rdx
+    lea rdi, [rsp+A_VALS]
+    call shell_vals
+    mov qword [rsp+A_VALS+V_META*16], a_noindex
+    mov qword [rsp+A_VALS+V_META*16+8], a_noindex_len
+    mov byte [r12+CTX_CACHE], CACHE_NOSTORE   ; nothing under /admin is cacheable
+    mov byte [r12+CTX_ETAG_L], 0
 
     ; session from the sid cookie
     mov qword [rsp+A_SESS], -1
@@ -828,6 +824,9 @@ admin_route:
     mov [rsp+A_VALS+V_EBANNER*16], rax
     mov rax, [set_banner_l]
     mov [rsp+A_VALS+V_EBANNER*16+8], rax
+    mov qword [rsp+A_VALS+V_EURL*16], set_url
+    mov rax, [set_url_l]
+    mov [rsp+A_VALS+V_EURL*16+8], rax
     ; pre-check the radio for the active theme
     cmp dword [set_theme], 1
     je .sp_sucre
@@ -920,6 +919,11 @@ admin_route:
     mov edx, 128
     call mem_copy
 .save_settings:
+    mov rdi, [rsp+A_FLD+FI_URL*16]     ; public site url (may be blank)
+    mov rsi, [rsp+A_FLD+FI_URL*16+8]
+    call settings_set_url
+    test rax, rax
+    jnz .st_err
     mov rdi, [rsp+A_ID]        ; ppp
     mov esi, [set_ttl]
     mov rdx, [rsp+A_FLD+FI_TITLE*16]
@@ -954,6 +958,10 @@ admin_route:
     mov [rsp+A_VALS+V_EBANNER*16], rax
     mov rax, [rsp+A_FLD+FI_BANNER*16+8]
     mov [rsp+A_VALS+V_EBANNER*16+8], rax
+    mov rax, [rsp+A_FLD+FI_URL*16]
+    mov [rsp+A_VALS+V_EURL*16], rax
+    mov rax, [rsp+A_FLD+FI_URL*16+8]
+    mov [rsp+A_VALS+V_EURL*16+8], rax
     cmp dword [set_theme], 1
     je .se_sucre
     mov qword [rsp+A_VALS+V_SELRETRO*16], a_checked
@@ -1203,11 +1211,13 @@ finish_redirect:
     mov r14, rdx
     mov r15, rcx
     mov rbx, r8
-    sub rsp, 640
+    sub rsp, 1024
     mov rdi, rsp
     mov rsi, a_303
     mov edx, a_303_len
     call mem_copy
+    mov rdi, rax
+    call emit_date_hdr
     mov rdi, rax
     mov rsi, sec_headers
     mov edx, sec_headers_len
@@ -1222,6 +1232,10 @@ finish_redirect:
     mov edx, a_cl_len
 .conn:
     mov rdi, rax
+    call mem_copy
+    mov rdi, rax
+    mov rsi, a_nostore
+    mov edx, a_nostore_len
     call mem_copy
     mov rdi, rax
     mov rsi, a_loc_hdr
@@ -1266,7 +1280,7 @@ finish_redirect:
     mov [r12+CTX_OUT_START], rax
     mov [r12+CTX_OUT_LEN], rbx
     mov qword [r12+CTX_OUT_SENT], 0
-    add rsp, 640
+    add rsp, 1024
     pop rbx
     pop r15
     pop r14
@@ -1566,6 +1580,10 @@ a_setck_len equ $-a_setck
 a_cl0: db 'Content-Length: 0', 13, 10, 13, 10
 a_cl0_len equ $-a_cl0
 a_crlf: db 13, 10
+a_nostore: db 'Cache-Control: no-store', 13, 10
+a_nostore_len equ $-a_nostore
+a_noindex: db '<meta name="robots" content="noindex">', 10
+a_noindex_len equ $-a_noindex
 
 n_password:  db 'password'
 n_password2: db 'password2'
@@ -1580,6 +1598,7 @@ n_fppp:      db 'ppp'
 n_fbanner:   db 'banner'
 n_ftheme:    db 'theme'
 n_flocale:   db 'locale'
+n_furl:      db 'url'
 
 align 8
 fld_names:                      ; {ptr, len, pad}, indexed by FI_*
@@ -1596,6 +1615,7 @@ fld_names:                      ; {ptr, len, pad}, indexed by FI_*
     dq n_fbanner, 6, 0
     dq n_ftheme, 5, 0
     dq n_flocale, 6, 0
+    dq n_furl, 3, 0
 
 ; dashboard row fragments (classes must be CSS components; Tailwind
 ; does not scan .asm, only the html templates)

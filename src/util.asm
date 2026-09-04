@@ -17,6 +17,9 @@ global arena_destroy
 global cstr_eq
 global fmt_date
 global fmt_datetime
+global fmt_httpdate
+global emit_date_hdr
+global put_hex
 global civil
 global parse_dec
 global mem_copy
@@ -331,6 +334,111 @@ fmt_datetime:
     mov byte [rax], 'Z'
     inc rax
     ret
+
+; put4(buf, value 0..9999) — four zero-padded digits; rax = buf+4
+put4:
+    xor edx, edx
+    mov rcx, 100
+    div rcx                     ; rax = high pair, rdx = low pair
+    push rdx
+    call put2
+    pop rdx
+    mov rdi, rax
+    mov rax, rdx
+    jmp put2
+
+; fmt_httpdate(secs, buf) -> rax = buf+29
+;   RFC 7231 IMF-fixdate: "Sun, 06 Nov 1994 08:49:37 GMT"
+fmt_httpdate:
+    push r12
+    push r13
+    mov r12, rsi                ; buf
+    mov r13, rdi                ; secs
+    call civil                  ; r8 = y, r9 = m, r10 = d, r11 = sec of day
+    mov rax, r13                ; day of week: 1970-01-01 was a Thursday
+    xor edx, edx
+    mov rcx, 86400
+    div rcx
+    add rax, 4
+    xor edx, edx
+    mov rcx, 7
+    div rcx                     ; rdx = 0 Sun .. 6 Sat
+    mov eax, [dow4 + rdx*4]     ; "Sun,"
+    mov [r12], eax
+    mov byte [r12+4], ' '
+    lea rdi, [r12+5]
+    mov rax, r10
+    call put2                   ; day
+    mov byte [r12+7], ' '
+    lea rax, [r9-1]
+    mov eax, [mon4 + rax*4]     ; "Nov "
+    mov [r12+8], eax
+    lea rdi, [r12+12]
+    mov rax, r8
+    call put4                   ; year
+    mov byte [r12+16], ' '
+    lea rdi, [r12+17]
+    mov rax, r11
+    xor edx, edx
+    mov rcx, 3600
+    div rcx
+    mov r8, rdx
+    call put2                   ; hour
+    mov byte [r12+19], ':'
+    lea rdi, [r12+20]
+    mov rax, r8
+    xor edx, edx
+    mov rcx, 60
+    div rcx
+    mov r8, rdx
+    call put2                   ; minute
+    mov byte [r12+22], ':'
+    lea rdi, [r12+23]
+    mov rax, r8
+    call put2                   ; second
+    mov dword [r12+25], ' GMT'
+    lea rax, [r12+29]
+    pop r13
+    pop r12
+    ret
+
+; emit_date_hdr(buf) -> rax = end. Writes "Date: <now>\r\n" (37 bytes).
+emit_date_hdr:
+    push r12
+    mov r12, rdi
+    mov dword [r12], 'Date'
+    mov word [r12+4], ': '
+    xor edi, edi
+    mov eax, SYS_time
+    syscall
+    mov rdi, rax
+    lea rsi, [r12+6]
+    call fmt_httpdate
+    mov word [rax], 0x0A0D
+    lea rax, [rax+2]
+    pop r12
+    ret
+
+; put_hex(value, buf, ndigits) -> rax = buf+ndigits. Lowercase, zero
+; padded, low ndigits*4 bits of value.
+put_hex:
+    lea rax, [rsi+rdx]
+    mov r8, rax
+    mov rcx, rdx
+.digit:
+    test rcx, rcx
+    jz .done
+    mov rdx, rdi
+    and edx, 15
+    mov dl, [hexdigits + rdx]
+    dec r8
+    mov [r8], dl
+    shr rdi, 4
+    dec rcx
+    jmp .digit
+.done:
+    ret
+
 parse_u64:
     xor eax, eax
     cmp byte [rdi], 0
@@ -353,5 +461,11 @@ parse_u64:
 .bad:
     mov rax, -1
     ret
+
+section .data
+
+dow4: db 'Sun,Mon,Tue,Wed,Thu,Fri,Sat,'
+mon4: db 'Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec '
+hexdigits: db '0123456789abcdef'
 
 section .note.GNU-stack noalloc noexec nowrite progbits

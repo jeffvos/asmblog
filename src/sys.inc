@@ -25,6 +25,7 @@
 %define SYS_mkdir       83
 %define SYS_time        201
 %define SYS_futex       202
+%define SYS_clock_gettime 228
 %define SYS_sched_getaffinity 204
 %define SYS_exit_group  231
 %define SYS_epoll_wait  232
@@ -54,6 +55,7 @@
 %define PROT_NONE       0
 %define PROT_READ       1
 %define PROT_WRITE      2
+%define MAP_SHARED      1
 %define MAP_PRIVATE     2
 %define MAP_ANONYMOUS   0x20
 %define MAP_STACK       0x20000

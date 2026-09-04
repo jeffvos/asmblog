@@ -26,6 +26,13 @@ extern set_title_l
 extern set_banner_p
 extern set_banner_l
 extern set_theme
+extern set_locale
+extern store_mtime
+extern crc32c
+extern put_hex
+extern fmt_httpdate
+extern emit_date_hdr
+extern inm_check
 extern w_init
 extern w_ovf
 extern emit
@@ -51,8 +58,13 @@ global page_list
 global page_post
 global page_feed
 global page_css
+global page_hits
 global load_static
+global hits_init
+global hits_p
 global finish_page
+global finish_304
+global shell_vals
 global theme_class
 
 ; ---- page_list frame (offsets derive from NVALS so the registry can
@@ -108,6 +120,9 @@ page_list:
     mov eax, 2
 .m2:
     mov [rsp+L_MODE], rax
+    mov byte [r12+CTX_CACHE], CACHE_REVALIDATE
+    cmp byte [r12+CTX_INM], 0
+    jne .notmod                 ; client holds this generation: no render
 
     mov rdi, store_lock
     call rd_lock
@@ -169,23 +184,8 @@ page_list:
     mov ecx, NVALS*2
     xor eax, eax
     rep stosq
-    ; site
-    mov rax, [set_title_p]
-    mov rcx, [set_title_l]
-    test rcx, rcx
-    jnz .site_ok
-    mov rax, def_site
-    mov rcx, def_site_len
-.site_ok:
-    mov [rsp+L_VALS+V_SITE*16], rax
-    mov [rsp+L_VALS+V_SITE*16+8], rcx
-    mov rax, [set_banner_p]
-    mov [rsp+L_VALS+V_BANNER*16], rax
-    mov rax, [set_banner_l]
-    mov [rsp+L_VALS+V_BANNER*16+8], rax
-    call theme_class
-    mov [rsp+L_VALS+V_THEME*16], rax
-    mov [rsp+L_VALS+V_THEME*16+8], rdx
+    lea rdi, [rsp+L_VALS]
+    call shell_vals
 
     ; heading panel for tag/search pages
     cmp qword [rsp+L_MODE], 0
@@ -405,7 +405,6 @@ page_list:
     mov [rsp+L_VALS+V_Q*16], rax
     mov [rsp+L_VALS+V_Q*16+8], rcx
 .noq:
-    call fill_count_val_a       ; visitor counter into L_NUM/vals
     ; render shell into the body region
     lea rdi, [rsp+L_BW]
     lea rsi, [r12+CTX_OUT+CTX_BODY_OFF]
@@ -415,6 +414,8 @@ page_list:
     mov esi, T_SHELL
     lea rdx, [rsp+L_VALS]
     call tmpl_render
+    mov rax, [store_mtime]      ; validators, read under the lock
+    mov [r12+CTX_LM], rax
     mov rdi, store_lock
     call rd_unlock
     lea rdi, [rsp+L_BW]
@@ -431,6 +432,10 @@ page_list:
     xor r8d, r8d
     xor r9d, r9d
     call finish_page
+    jmp .done
+.notmod:
+    mov rdi, r12
+    call finish_304
     jmp .done
 .notfound:
     mov rdi, store_lock
@@ -454,22 +459,6 @@ page_list:
     pop r14
     pop r13
     pop r12
-    ret
-
-; fill_count_val_a — bump the visitor counter, format it into L_NUM and
-; the vals slot. Called with page_list's frame live (rsp offsets +8 for
-; our own return address).
-fill_count_val_a:
-    mov eax, 1
-    lock xadd [hits], rax
-    inc rax
-    mov rdi, rax
-    lea rsi, [rsp+8+L_NUM]
-    call u64_to_dec
-    lea rcx, [rsp+8+L_NUM]
-    sub rax, rcx
-    mov [rsp+8+L_VALS+V_COUNT*16], rcx
-    mov [rsp+8+L_VALS+V_COUNT*16+8], rax
     ret
 
 ; pager_link(w, tag_p, tag_l, n, label_p, label_l)
@@ -741,6 +730,9 @@ page_post:
     mov r12, rdi
     mov r13, rsi
     mov r14, rdx
+    mov byte [r12+CTX_CACHE], CACHE_REVALIDATE
+    cmp byte [r12+CTX_INM], 0
+    jne .notmod
     mov rdi, store_lock
     call rd_lock
     xor ebx, ebx
@@ -771,23 +763,8 @@ page_post:
     mov ecx, NVALS*2
     xor eax, eax
     rep stosq
-    ; site
-    mov rax, [set_title_p]
-    mov rcx, [set_title_l]
-    test rcx, rcx
-    jnz .site_ok
-    mov rax, def_site
-    mov rcx, def_site_len
-.site_ok:
-    mov [rsp+Q_VALS+V_SITE*16], rax
-    mov [rsp+Q_VALS+V_SITE*16+8], rcx
-    mov rax, [set_banner_p]
-    mov [rsp+Q_VALS+V_BANNER*16], rax
-    mov rax, [set_banner_l]
-    mov [rsp+Q_VALS+V_BANNER*16+8], rax
-    call theme_class
-    mov [rsp+Q_VALS+V_THEME*16], rax
-    mov [rsp+Q_VALS+V_THEME*16+8], rdx
+    lea rdi, [rsp+Q_VALS]
+    call shell_vals
     ; title
     mov rax, [r15+P_TITLE_P]
     mov [rsp+Q_VALS+V_TITLE*16], rax
@@ -834,7 +811,6 @@ page_post:
     mov rcx, [rsp+Q_W]
     sub rcx, rax
     mov [rsp+Q_VALS+V_CONTENT*16+8], rcx
-    call fill_count_val_b
     lea rdi, [rsp+Q_BW]
     lea rsi, [r12+CTX_OUT+CTX_BODY_OFF]
     lea rdx, [r12+CTX_OUT+CTX_BODY_END]
@@ -843,6 +819,8 @@ page_post:
     mov esi, T_SHELL
     lea rdx, [rsp+Q_VALS]
     call tmpl_render
+    mov rax, [store_mtime]
+    mov [r12+CTX_LM], rax
     mov rdi, store_lock
     call rd_unlock
     lea rdi, [rsp+Q_BW]
@@ -859,6 +837,10 @@ page_post:
     xor r8d, r8d
     xor r9d, r9d
     call finish_page
+    jmp .done
+.notmod:
+    mov rdi, r12
+    call finish_304
     jmp .done
 .notfound:
     mov rdi, store_lock
@@ -884,20 +866,6 @@ page_post:
     pop r12
     ret
 
-; counter helper for page_post's frame
-fill_count_val_b:
-    mov eax, 1
-    lock xadd [hits], rax
-    inc rax
-    mov rdi, rax
-    lea rsi, [rsp+8+Q_NUM]
-    call u64_to_dec
-    lea rcx, [rsp+8+Q_NUM]
-    sub rax, rcx
-    mov [rsp+8+Q_VALS+V_COUNT*16], rcx
-    mov [rsp+8+Q_VALS+V_COUNT*16+8], rax
-    ret
-
 ; ---- page_feed ---------------------------------------------------------
 %define F_W     0
 %define F_DATE  24              ; 32
@@ -913,6 +881,9 @@ page_feed:
     push rbx
     sub rsp, F_FRAME
     mov r12, rdi
+    mov byte [r12+CTX_CACHE], CACHE_FEED
+    cmp byte [r12+CTX_INM], 0
+    jne .notmod
     mov rdi, store_lock
     call rd_lock
     lea rdi, [rsp+F_W]
@@ -1022,6 +993,8 @@ page_feed:
     mov rsi, a_tail
     mov edx, a_tail_len
     call emit
+    mov rax, [store_mtime]
+    mov [r12+CTX_LM], rax
     mov rdi, store_lock
     call rd_unlock
     lea rdi, [rsp+F_W]
@@ -1039,6 +1012,10 @@ page_feed:
     xor r9d, r9d
     call finish_page
     jmp .done
+.notmod:
+    mov rdi, r12
+    call finish_304
+    jmp .done
 .fail500:
     mov rdi, r12
     mov esi, 5
@@ -1054,45 +1031,62 @@ page_feed:
 
 ; ---- static css --------------------------------------------------------
 
-; page_css(ctx)
+; page_css(ctx) — the stylesheet, gzip when accepted, with a strong
+; ETag (crc32c of the bytes served); CTX_CACHE was set by the router.
 page_css:
     push r12
     push r13
     push r14
+    push rbx
+    push rbp
     mov r12, rdi
     mov r13, [css_p]
     mov r14, [css_l]
     test r13, r13
     jz .missing
-    cmp byte [r12+CTX_GZIP], 0
-    je .plain
+    xor ebx, ebx                ; extra headers (Content-Encoding)
+    xor ebp, ebp
+    mov eax, [css_crc]
+    test byte [r12+CTX_GZIP], 1
+    jz .chosen
     cmp qword [css_gz_l], 0
-    je .plain
+    je .chosen
     mov r13, [css_gz_p]
     mov r14, [css_gz_l]
-    mov r8, x_gzip
-    mov r9, x_gzip_len
-    jmp .send
-.plain:
-    mov r8, x_plain
-    mov r9, x_plain_len
-.send:
+    mov rbx, x_gzip
+    mov ebp, x_gzip_len
+    mov eax, [css_gz_crc]
+.chosen:
+    lea rsi, [r12+CTX_ETAG]
+    mov byte [rsi], '"'
+    inc rsi
+    mov edi, eax
+    mov edx, 8
+    call put_hex
+    mov byte [rax], '"'
+    mov byte [r12+CTX_ETAG_L], 10
+    mov rdi, r12
+    call inm_check
+    test eax, eax
+    jnz .notmod
     lea rax, [r14+CTX_BODY_OFF+4096]
     cmp rax, CTX_BODY_END
     ja .toobig
-    push r8
-    push r9
     lea rdi, [r12+CTX_OUT+CTX_BODY_OFF]
     mov rsi, r13
     mov rdx, r14
     call mem_copy
-    pop r9
-    pop r8
     mov rdi, r12
     mov rsi, r14
     mov rdx, ct_css
     mov ecx, ct_css_len
+    mov r8, rbx
+    mov r9, rbp
     call finish_page
+    jmp .done
+.notmod:
+    mov rdi, r12
+    call finish_304
     jmp .done
 .missing:
     mov rdi, r12
@@ -1104,12 +1098,172 @@ page_css:
     mov esi, 5
     call build_page
 .done:
+    pop rbp
+    pop rbx
     pop r14
     pop r13
     pop r12
     ret
 
+; page_hits(ctx) — the visitor counter as a tiny no-store SVG, so the
+; HTML pages stay byte-stable (and therefore cacheable). GET bumps the
+; persistent counter; HEAD only peeks.
+page_hits:
+    push r12
+    push rbx
+    sub rsp, 64                 ; [0..32) digits, [32..56) writer
+    mov r12, rdi
+    mov byte [r12+CTX_CACHE], CACHE_NOSTORE
+    mov byte [r12+CTX_ETAG_L], 0
+    mov rax, [hits_p]
+    cmp byte [r12+CTX_HEAD], 0
+    jne .peek
+    mov ecx, 1
+    lock xadd [rax], rcx
+    lea rbx, [rcx+1]
+    jmp .fmt
+.peek:
+    mov rbx, [rax]
+.fmt:
+    mov rdi, rbx
+    mov rsi, rsp
+    call u64_to_dec
+    mov rbx, rax
+    sub rbx, rsp                ; digit count
+    lea rdi, [rsp+32]
+    lea rsi, [r12+CTX_OUT+CTX_BODY_OFF]
+    lea rdx, [r12+CTX_OUT+CTX_BODY_END]
+    call w_init
+    lea rdi, [rsp+32]
+    mov rsi, svg1
+    mov edx, svg1_len
+    call emit
+    mov rax, rbx                ; width: 8px cells, at least 6 digits
+    cmp rax, 6
+    jae .wide
+    mov eax, 6
+.wide:
+    lea rcx, [rax*8+8]
+    push rcx
+    lea rdi, [rsp+40]
+    mov rsi, rcx
+    call emit_u64
+    lea rdi, [rsp+40]
+    mov rsi, svg2
+    mov edx, svg2_len
+    call emit
+    pop rsi
+    lea rdi, [rsp+32]
+    call emit_u64
+    mov rsi, svg3_retro
+    mov edx, svg3_retro_len
+    cmp dword [set_theme], 1
+    jne .colours
+    mov rsi, svg3_sucre
+    mov edx, svg3_sucre_len
+.colours:
+    lea rdi, [rsp+32]
+    call emit
+    mov rcx, 6                  ; zero-pad to six digits
+    sub rcx, rbx
+    jle .digits
+.zero:
+    push rcx
+    lea rdi, [rsp+40]
+    mov rsi, svg_zero
+    mov edx, 1
+    call emit
+    pop rcx
+    dec rcx
+    jnz .zero
+.digits:
+    lea rdi, [rsp+32]
+    mov rsi, rsp
+    mov rdx, rbx
+    call emit
+    lea rdi, [rsp+32]
+    mov rsi, svg4
+    mov edx, svg4_len
+    call emit
+    lea rsi, [r12+CTX_OUT+CTX_BODY_OFF]
+    mov rax, [rsp+32]
+    sub rax, rsi
+    mov rdi, r12
+    mov rsi, rax
+    mov rdx, ct_svg
+    mov ecx, ct_svg_len
+    xor r8d, r8d
+    xor r9d, r9d
+    call finish_page
+    add rsp, 64
+    pop rbx
+    pop r12
+    ret
+
+; hits_init() — map data/hits.blg, the persistent visitor counter
+; (16-byte header 'HIT1' | reserved | qword count, in a 4 KiB file).
+; The page is MAP_SHARED, so `lock xadd` on it is the whole write path:
+; the kernel writes the dirty page back itself, even if blogd is killed.
+; Never fatal: on any failure the counter is process-local instead.
+hits_init:
+    push r12
+    push r13
+    mov qword [hits_p], hits_local
+    mov rdi, f_hits
+    mov esi, O_RDWR | O_CREAT
+    mov edx, 0o600
+    mov eax, SYS_open
+    syscall
+    test rax, rax
+    js .ret
+    mov r12, rax
+    sub rsp, 144
+    mov rdi, r12
+    mov rsi, rsp
+    mov eax, SYS_fstat
+    syscall
+    mov r13, [rsp+48]
+    add rsp, 144
+    test rax, rax
+    js .close
+    cmp r13, 4096
+    jae .map
+    mov rdi, r12
+    mov esi, 4096
+    mov eax, SYS_ftruncate
+    syscall
+    test rax, rax
+    js .close
+.map:
+    xor edi, edi
+    mov esi, 4096
+    mov edx, PROT_READ | PROT_WRITE
+    mov r10d, MAP_SHARED
+    mov r8, r12
+    xor r9d, r9d
+    mov eax, SYS_mmap
+    syscall
+    cmp rax, -4095
+    jae .close
+    cmp dword [rax], 'HIT1'
+    je .good
+    mov dword [rax], 'HIT1'     ; fresh (or corrupt) file: start at 0
+    mov dword [rax+4], 0
+    mov qword [rax+8], 0
+.good:
+    lea rcx, [rax+8]
+    mov [hits_p], rcx
+.close:
+    mov rdi, r12
+    mov eax, SYS_close
+    syscall
+.ret:
+    pop r13
+    pop r12
+    ret
+
 ; load_static() -> 0 / -1. main.css required, main.css.gz optional.
+; Also derives the stylesheet version (crc32c) used for cache busting.
 load_static:
     push r12
     mov edi, 0x100000
@@ -1124,11 +1278,26 @@ load_static:
     call load_file
     test rax, rax
     jnz .fail
+    mov rdi, [css_p]
+    mov rsi, [css_l]
+    call crc32c
+    mov [css_crc], eax
+    mov edi, eax
+    mov rsi, css_ver
+    mov edx, 8
+    call put_hex
     mov rdi, f_cssgz
     mov rsi, r12
     mov rdx, css_gz_p
     mov rcx, css_gz_l
     call load_file              ; optional: ignore failure
+    test rax, rax
+    jnz .ok
+    mov rdi, [css_gz_p]
+    mov rsi, [css_gz_l]
+    call crc32c
+    mov [css_gz_crc], eax
+.ok:
     xor eax, eax
     pop r12
     ret
@@ -1222,9 +1391,94 @@ theme_class:
     mov edx, s_theme_sucre_len
     ret
 
+; shell_vals(vals) — the values every shell render needs: site title,
+; banner, theme class, stylesheet version.
+shell_vals:
+    mov rax, [set_title_p]
+    mov rcx, [set_title_l]
+    test rcx, rcx
+    jnz .site_ok
+    mov rax, def_site
+    mov rcx, def_site_len
+.site_ok:
+    mov [rdi+V_SITE*16], rax
+    mov [rdi+V_SITE*16+8], rcx
+    mov rax, [set_banner_p]
+    mov [rdi+V_BANNER*16], rax
+    mov rax, [set_banner_l]
+    mov [rdi+V_BANNER*16+8], rax
+    call theme_class
+    mov [rdi+V_THEME*16], rax
+    mov [rdi+V_THEME*16+8], rdx
+    mov qword [rdi+V_CSSV*16], css_ver
+    mov qword [rdi+V_CSSV*16+8], 8
+    ret
+
+; resp_headers(dst, ctx) -> rax = end. The response-state headers:
+; Cache-Control (CTX_CACHE), Vary: Accept-Encoding for the negotiated
+; static modes, ETag (CTX_ETAG) and Last-Modified (CTX_LM).
+resp_headers:
+    push r12
+    push rbx
+    mov rbx, rdi
+    mov r12, rsi
+    movzx eax, byte [r12+CTX_CACHE]
+    test eax, eax
+    jz .etag
+    shl eax, 4
+    mov rsi, [cc_tbl + rax]
+    mov rdx, [cc_tbl + rax + 8]
+    mov rdi, rbx
+    call mem_copy
+    mov rbx, rax
+    movzx eax, byte [r12+CTX_CACHE]
+    cmp eax, CACHE_IMMUTABLE
+    je .vary
+    cmp eax, CACHE_HOUR
+    jne .etag
+.vary:
+    mov rdi, rbx
+    mov rsi, s_vary
+    mov edx, s_vary_len
+    call mem_copy
+    mov rbx, rax
+.etag:
+    cmp byte [r12+CTX_ETAG_L], 0
+    je .lm
+    mov rdi, rbx
+    mov rsi, s_etag
+    mov edx, s_etag_len
+    call mem_copy
+    mov rdi, rax
+    lea rsi, [r12+CTX_ETAG]
+    movzx edx, byte [r12+CTX_ETAG_L]
+    call mem_copy
+    mov word [rax], 0x0A0D
+    lea rbx, [rax+2]
+.lm:
+    cmp qword [r12+CTX_LM], 0
+    je .done
+    mov rdi, rbx
+    mov rsi, s_lm
+    mov edx, s_lm_len
+    call mem_copy
+    mov rdi, [r12+CTX_LM]
+    mov rsi, rax
+    call fmt_httpdate
+    mov word [rax], 0x0A0D
+    lea rbx, [rax+2]
+.done:
+    mov rax, rbx
+    pop rbx
+    pop r12
+    ret
+
 ; finish_page(ctx, body_len, ctype_p, ctype_l, extra_p, extra_l)
 ; Headers are written right-aligned against CTX_BODY_OFF, where the
-; body has already been rendered.
+; body has already been rendered. Date, Content-Language (HTML) and the
+; resp_headers set come from the connection's response state; a HEAD
+; request sends the headers only (Content-Length still describes the
+; body it would have had).
 finish_page:
     push r12
     push r13
@@ -1236,9 +1490,9 @@ finish_page:
     mov r13, rsi
     mov r14, rdx
     mov r15, rcx
-    mov rbx, r8
-    mov rbp, r9
-    sub rsp, 640
+    sub rsp, 1040
+    mov [rsp+1024], r8
+    mov [rsp+1032], r9
     mov rdi, rsp
     mov rsi, s_200
     mov edx, s_200_len
@@ -1247,6 +1501,8 @@ finish_page:
     mov rsi, s_server
     mov edx, s_server_len
     call mem_copy
+    mov rdi, rax
+    call emit_date_hdr
     mov rdi, rax
     mov rsi, sec_headers
     mov edx, sec_headers_len
@@ -1266,14 +1522,40 @@ finish_page:
     mov rsi, r14
     mov rdx, r15
     call mem_copy
+    mov rbx, rax
+    cmp r15, 23                 ; Content-Language on text/html
+    jb .nolang
+    mov rdi, r14
+    mov rsi, s_ct_html_pfx
+    mov edx, 23
+    call mem_eq
+    test eax, eax
+    jz .nolang
+    mov rsi, s_lang_en
+    mov edx, s_lang_en_len
+    cmp dword [set_locale], 1
+    jne .lang
+    mov rsi, s_lang_es
+    mov edx, s_lang_es_len
+.lang:
+    mov rdi, rbx
+    call mem_copy
+    mov rbx, rax
+.nolang:
+    mov rdi, rbx
+    mov rsi, r12
+    call resp_headers
+    mov rbx, rax
+    mov rbp, [rsp+1032]
     test rbp, rbp
     jz .noextra
-    mov rdi, rax
-    mov rsi, rbx
+    mov rdi, rbx
+    mov rsi, [rsp+1024]
     mov rdx, rbp
     call mem_copy
+    mov rbx, rax
 .noextra:
-    mov rdi, rax
+    mov rdi, rbx
     mov rsi, s_clen
     mov edx, s_clen_len
     call mem_copy
@@ -1294,15 +1576,60 @@ finish_page:
     mov rax, CTX_BODY_OFF
     sub rax, rbx
     mov [r12+CTX_OUT_START], rax
-    lea rax, [rbx+r13]
+    mov rax, rbx
+    cmp byte [r12+CTX_HEAD], 0
+    jne .len
+    add rax, r13
+.len:
     mov [r12+CTX_OUT_LEN], rax
     mov qword [r12+CTX_OUT_SENT], 0
-    add rsp, 640
+    add rsp, 1040
     pop rbp
     pop rbx
     pop r15
     pop r14
     pop r13
+    pop r12
+    ret
+
+; finish_304(ctx) — headers-only Not Modified carrying the validators
+; the handler staged (the same ones its 200 would have had).
+finish_304:
+    push r12
+    push r14
+    mov r12, rdi
+    lea r14, [r12+CTX_OUT]
+    mov rdi, r14
+    mov rsi, s_304
+    mov edx, s_304_len
+    call mem_copy
+    mov rdi, rax
+    mov rsi, s_server
+    mov edx, s_server_len
+    call mem_copy
+    mov rdi, rax
+    call emit_date_hdr
+    cmp byte [r12+CTX_KEEP], 0
+    je .cl
+    mov rsi, s_ka
+    mov edx, s_ka_len
+    jmp .conn
+.cl:
+    mov rsi, s_cl
+    mov edx, s_cl_len
+.conn:
+    mov rdi, rax
+    call mem_copy
+    mov rdi, rax
+    mov rsi, r12
+    call resp_headers
+    mov word [rax], 0x0A0D
+    add rax, 2
+    sub rax, r14
+    mov [r12+CTX_OUT_LEN], rax
+    mov qword [r12+CTX_OUT_START], 0
+    mov qword [r12+CTX_OUT_SENT], 0
+    pop r14
     pop r12
     ret
 
@@ -1363,6 +1690,8 @@ a_tail_len equ $-a_tail
 
 s_200: db 'HTTP/1.1 200 OK', 13, 10
 s_200_len equ $-s_200
+s_304: db 'HTTP/1.1 304 Not Modified', 13, 10
+s_304_len equ $-s_304
 s_server: db 'Server: blogd/0.7', 13, 10
 s_server_len equ $-s_server
 s_ka: db 'Connection: keep-alive', 13, 10
@@ -1372,6 +1701,39 @@ s_cl_len equ $-s_cl
 s_clen: db 'Content-Length: '
 s_clen_len equ $-s_clen
 s_crlf2: db 13, 10, 13, 10
+s_etag: db 'ETag: '
+s_etag_len equ $-s_etag
+s_lm: db 'Last-Modified: '
+s_lm_len equ $-s_lm
+s_vary: db 'Vary: Accept-Encoding', 13, 10
+s_vary_len equ $-s_vary
+s_lang_en: db 'Content-Language: en', 13, 10
+s_lang_en_len equ $-s_lang_en
+s_lang_es: db 'Content-Language: es-BO', 13, 10
+s_lang_es_len equ $-s_lang_es
+s_ct_html_pfx: db 'Content-Type: text/html'
+
+cc_reval: db 'Cache-Control: public, max-age=0, must-revalidate', 13, 10
+cc_reval_len equ $-cc_reval
+cc_imm: db 'Cache-Control: public, max-age=31536000, immutable', 13, 10
+cc_imm_len equ $-cc_imm
+cc_nostore: db 'Cache-Control: no-store', 13, 10
+cc_nostore_len equ $-cc_nostore
+cc_feed: db 'Cache-Control: public, max-age=300', 13, 10
+cc_feed_len equ $-cc_feed
+cc_day: db 'Cache-Control: public, max-age=86400', 13, 10
+cc_day_len equ $-cc_day
+cc_hour: db 'Cache-Control: public, max-age=3600', 13, 10
+cc_hour_len equ $-cc_hour
+align 8
+cc_tbl:                         ; indexed by CACHE_* mode
+    dq 0, 0
+    dq cc_reval, cc_reval_len
+    dq cc_imm, cc_imm_len
+    dq cc_nostore, cc_nostore_len
+    dq cc_feed, cc_feed_len
+    dq cc_day, cc_day_len
+    dq cc_hour, cc_hour_len
 
 ct_html: db 'Content-Type: text/html; charset=utf-8', 13, 10
 ct_html_len equ $-ct_html
@@ -1379,21 +1741,39 @@ ct_atom: db 'Content-Type: application/atom+xml; charset=utf-8', 13, 10
 ct_atom_len equ $-ct_atom
 ct_css: db 'Content-Type: text/css; charset=utf-8', 13, 10
 ct_css_len equ $-ct_css
-x_plain: db 'Cache-Control: public, max-age=3600', 13, 10
-x_plain_len equ $-x_plain
-x_gzip: db 'Cache-Control: public, max-age=3600', 13, 10
-        db 'Content-Encoding: gzip', 13, 10
+ct_svg: db 'Content-Type: image/svg+xml; charset=utf-8', 13, 10
+ct_svg_len equ $-ct_svg
+x_gzip: db 'Content-Encoding: gzip', 13, 10
 x_gzip_len equ $-x_gzip
+
+svg1: db '<svg xmlns="http://www.w3.org/2000/svg" width="'
+svg1_len equ $-svg1
+svg2: db '" height="18" viewBox="0 0 '
+svg2_len equ $-svg2
+svg3_retro: db ' 18"><rect width="100%" height="100%" fill="#000"/>'
+            db '<text x="4" y="13" font-family="Courier New,monospace" font-size="12" fill="#3f3">'
+svg3_retro_len equ $-svg3_retro
+svg3_sucre: db ' 18"><rect width="100%" height="100%" fill="#2b241f"/>'
+            db '<text x="4" y="13" font-family="Courier New,monospace" font-size="12" fill="#e6c07b">'
+svg3_sucre_len equ $-svg3_sucre
+svg4: db '</text></svg>', 10
+svg4_len equ $-svg4
+svg_zero: db '0'
 
 f_css: db 'static/main.css', 0
 f_cssgz: db 'static/main.css.gz', 0
+f_hits: db 'data/hits.blg', 0
 
 section .bss
 
-hits:     resq 1
-css_p:    resq 1
-css_l:    resq 1
-css_gz_p: resq 1
-css_gz_l: resq 1
+hits_p:     resq 1              ; -> the counter qword (mapped file or local)
+hits_local: resq 1
+css_p:      resq 1
+css_l:      resq 1
+css_gz_p:   resq 1
+css_gz_l:   resq 1
+css_crc:    resd 1
+css_gz_crc: resd 1
+css_ver:    resb 8              ; crc32c of main.css as hex: ?v= token
 
 section .note.GNU-stack noalloc noexec nowrite progbits

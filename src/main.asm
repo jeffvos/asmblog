@@ -24,6 +24,7 @@ extern selftest_main
 extern seed_main
 extern tmpl_load_all
 extern load_static
+extern hits_init
 extern crypto_init
 extern crypto_service
 extern seccomp_install
@@ -31,6 +32,7 @@ extern workers_ready
 
 global _start
 global listen_addr
+global getenv_value
 
 section .text
 
@@ -99,6 +101,7 @@ _start:
     call load_static
     test rax, rax
     jnz .cssfail
+    call hits_init              ; persistent visitor counter (pre-seccomp)
     call crypto_init            ; libsodium, initial thread only
     test rax, rax
     js .sodiumfail
@@ -257,6 +260,43 @@ getenv_present:
     ret
 .no:
     xor eax, eax
+    ret
+
+; getenv_value(name_cstr) -> rax = value ptr (0 if unset), rdx = length
+getenv_value:
+    mov r9, [envp]
+.next:
+    mov r8, [r9]
+    test r8, r8
+    jz .no
+    mov rsi, rdi
+    mov rcx, r8
+.cmp:
+    mov al, [rsi]
+    test al, al
+    jz .checkeq
+    cmp al, [rcx]
+    jne .adv
+    inc rsi
+    inc rcx
+    jmp .cmp
+.checkeq:
+    cmp byte [rcx], '='
+    jne .adv
+    lea rax, [rcx+1]
+    xor edx, edx
+.len:
+    cmp byte [rax+rdx], 0
+    je .ret
+    inc rdx
+    jmp .len
+.adv:
+    add r9, 8
+    jmp .next
+.no:
+    xor eax, eax
+    xor edx, edx
+.ret:
     ret
 
 section .data

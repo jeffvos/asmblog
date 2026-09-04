@@ -99,8 +99,8 @@ body { min-height: 100vh; margin: 0; }
 .theme-retro .pglink:active { border-style: inset; }
 
 .theme-retro .hits {
-  background: #000; color: #00ff00; padding: 1px 8px;
-  letter-spacing: 3px; border: 2px inset #fff; font-weight: bold;
+  display: inline-block; vertical-align: middle;
+  height: 18px; width: auto; border: 2px inset #fff;
 }
 .theme-retro .badge {
   display: inline-block; border: 2px outset #fff;
@@ -284,10 +284,9 @@ body { min-height: 100vh; margin: 0; }
 .theme-sucre .pglink:hover { background: var(--su-roof); color: #fbf3e6; border-color: var(--su-roof-d); }
 
 .theme-sucre .hits {
-  font-family: Georgia, serif;
-  color: var(--su-roof);
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  display: inline-block; vertical-align: middle;
+  height: 18px; width: auto;
+  border: 1px solid var(--su-line); border-radius: 3px;
 }
 .theme-sucre .badge {
   display: inline-block;

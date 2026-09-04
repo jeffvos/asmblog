@@ -206,8 +206,8 @@ tmpl_render:
     test rdx, rdx
     jz .next
     shr rcx, 4
-    mov eax, RAW_MASK
-    bt eax, ecx
+    mov rax, RAW_MASK
+    bt rax, rcx                 ; 64-bit: ids past 31 stay correct
     jc .raw
     mov rdi, r12
     call emit_esc
@@ -453,7 +453,7 @@ n_url:     db 'url'
 n_date:    db 'date'
 n_tags:    db 'tags'
 n_html:    db 'html'
-n_count:   db 'count'
+n_meta:    db 'meta'
 n_q:       db 'q'
 n_heading: db 'heading'
 n_excerpt: db 'excerpt'
@@ -474,6 +474,8 @@ n_selretro: db 'selretro'
 n_selsucre: db 'selsucre'
 n_selen:    db 'selen'
 n_seles:    db 'seles'
+n_cssv:     db 'cssv'
+n_eurl:     db 'eurl'
 
 align 8
 marker_names:                   ; {ptr, len, pad} triplets, indexed by id
@@ -484,7 +486,7 @@ marker_names:                   ; {ptr, len, pad} triplets, indexed by id
     dq n_date, 4, 0
     dq n_tags, 4, 0
     dq n_html, 4, 0
-    dq n_count, 5, 0
+    dq n_meta, 4, 0
     dq n_q, 1, 0
     dq n_heading, 7, 0
     dq n_excerpt, 7, 0
@@ -505,6 +507,8 @@ marker_names:                   ; {ptr, len, pad} triplets, indexed by id
     dq n_selsucre, 8, 0
     dq n_selen, 5, 0
     dq n_seles, 5, 0
+    dq n_cssv, 4, 0
+    dq n_eurl, 4, 0
 
 ; one template set per locale; slot = locale*NTMPL + template id
 f_shell:    db 'templates/en/shell.html', 0

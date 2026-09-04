@@ -27,6 +27,11 @@ extern next_id
 extern set_ppp
 extern set_hash
 extern set_banner_l
+extern set_url_l
+extern settings_set_url
+extern getenv_value
+extern hits_init
+extern hits_p
 extern crypto_init
 extern crypto_hash_password
 extern crypto_verify_password
@@ -227,6 +232,17 @@ init_main:
     test rax, rax
     jnz .hash_fail
 
+    mov rdi, env_siteurl        ; BLOGD_SITE_URL (optional): the public
+    call getenv_value           ; origin for canonical links, feeds, sitemap
+    test rax, rax
+    jz .no_url
+    mov rdi, rax
+    mov rsi, rdx
+    call settings_set_url
+    test rax, rax
+    jnz .url_bad
+.no_url:
+
     mov edi, [ppp_val]
     mov esi, 86400              ; session ttl: 24h
     mov rdx, title_buf
@@ -263,6 +279,10 @@ init_main:
 .hash_fail:
     mov rdi, e_hash
     mov esi, e_hash_len
+    jmp die
+.url_bad:
+    mov rdi, e_url
+    mov esi, e_url_len
     jmp die
 
 ; ---- blogd seed -------------------------------------------------------
@@ -404,11 +424,21 @@ selftest_main:
     cmp qword [posts_cnt], 2
     CHECK je, 6
 
-    ; 7: save settings (ppp 7)
+    ; 7: save settings (ppp 7, site url staged; a bad url is refused)
     mov rdi, set_hash          ; stage a fake hash for the store to persist
     mov rsi, t_fakehash
     mov edx, 128
     call mem_copy
+    mov rdi, t_badurl
+    mov esi, t_badurl_len
+    call settings_set_url
+    test rax, rax
+    CHECK jnz, 7
+    mov rdi, t_url
+    mov esi, t_url_len
+    call settings_set_url
+    test rax, rax
+    CHECK jz, 7
     mov edi, 7
     mov esi, 3600
     mov rdx, t_site
@@ -431,6 +461,8 @@ selftest_main:
     cmp dword [set_ppp], 7
     CHECK je, 11
     cmp qword [set_banner_l], t_banner_len   ; banner survived reload
+    CHECK je, 11
+    cmp qword [set_url_l], t_url_len-1       ; url too (trailing / dropped)
     CHECK je, 11
     mov edi, 1
     call store_find_by_id
@@ -476,6 +508,17 @@ selftest_main:
     CHECK jnz, 19
     cmp qword [rax+P_TITLE_L], t_titleA2_len
     CHECK je, 19
+
+    ; 24: persistent hit counter survives a remap (fresh file starts at 0)
+    call hits_init
+    mov rax, [hits_p]
+    cmp qword [rax], 0
+    CHECK je, 24
+    add qword [rax], 5
+    call hits_init
+    mov rax, [hits_p]
+    cmp qword [rax], 5
+    CHECK je, 24
 
     ; 20-23: Argon2id round trip (the slow part)
     mov rdi, p_crypto
@@ -538,6 +581,9 @@ e_mismatch: db 'blogd init: passwords do not match', 10
 e_mismatch_len equ $-e_mismatch
 e_hash: db 'blogd init: password hashing failed', 10
 e_hash_len equ $-e_hash
+e_url: db 'blogd init: BLOGD_SITE_URL must look like https://blog.example.com', 10
+e_url_len equ $-e_url
+env_siteurl: db 'BLOGD_SITE_URL', 0
 e_fail: db 'selftest FAIL step '
 e_fail_len equ $-e_fail
 
@@ -685,6 +731,10 @@ t_site: db 'Test Blog'
 t_site_len equ $-t_site
 t_banner: db 'welcome to the test banner'
 t_banner_len equ $-t_banner
+t_url: db 'https://blog.example.test/'
+t_url_len equ $-t_url
+t_badurl: db 'ftp://blog.example.test'
+t_badurl_len equ $-t_badurl
 t_fakehash: times 128 db 'x'
 t_pw: db 'correct horse battery'
 t_pw_len equ $-t_pw
