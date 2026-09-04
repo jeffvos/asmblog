@@ -16,10 +16,27 @@ else
 fi
 rm -rf "$TMPD"
 
+# CI runners can be slow to bring a server up: poll instead of sleeping
+wait_up() {   # wait_up <url> — until it answers (≤ 10 s), else fail loudly
+    local i
+    for i in $(seq 100); do
+        curl -s -o /dev/null "$1" 2>/dev/null && return 0
+        sleep 0.1
+    done
+    echo "FAIL - server at $1 did not come up"; exit 1
+}
+wait_down() { # wait_down — until no blogd is left running (≤ 5 s)
+    local i
+    for i in $(seq 50); do
+        pgrep -x blogd >/dev/null 2>&1 || return 0
+        sleep 0.1
+    done
+}
+
 ./build/blogd "$PORT" &
 PID=$!
 trap 'kill "$PID" 2>/dev/null || true' EXIT
-sleep 0.3
+wait_up "http://127.0.0.1:$PORT/health"
 
 fail=0
 # well-formedness check with the standard library (no xmllint needed)
@@ -66,8 +83,8 @@ CPORT=$((PORT+1))
 CTMP="$(mktemp -d)"
 cp -r "$ROOT/templates" "$ROOT/static" "$CTMP/"
 (cd "$CTMP" && "$ROOT/build/blogd" seed >/dev/null && "$ROOT/build/blogd" "$CPORT" >/dev/null 2>&1 &)
-sleep 0.4
 B="http://127.0.0.1:$CPORT"
+wait_up "$B/health"
 expect_code "seeded home is 200"          200 "$B/"
 expect_code "page past the end is 404"    404 "$B/page/3"
 expect_code "draft post is hidden (404)"  404 "$B/post/secret-draft"
@@ -123,13 +140,13 @@ check "hits.svg increments and is no-store"     bash -c "A=\$(curl -s $B/hits.sv
 check "HEAD on hits.svg peeks without counting" bash -c "A=\$(curl -s $B/hits.svg | grep -o '>0*[0-9]*</text' | tr -dc 0-9); curl -s -I $B/hits.svg >/dev/null; B2=\$(curl -s $B/hits.svg | grep -o '>0*[0-9]*</text' | tr -dc 0-9); test \$((10#\$A+1)) = \$((10#\$B2))"
 HITS_BEFORE="$(curl -s $B/hits.svg | grep -o '>0*[0-9]*</text' | tr -dc 0-9)"
 pkill -x blogd 2>/dev/null || true
-sleep 0.2
+wait_down
 (cd "$CTMP" && "$ROOT/build/blogd" "$CPORT" >/dev/null 2>&1 &)
-sleep 0.4
+wait_up "$B/health"
 HITS_AFTER="$(curl -s $B/hits.svg | grep -o '>0*[0-9]*</text' | tr -dc 0-9)"
 check "visitor counter survives a restart"      test "$((10#$HITS_AFTER))" = "$((10#$HITS_BEFORE + 1))"
 pkill -x blogd 2>/dev/null || true
-sleep 0.2
+wait_down
 
 # admin tests: init a password, drive the whole panel over HTTP
 APORT=$((PORT+2))
@@ -141,8 +158,8 @@ printf 'Smoke Blog\n5\nsmokepass123\nsmokepass123\n' | "$ROOT/build/blogd" init 
 "$ROOT/build/blogd" "$APORT" >/dev/null 2>&1 &
 APID=$!
 cd "$ROOT"
-sleep 0.4
 A="http://127.0.0.1:$APORT"
+wait_up "$A/health"
 JAR="$ATMP/jar.txt"
 expect_code "admin without session bounces" 303 "$A/admin"
 check "wrong password is refused"          bash -c "curl -s -d password=wrongwrong1 $A/admin/login | grep -q 'wrong password'"

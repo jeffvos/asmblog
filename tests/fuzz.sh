@@ -23,7 +23,10 @@ printf 'Fuzz Blog\n5\nfuzzpass12345\nfuzzpass12345\n' | "$ROOT/build/blogd" init
 "$ROOT/build/blogd" "$PORT" >/dev/null 2>&1 &
 SRV=$!
 trap 'kill -9 "$SRV" 2>/dev/null; rm -rf "$TMP"' EXIT
-sleep 0.6
+for i in $(seq 100); do
+    curl -s -o /dev/null "http://127.0.0.1:$PORT/health" 2>/dev/null && break
+    sleep 0.1
+done
 
 if ! kill -0 "$SRV" 2>/dev/null; then echo "fuzz: server failed to start"; exit 1; fi
 
