@@ -2883,7 +2883,7 @@ a_head2c: db '/feed.xml"/>', 10, '<id>tag:blogd:feed</id><updated>'
 a_head2c_len equ $-a_head2c
 a_head3: db '</updated>', 10, '<author><name>'
 a_head3_len equ $-a_head3
-a_head3b: db '</name></author><generator>blogd 0.7</generator>', 10
+a_head3b: db '</name></author><generator>blogd 0.8</generator>', 10
 a_head3b_len equ $-a_head3b
 a_icon: db '<icon>'
 a_icon_len equ $-a_icon
@@ -2924,7 +2924,7 @@ s_200: db 'HTTP/1.1 200 OK', 13, 10
 s_200_len equ $-s_200
 s_304: db 'HTTP/1.1 304 Not Modified', 13, 10
 s_304_len equ $-s_304
-s_server: db 'Server: blogd/0.7', 13, 10
+s_server: db 'Server: blogd/0.8', 13, 10
 s_server_len equ $-s_server
 s_ka: db 'Connection: keep-alive', 13, 10
 s_ka_len equ $-s_ka

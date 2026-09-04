@@ -1625,7 +1625,7 @@ hdr_301_tail: db 13, 10, 'Cache-Control: public, max-age=86400', 13, 10
               db 'Content-Length: 0', 13, 10, 13, 10
 hdr_301_tail_len equ $-hdr_301_tail
 
-hdr_server: db 'Server: blogd/0.7', 13, 10
+hdr_server: db 'Server: blogd/0.8', 13, 10
 hdr_server_len equ $-hdr_server
 
 ; Emitted on every response by all the builders. Everything is

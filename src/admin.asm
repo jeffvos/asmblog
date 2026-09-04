@@ -1568,7 +1568,7 @@ a_ck2_len equ $-a_ck2
 a_ckclear: db 'sid=0; Path=/; Max-Age=0'
 a_ckclear_len equ $-a_ckclear
 
-a_303: db 'HTTP/1.1 303 See Other', 13, 10, 'Server: blogd/0.7', 13, 10
+a_303: db 'HTTP/1.1 303 See Other', 13, 10, 'Server: blogd/0.8', 13, 10
 a_303_len equ $-a_303
 a_ka: db 'Connection: keep-alive', 13, 10
 a_ka_len equ $-a_ka
