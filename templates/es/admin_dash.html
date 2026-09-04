@@ -1,0 +1,19 @@
+<div class="card">
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+    <h1 class="article-title text-xl m-0">panel de control</h1>
+    <div class="flex flex-wrap items-center gap-2">
+      <a class="btn" href="/admin/new">+ Nueva entrada</a>
+      <a class="btn" href="/admin/settings">Configuración</a>
+      <form method="post" action="/admin/logout" class="inline m-0">
+        <input type="hidden" name="csrf" value="{{csrf}}">
+        <button class="btn" type="submit">Cerrar sesión</button>
+      </form>
+    </div>
+  </div>
+  <table class="table w-full text-sm border-collapse">
+    <tr class="text-left text-xs meta">
+      <th class="pb-1">título</th><th class="pb-1">fecha</th><th class="pb-1">estado</th><th></th>
+    </tr>
+{{rows}}
+  </table>
+</div>

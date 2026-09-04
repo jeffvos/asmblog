@@ -118,6 +118,16 @@ check "sucre theme now on the site"        bash -c "curl -s $A/ | grep -q 'class
 check "sucre radio pre-checked in form"    bash -c "curl -s -b '$JAR' $A/admin/settings | grep -q 'value=\"sucre\" checked'"
 expect_code "switch back to retro"     303 -b "$JAR" --data-urlencode "csrf=$CSRF" \
     --data-urlencode "title=Smoke Blog" --data-urlencode ppp=5 --data-urlencode theme=retro "$A/admin/settings"
+# localization (site-wide, from settings)
+check "default locale is en-US"            bash -c "curl -s $A/ | grep -q '<html lang=\"en\">' && curl -s $A/ | grep -Eq 'class=\"meta text-xs mt-1\">[A-Z][a-z]+ [0-9]+, [0-9]{4}'"
+expect_code "switch locale to es-BO"   303 -b "$JAR" --data-urlencode "csrf=$CSRF" \
+    --data-urlencode "title=Smoke Blog" --data-urlencode ppp=5 --data-urlencode locale=es "$A/admin/settings"
+check "es-BO templates + lang attr"        bash -c "curl -s $A/ | grep -q '<html lang=\"es-BO\">' && curl -s $A/ | grep -q '>inicio<'"
+check "es-BO long date format"             bash -c "curl -s $A/ | grep -Eq '[0-9]+ de [a-z]+ de [0-9]{4}'"
+check "es-BO asm strings (pager/heading)"  bash -c "curl -s $A/ | grep -q 'más antiguas' && curl -s $A/tag/asm | grep -q 'entradas con la etiqueta #asm'"
+check "es-BO admin + error messages"       bash -c "curl -s -b '$JAR' $A/admin | grep -q 'panel de control' && curl -s -b '$JAR' --data-urlencode csrf=$CSRF --data-urlencode id=0 --data-urlencode title= --data-urlencode md=x $A/admin/save | grep -q 'obligatorio'"
+expect_code "switch locale back to en" 303 -b "$JAR" --data-urlencode "csrf=$CSRF" \
+    --data-urlencode "title=Smoke Blog" --data-urlencode ppp=5 --data-urlencode locale=en "$A/admin/settings"
 # flickr embed: valid one renders static, script stripped; spoof rejected
 FL='<a data-flickr-embed="true" href="https://www.flickr.com/photos/x/1/"><img src="https://live.staticflickr.com/1/2_b.jpg" alt="pic"/></a><script src="//embedr.flickr.com/x.js"></script>'
 curl -s -b "$JAR" -o /dev/null --data-urlencode "csrf=$CSRF" --data-urlencode id=0 --data-urlencode "title=Pic" \

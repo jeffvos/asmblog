@@ -25,11 +25,11 @@
 %define FLAG_TOMBSTONE  2
 
 ; Settings payload: dword posts_per_page | dword session_ttl |
-;   dword title_len | dword banner_len | dword theme | dword hash_len(128) |
-;   title | banner | hash[128]
-; theme and hash come from the [set_theme]/[set_hash] globals at write
-; time (not passed as args), so the caller stages them before saving.
-%define SET_HDR 24                 ; fixed prefix before the strings
+;   dword title_len | dword banner_len | dword theme | dword locale |
+;   dword hash_len(128) | title | banner | hash[128]
+; theme, locale and hash come from the [set_theme]/[set_locale]/[set_hash]
+; globals at write time (not passed as args): callers stage them first.
+%define SET_HDR 28                 ; fixed prefix before the strings
 
 ; In-memory post struct (112 bytes, allocated from the store arena;
 ; string pointers point either into the loaded file image or into

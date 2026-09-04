@@ -28,7 +28,14 @@
 %define V_THEME    23
 %define V_SELRETRO 24
 %define V_SELSUCRE 25
-%define NVALS      26
+%define V_SELEN    26
+%define V_SELES    27
+%define NVALS      28
+
+; locales: templates/<dir>/ sets, selected site-wide by [set_locale]
+%define LOC_EN     0
+%define LOC_ES     1
+%define NLOCALES   2
 
 ; markers whose values are emitted raw (already-safe HTML we generated)
 %define RAW_MASK   ((1<<V_CONTENT)|(1<<V_TAGS)|(1<<V_HTML)|(1<<V_ROWS))

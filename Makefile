@@ -10,14 +10,14 @@ LDLIBS    := -lsodium
 
 SRC := src/main.asm src/net.asm src/http.asm src/threads.asm src/util.asm \
        src/store.asm src/crypto.asm src/cli.asm src/tmpl.asm src/pages.asm \
-       src/auth.asm src/md.asm src/admin.asm src/seccomp.asm
+       src/auth.asm src/md.asm src/admin.asm src/seccomp.asm src/i18n.asm
 OBJ := $(patsubst src/%.asm,build/%.o,$(SRC))
 
 all: build/blogd static/main.css
 
 css: static/main.css
 
-static/main.css: assets/input.css $(wildcard templates/*.html) tools/tailwindcss
+static/main.css: assets/input.css $(wildcard templates/*/*.html) tools/tailwindcss
 	tools/tailwindcss -i assets/input.css -o static/main.css --minify
 	gzip -9 -kf static/main.css
 

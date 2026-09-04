@@ -1,0 +1,10 @@
+<div class="card max-w-md mx-auto">
+  <h1 class="article-title text-xl mt-0 mb-2">¿eliminar esta entrada?</h1>
+  <p class="font-bold mb-3">{{etitle}}</p>
+  <form method="post" action="/admin/delete">
+    <input type="hidden" name="csrf" value="{{csrf}}">
+    <input type="hidden" name="id" value="{{id}}">
+    <button class="btn" type="submit">Sí, eliminarla</button>
+    <a class="backlink text-sm ml-3" href="/admin">cancelar</a>
+  </form>
+</div>

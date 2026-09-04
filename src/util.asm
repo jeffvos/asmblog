@@ -17,6 +17,7 @@ global arena_destroy
 global cstr_eq
 global fmt_date
 global fmt_datetime
+global civil
 global parse_dec
 global mem_copy
 global mem_eq

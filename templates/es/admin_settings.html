@@ -1,0 +1,29 @@
+<div class="card max-w-md mx-auto">
+  <h1 class="article-title text-xl mt-0 mb-2">configuración</h1>
+  <p class="error text-xs mb-2">{{err}}</p>
+  <form method="post" action="/admin/settings">
+    <input type="hidden" name="csrf" value="{{csrf}}">
+    <label class="text-xs block">título del sitio</label>
+    <input name="title" value="{{esite}}" class="field w-full mb-2">
+    <label class="text-xs block">entradas por página (1-50)</label>
+    <input name="ppp" value="{{eppp}}" class="field w-24 mb-2">
+    <label class="text-xs block">mensaje del letrero</label>
+    <input name="banner" value="{{ebanner}}" maxlength="200" class="field w-full mb-2">
+    <fieldset class="mb-3">
+      <legend class="text-xs mb-1">tema</legend>
+      <label class="block text-sm mb-1"><input type="radio" name="theme" value="retro" {{selretro}}> Retro &mdash; web de los 90, pulida</label>
+      <label class="block text-sm"><input type="radio" name="theme" value="sucre" {{selsucre}}> Sucre &mdash; colonial encalado</label>
+    </fieldset>
+    <fieldset class="mb-3">
+      <legend class="text-xs mb-1">idioma</legend>
+      <label class="block text-sm mb-1"><input type="radio" name="locale" value="en" {{selen}}> English (US)</label>
+      <label class="block text-sm"><input type="radio" name="locale" value="es" {{seles}}> Español (Bolivia)</label>
+    </fieldset>
+    <label class="text-xs block">nueva contraseña (en blanco = mantener la actual)</label>
+    <input type="password" name="password" class="field w-full mb-2">
+    <label class="text-xs block">confirmar nueva contraseña</label>
+    <input type="password" name="password2" class="field w-full mb-3">
+    <button class="btn" type="submit">Guardar configuración</button>
+    <a class="backlink text-sm ml-3" href="/admin">cancelar</a>
+  </form>
+</div>

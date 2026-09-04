@@ -49,6 +49,21 @@ Templates use semantic classes (`.masthead`, `.card`, `.btn`, `.tag`, …)
 that each theme restyles under a `.theme-retro` / `.theme-sucre` scope in
 [assets/input.css](assets/input.css).
 
+### Localization
+
+The site language is a site-wide setting in **/admin/settings** (not
+per visitor). Two locales ship: **en-US** (default) and **es-BO**.
+
+- All template text lives in per-locale template sets:
+  [templates/en/](templates/en/) and [templates/es/](templates/es/). Both
+  sets load at startup; the active one is chosen per render. Adding a
+  locale is a new directory plus one row per string in `src/i18n.asm`.
+- Strings the assembly emits itself (page titles, list headings, pager
+  labels, dashboard status, error messages) come from the string table
+  in [src/i18n.asm](src/i18n.asm), and dates render in the locale's
+  long form (`September 4, 2026` / `4 de septiembre de 2026`).
+- The Atom feed keeps RFC 3339 timestamps regardless of locale.
+
 ### Embedding Flickr photos
 
 Paste a Flickr "embed" snippet as its own line in a post's markdown:

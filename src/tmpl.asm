@@ -18,6 +18,7 @@ extern arena_alloc
 extern mem_copy
 extern mem_eq
 extern u64_to_dec
+extern set_locale
 
 global w_init
 global emit
@@ -179,6 +180,9 @@ tmpl_render:
     push rbx
     mov r12, rdi                ; w
     mov r13, rdx                ; vals
+    mov eax, [set_locale]       ; pick this locale's template set
+    imul rax, rax, NTMPL
+    add rsi, rax
     mov r14, [tmpl_segs + rsi*8]
     mov r15, [tmpl_nseg + rsi*8]
     xor ebx, ebx
@@ -231,9 +235,9 @@ tmpl_load_all:
     test rax, rax
     jz .fail
     mov [tmpl_arena], rax
-    xor r12d, r12d              ; template index
+    xor r12d, r12d              ; table index (all locales)
 .next:
-    cmp r12, NTMPL
+    cmp r12, NTMPL*NLOCALES
     jae .ok
     lea rax, [r12+r12*2]
     lea r13, [tmpl_files + rax*8]   ; {path, id, unused} x 3 qwords
@@ -468,6 +472,8 @@ n_ebanner: db 'ebanner'
 n_theme:   db 'theme'
 n_selretro: db 'selretro'
 n_selsucre: db 'selsucre'
+n_selen:    db 'selen'
+n_seles:    db 'seles'
 
 align 8
 marker_names:                   ; {ptr, len, pad} triplets, indexed by id
@@ -497,18 +503,30 @@ marker_names:                   ; {ptr, len, pad} triplets, indexed by id
     dq n_theme, 5, 0
     dq n_selretro, 8, 0
     dq n_selsucre, 8, 0
+    dq n_selen, 5, 0
+    dq n_seles, 5, 0
 
-f_shell:    db 'templates/shell.html', 0
-f_card:     db 'templates/card.html', 0
-f_post:     db 'templates/post.html', 0
-f_listhead: db 'templates/listhead.html', 0
-f_alogin:   db 'templates/admin_login.html', 0
-f_adash:    db 'templates/admin_dash.html', 0
-f_aedit:    db 'templates/admin_edit.html', 0
-f_aset:     db 'templates/admin_settings.html', 0
-f_aconf:    db 'templates/admin_confirm.html', 0
+; one template set per locale; slot = locale*NTMPL + template id
+f_shell:    db 'templates/en/shell.html', 0
+f_card:     db 'templates/en/card.html', 0
+f_post:     db 'templates/en/post.html', 0
+f_listhead: db 'templates/en/listhead.html', 0
+f_alogin:   db 'templates/en/admin_login.html', 0
+f_adash:    db 'templates/en/admin_dash.html', 0
+f_aedit:    db 'templates/en/admin_edit.html', 0
+f_aset:     db 'templates/en/admin_settings.html', 0
+f_aconf:    db 'templates/en/admin_confirm.html', 0
+g_shell:    db 'templates/es/shell.html', 0
+g_card:     db 'templates/es/card.html', 0
+g_post:     db 'templates/es/post.html', 0
+g_listhead: db 'templates/es/listhead.html', 0
+g_alogin:   db 'templates/es/admin_login.html', 0
+g_adash:    db 'templates/es/admin_dash.html', 0
+g_aedit:    db 'templates/es/admin_edit.html', 0
+g_aset:     db 'templates/es/admin_settings.html', 0
+g_aconf:    db 'templates/es/admin_confirm.html', 0
 
-tmpl_files:                     ; {path, id, pad} triplets
+tmpl_files:                     ; {path, slot, pad} triplets
     dq f_shell, T_SHELL, 0
     dq f_card, T_CARD, 0
     dq f_post, T_POST, 0
@@ -518,11 +536,20 @@ tmpl_files:                     ; {path, id, pad} triplets
     dq f_aedit, T_AEDIT, 0
     dq f_aset, T_ASET, 0
     dq f_aconf, T_ACONF, 0
+    dq g_shell, NTMPL+T_SHELL, 0
+    dq g_card, NTMPL+T_CARD, 0
+    dq g_post, NTMPL+T_POST, 0
+    dq g_listhead, NTMPL+T_LISTHEAD, 0
+    dq g_alogin, NTMPL+T_ALOGIN, 0
+    dq g_adash, NTMPL+T_ADASH, 0
+    dq g_aedit, NTMPL+T_AEDIT, 0
+    dq g_aset, NTMPL+T_ASET, 0
+    dq g_aconf, NTMPL+T_ACONF, 0
 
 section .bss
 
 tmpl_arena: resq 1
-tmpl_segs:  resq NTMPL
-tmpl_nseg:  resq NTMPL
+tmpl_segs:  resq NTMPL*NLOCALES
+tmpl_nseg:  resq NTMPL*NLOCALES
 
 section .note.GNU-stack noalloc noexec nowrite progbits

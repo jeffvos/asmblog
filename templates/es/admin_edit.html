@@ -1,0 +1,20 @@
+<div class="card">
+  <h1 class="article-title text-xl mt-0 mb-2">editor</h1>
+  <p class="error text-xs mb-2">{{err}}</p>
+  <form method="post" action="/admin/save">
+    <input type="hidden" name="csrf" value="{{csrf}}">
+    <input type="hidden" name="id" value="{{id}}">
+    <label class="text-xs block">título</label>
+    <input name="title" value="{{etitle}}" class="field w-full mb-2">
+    <label class="text-xs block">slug (dejar en blanco para derivarlo del título)</label>
+    <input name="slug" value="{{eslug}}" class="field w-full mb-2">
+    <label class="text-xs block">etiquetas (separadas por comas: a-z 0-9 guiones)</label>
+    <input name="tags" value="{{etags}}" class="field w-full mb-2">
+    <label class="text-xs block">markdown</label>
+    <textarea name="md" rows="18" class="field w-full mb-3 font-mono text-sm">{{emd}}</textarea>
+    <button class="btn" type="submit" name="action" value="publish">Publicar</button>
+    <button class="btn" type="submit" name="action" value="draft">Guardar borrador</button>
+    <button class="btn" type="submit" name="action" value="preview" formaction="/admin/preview">Vista previa</button>
+    <a class="backlink text-sm ml-3" href="/admin">cancelar</a>
+  </form>
+</div>

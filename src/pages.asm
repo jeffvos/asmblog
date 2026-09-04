@@ -13,6 +13,7 @@ BITS 64
 %include "src/conn.inc"
 %include "src/store.inc"
 %include "src/tmpl.inc"
+%include "src/i18n.inc"
 
 extern rd_lock
 extern rd_unlock
@@ -42,6 +43,8 @@ extern arena_create
 extern arena_alloc
 extern sec_headers
 extern sec_headers_len
+extern i18n_get
+extern fmt_date_local
 
 global page_list
 global page_post
@@ -69,8 +72,8 @@ global theme_class
 %define L_EMIT    (L_TOTAL + 32)
 %define L_NPAGES  (L_TOTAL + 40)
 %define L_URL     (L_TOTAL + 48) ; 160
-%define L_DATE    (L_URL + 160)  ; 24
-%define L_TAGB    (L_DATE + 24)  ; 512
+%define L_DATE    (L_URL + 160)  ; 32 (localized long dates)
+%define L_TAGB    (L_DATE + 32)  ; 512
 %define L_TW      (L_TAGB + 512) ; 24
 %define L_HEAD    (L_TW + 24)    ; 256
 %define L_NUM     (L_HEAD + 256) ; 32
@@ -185,11 +188,12 @@ page_list:
     ; heading panel for tag/search pages
     cmp qword [rsp+L_MODE], 0
     je .no_head
-    lea rdi, [rsp+L_HEAD]
     cmp qword [rsp+L_MODE], 1
     jne .h_search
-    mov rsi, h_tag
-    mov edx, h_tag_len
+    mov edi, S_H_TAG
+    call i18n_get
+    mov rsi, rax
+    lea rdi, [rsp+L_HEAD]
     call mem_copy
     mov rdi, rax
     mov rsi, [rsp+L_TAGP]
@@ -197,8 +201,10 @@ page_list:
     call mem_copy
     jmp .h_done
 .h_search:
-    mov rsi, h_search
-    mov edx, h_search_len
+    mov edi, S_H_SEARCH
+    call i18n_get
+    mov rsi, rax
+    lea rdi, [rsp+L_HEAD]
     call mem_copy
     mov rdi, rax
     mov rsi, [rsp+L_QP]
@@ -268,10 +274,11 @@ page_list:
     ; date
     mov rdi, [r14+P_CREATED]
     lea rsi, [rsp+L_DATE]
-    call fmt_date
+    call fmt_date_local
     lea rcx, [rsp+L_DATE]
+    sub rax, rcx
     mov [rsp+L_VALS+V_DATE*16], rcx
-    mov qword [rsp+L_VALS+V_DATE*16+8], 10
+    mov [rsp+L_VALS+V_DATE*16+8], rax
     ; tags
     lea rdi, [rsp+L_TW]
     lea rsi, [rsp+L_TAGB]
@@ -306,9 +313,10 @@ page_list:
 .after:
     cmp qword [rsp+L_TOTAL], 0
     jne .pager
+    mov edi, S_EMPTY
+    call i18n_get
+    mov rsi, rax
     lea rdi, [rsp+L_W]
-    mov rsi, s_empty
-    mov edx, s_empty_len
     call emit
 .pager:
     cmp qword [rsp+L_MODE], 2
@@ -323,23 +331,29 @@ page_list:
     mov rax, [rsp+L_PAGE]
     cmp rax, 1
     jbe .no_newer
+    mov edi, S_NEWER
+    call i18n_get
+    mov r8, rax
+    mov r9, rdx
+    mov rax, [rsp+L_PAGE]
+    lea rcx, [rax-1]
     lea rdi, [rsp+L_W]
     mov rsi, [rsp+L_TAGP]
     mov rdx, [rsp+L_TAGL]
-    lea rcx, [rax-1]
-    mov r8, s_newer
-    mov r9, s_newer_len
     call pager_link
 .no_newer:
     mov rax, [rsp+L_PAGE]
     cmp rax, [rsp+L_NPAGES]
     jae .no_older
+    mov edi, S_OLDER
+    call i18n_get
+    mov r8, rax
+    mov r9, rdx
+    mov rax, [rsp+L_PAGE]
+    lea rcx, [rax+1]
     lea rdi, [rsp+L_W]
     mov rsi, [rsp+L_TAGP]
     mov rdx, [rsp+L_TAGL]
-    lea rcx, [rax+1]
-    mov r8, s_older
-    mov r9, s_older_len
     call pager_link
 .no_older:
     lea rdi, [rsp+L_W]
@@ -362,16 +376,18 @@ page_list:
     je .t_tag
     cmp rax, 2
     je .t_search
-    mov rax, s_home
-    mov rcx, s_home_len
+    mov edi, S_T_HOME
+    call i18n_get
+    mov rcx, rdx
     jmp .t_set
 .t_tag:
     mov rax, [rsp+L_TAGP]
     mov rcx, [rsp+L_TAGL]
     jmp .t_set
 .t_search:
-    mov rax, s_searcht
-    mov rcx, s_searcht_len
+    mov edi, S_T_SEARCH
+    call i18n_get
+    mov rcx, rdx
 .t_set:
     mov [rsp+L_VALS+V_TITLE*16], rax
     mov [rsp+L_VALS+V_TITLE*16+8], rcx
@@ -706,7 +722,7 @@ build_tags_html:
 %define Q_BW    24
 %define Q_VALS  48              ; NVALS * 16
 %define Q_DATE  (Q_VALS + NVALS*16)
-%define Q_TAGB  (Q_DATE + 24)
+%define Q_TAGB  (Q_DATE + 32)
 %define Q_TW    (Q_TAGB + 512)
 %define Q_NUM   (Q_TW + 24)
 %define Q_FRAME ((Q_NUM + 32 + 15) & -16)
@@ -778,10 +794,11 @@ page_post:
     ; date
     mov rdi, [r15+P_CREATED]
     lea rsi, [rsp+Q_DATE]
-    call fmt_date
+    call fmt_date_local
     lea rcx, [rsp+Q_DATE]
+    sub rax, rcx
     mov [rsp+Q_VALS+V_DATE*16], rcx
-    mov qword [rsp+Q_VALS+V_DATE*16+8], 10
+    mov [rsp+Q_VALS+V_DATE*16+8], rax
     ; tags
     lea rdi, [rsp+Q_TW]
     lea rsi, [rsp+Q_TAGB]
@@ -1294,16 +1311,6 @@ s_theme_retro_len equ $-s_theme_retro
 s_theme_sucre: db 'theme-sucre'
 s_theme_sucre_len equ $-s_theme_sucre
 s_posturl: db '/post/'
-s_home: db 'home'
-s_home_len equ $-s_home
-s_searcht: db 'search'
-s_searcht_len equ $-s_searcht
-h_tag: db 'posts tagged #'
-h_tag_len equ $-h_tag
-h_search: db 'search results for: '
-h_search_len equ $-h_search
-s_empty: db '<div class="notice">nothing here yet. check back soon!</div>'
-s_empty_len equ $-s_empty
 
 s_pgr_open: db '<div class="pager">'
 s_pgr_open_len equ $-s_pgr_open
@@ -1319,10 +1326,6 @@ s_pgr_b: db '">'
 s_pgr_b_len equ $-s_pgr_b
 s_pgr_c: db '</a> '
 s_pgr_c_len equ $-s_pgr_c
-s_newer: db '&larr; newer'
-s_newer_len equ $-s_newer
-s_older: db 'older &rarr;'
-s_older_len equ $-s_older
 
 s_tag_a: db '<a class="tag" href="/tag/'
 s_tag_a_len equ $-s_tag_a

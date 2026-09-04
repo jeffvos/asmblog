@@ -19,6 +19,7 @@ BITS 64
 %include "src/conn.inc"
 %include "src/store.inc"
 %include "src/tmpl.inc"
+%include "src/i18n.inc"
 
 extern rd_lock
 extern rd_unlock
@@ -32,9 +33,12 @@ extern set_title_l
 extern set_banner_p
 extern set_banner_l
 extern set_theme
+extern set_locale
 extern set_present
 extern set_hash
 extern theme_class
+extern i18n_get
+extern fmt_date_local
 extern store_find_by_id
 extern store_append_post
 extern store_delete_post
@@ -84,7 +88,8 @@ global admin_route
 %define FI_PPP       9
 %define FI_BANNER    10
 %define FI_THEME     11
-%define FIELD_N      12
+%define FI_LOCALE    12
+%define FIELD_N      13
 
 ; frame
 %define A_VALS    0
@@ -101,8 +106,8 @@ global admin_route
 %define A_ID      (A_PATHL + 8)
 %define A_NUM     (A_ID + 8)      ; 32
 %define A_NUM2    (A_NUM + 32)    ; 32
-%define A_DATE    (A_NUM2 + 32)   ; 24
-%define A_SLUG    (A_DATE + 24)   ; 160
+%define A_DATE    (A_NUM2 + 32)   ; 32 (localized long dates)
+%define A_SLUG    (A_DATE + 32)   ; 160
 %define A_CK      (A_SLUG + 160)  ; 256
 %define A_SIDBUF  (A_CK + 256)    ; 64
 %define A_CSRFBUF (A_SIDBUF + 64) ; 64
@@ -350,24 +355,23 @@ admin_route:
     call emit
     mov rdi, [r13+P_CREATED]
     lea rsi, [rsp+A_DATE]
-    call fmt_date
-    lea rdi, [rsp+A_RW]
+    call fmt_date_local
     lea rsi, [rsp+A_DATE]
-    mov edx, 10
+    mov rdx, rax
+    sub rdx, rsi
+    lea rdi, [rsp+A_RW]
     call emit
     lea rdi, [rsp+A_RW]
     mov rsi, r_tr4
     mov edx, r_tr4_len
     call emit
+    mov edi, S_DRAFT
     test qword [r13+P_FLAGS], FLAG_PUBLISHED
-    jz .draft
-    mov rsi, r_pub
-    mov edx, r_pub_len
-    jmp .status
-.draft:
-    mov rsi, r_draft
-    mov edx, r_draft_len
+    jz .status
+    mov edi, S_PUB
 .status:
+    call i18n_get
+    mov rsi, rax
     lea rdi, [rsp+A_RW]
     call emit
     lea rdi, [rsp+A_RW]
@@ -378,8 +382,17 @@ admin_route:
     mov rsi, [r13+P_ID]
     call emit_u64
     lea rdi, [rsp+A_RW]
-    mov rsi, r_tr6
-    mov edx, r_tr6_len
+    mov rsi, r_tr6a             ; ">
+    mov edx, r_tr6a_len
+    call emit
+    mov edi, S_DEL_LINK
+    call i18n_get
+    mov rsi, rax
+    lea rdi, [rsp+A_RW]
+    call emit
+    lea rdi, [rsp+A_RW]
+    mov rsi, r_tr6b             ; </a></td></tr>
+    mov edx, r_tr6b_len
     call emit
     inc rbx
     jmp .drow
@@ -389,8 +402,10 @@ admin_route:
     mov rcx, [rsp+A_RW]
     sub rcx, rax
     mov [rsp+A_VALS+V_ROWS*16+8], rcx
-    mov qword [rsp+A_VALS+V_TITLE*16], a_t_admin
-    mov qword [rsp+A_VALS+V_TITLE*16+8], a_t_admin_len
+    mov edi, S_T_ADMIN
+    call i18n_get
+    mov [rsp+A_VALS+V_TITLE*16], rax
+    mov [rsp+A_VALS+V_TITLE*16+8], rdx
     mov rdi, r12
     lea rsi, [rsp+A_VALS]
     mov edx, T_ADASH
@@ -402,8 +417,10 @@ admin_route:
 .login_page:                    ; rax = err ptr (0 none), rcx = err len
     mov [rsp+A_VALS+V_ERR*16], rax
     mov [rsp+A_VALS+V_ERR*16+8], rcx
-    mov qword [rsp+A_VALS+V_TITLE*16], a_t_login
-    mov qword [rsp+A_VALS+V_TITLE*16+8], a_t_login_len
+    mov edi, S_T_LOGIN
+    call i18n_get
+    mov [rsp+A_VALS+V_TITLE*16], rax
+    mov [rsp+A_VALS+V_TITLE*16+8], rdx
     mov rdi, r12
     lea rsi, [rsp+A_VALS]
     mov edx, T_ALOGIN
@@ -418,14 +435,16 @@ admin_route:
     call login_allowed
     test eax, eax
     jnz .rate_ok
-    mov rax, a_e_wait
-    mov ecx, a_e_wait_len
+    mov edi, S_E_WAIT
+    call i18n_get
+    mov rcx, rdx
     jmp .login_page
 .rate_ok:
     cmp byte [set_present], 0
     jne .have_pw
-    mov rax, a_e_nopw
-    mov ecx, a_e_nopw_len
+    mov edi, S_E_NOPW
+    call i18n_get
+    mov rcx, rdx
     jmp .login_page
 .have_pw:
     mov rsi, [rsp+A_FLD+FI_PASSWORD*16+8]
@@ -461,8 +480,9 @@ admin_route:
     jmp .done
 .lfail:
     call login_failed
-    mov rax, a_e_wrong
-    mov ecx, a_e_wrong_len
+    mov edi, S_E_WRONG
+    call i18n_get
+    mov rcx, rdx
     jmp .login_page
 
 .do_logout:
@@ -517,8 +537,10 @@ admin_route:
     mov rax, [r13+P_MD_L]
     mov [rsp+A_VALS+V_EMD*16+8], rax
     call set_id_val
-    mov qword [rsp+A_VALS+V_TITLE*16], a_t_editor
-    mov qword [rsp+A_VALS+V_TITLE*16+8], a_t_editor_len
+    mov edi, S_T_EDITOR
+    call i18n_get
+    mov [rsp+A_VALS+V_TITLE*16], rax
+    mov [rsp+A_VALS+V_TITLE*16+8], rdx
     mov rdi, r12
     lea rsi, [rsp+A_VALS]
     mov edx, T_AEDIT
@@ -531,8 +553,10 @@ admin_route:
     jmp .notfound
 .ed_blank:
     call set_id_val
-    mov qword [rsp+A_VALS+V_TITLE*16], a_t_editor
-    mov qword [rsp+A_VALS+V_TITLE*16+8], a_t_editor_len
+    mov edi, S_T_EDITOR
+    call i18n_get
+    mov [rsp+A_VALS+V_TITLE*16], rax
+    mov [rsp+A_VALS+V_TITLE*16+8], rdx
     mov rdi, r12
     lea rsi, [rsp+A_VALS]
     mov edx, T_AEDIT
@@ -554,8 +578,10 @@ admin_route:
     mov rax, [r13+P_TITLE_L]
     mov [rsp+A_VALS+V_ETITLE*16+8], rax
     call set_id_val
-    mov qword [rsp+A_VALS+V_TITLE*16], a_t_delete
-    mov qword [rsp+A_VALS+V_TITLE*16+8], a_t_delete_len
+    mov edi, S_T_DELETE
+    call i18n_get
+    mov [rsp+A_VALS+V_TITLE*16], rax
+    mov [rsp+A_VALS+V_TITLE*16+8], rdx
     mov rdi, r12
     lea rsi, [rsp+A_VALS]
     mov edx, T_ACONF
@@ -719,28 +745,34 @@ admin_route:
     js .sv_efail
     jmp .to_admin
 .sv_etitle:
-    mov rax, a_e_title
-    mov ecx, a_e_title_len
+    mov edi, S_E_TITLE
+    call i18n_get
+    mov rcx, rdx
     jmp .save_err
 .sv_eslug:
-    mov rax, a_e_slug
-    mov ecx, a_e_slug_len
+    mov edi, S_E_SLUG
+    call i18n_get
+    mov rcx, rdx
     jmp .save_err
 .sv_eslugdup:
-    mov rax, a_e_slugdup
-    mov ecx, a_e_slugdup_len
+    mov edi, S_E_SLUGDUP
+    call i18n_get
+    mov rcx, rdx
     jmp .save_err
 .sv_etags:
-    mov rax, a_e_tags
-    mov ecx, a_e_tags_len
+    mov edi, S_E_TAGS
+    call i18n_get
+    mov rcx, rdx
     jmp .save_err
 .sv_emd:
-    mov rax, a_e_md
-    mov ecx, a_e_md_len
+    mov edi, S_E_MD
+    call i18n_get
+    mov rcx, rdx
     jmp .save_err
 .sv_efail:
-    mov rax, a_e_save
-    mov ecx, a_e_save_len
+    mov edi, S_E_SAVE
+    call i18n_get
+    mov rcx, rdx
 .save_err:                      ; editor again, fields repopulated
     mov [rsp+A_VALS+V_ERR*16], rax
     mov [rsp+A_VALS+V_ERR*16+8], rcx
@@ -761,8 +793,10 @@ admin_route:
     mov rax, [rsp+A_FLD+FI_MD*16+8]
     mov [rsp+A_VALS+V_EMD*16+8], rax
     call set_id_val
-    mov qword [rsp+A_VALS+V_TITLE*16], a_t_editor
-    mov qword [rsp+A_VALS+V_TITLE*16+8], a_t_editor_len
+    mov edi, S_T_EDITOR
+    call i18n_get
+    mov [rsp+A_VALS+V_TITLE*16], rax
+    mov [rsp+A_VALS+V_TITLE*16+8], rdx
     mov rdi, r12
     lea rsi, [rsp+A_VALS]
     mov edx, T_AEDIT
@@ -804,8 +838,11 @@ admin_route:
     mov qword [rsp+A_VALS+V_SELSUCRE*16], a_checked
     mov qword [rsp+A_VALS+V_SELSUCRE*16+8], a_checked_len
 .sp_theme_done:
-    mov qword [rsp+A_VALS+V_TITLE*16], a_t_settings
-    mov qword [rsp+A_VALS+V_TITLE*16+8], a_t_settings_len
+    call set_locale_radios
+    mov edi, S_T_SETTINGS
+    call i18n_get
+    mov [rsp+A_VALS+V_TITLE*16], rax
+    mov [rsp+A_VALS+V_TITLE*16+8], rdx
     mov rdi, r12
     lea rsi, [rsp+A_VALS]
     mov edx, T_ASET
@@ -848,6 +885,16 @@ admin_route:
     mov r13d, 1
 .theme_set:
     mov [set_theme], r13d       ; store_save_settings persists [set_theme]
+    ; locale: "es" selects es-BO (1), anything else en-US (0)
+    xor r13d, r13d
+    cmp qword [rsp+A_FLD+FI_LOCALE*16+8], 2
+    jne .locale_set
+    mov rax, [rsp+A_FLD+FI_LOCALE*16]
+    cmp word [rax], 'es'
+    jne .locale_set
+    mov r13d, 1
+.locale_set:
+    mov [set_locale], r13d      ; persisted alongside the theme
     ; optional password change
     mov rax, [rsp+A_FLD+FI_PASSWORD*16+8]
     test rax, rax
@@ -884,12 +931,14 @@ admin_route:
     jnz .st_err
     jmp .to_admin
 .st_epw:
-    mov rax, a_e_pw
-    mov ecx, a_e_pw_len
+    mov edi, S_E_PW
+    call i18n_get
+    mov rcx, rdx
     jmp .set_err
 .st_err:
-    mov rax, a_e_set
-    mov ecx, a_e_set_len
+    mov edi, S_E_SET
+    call i18n_get
+    mov rcx, rdx
 .set_err:
     mov [rsp+A_VALS+V_ERR*16], rax
     mov [rsp+A_VALS+V_ERR*16+8], rcx
@@ -914,8 +963,11 @@ admin_route:
     mov qword [rsp+A_VALS+V_SELSUCRE*16], a_checked
     mov qword [rsp+A_VALS+V_SELSUCRE*16+8], a_checked_len
 .se_theme_done:
-    mov qword [rsp+A_VALS+V_TITLE*16], a_t_settings
-    mov qword [rsp+A_VALS+V_TITLE*16+8], a_t_settings_len
+    call set_locale_radios
+    mov edi, S_T_SETTINGS
+    call i18n_get
+    mov [rsp+A_VALS+V_TITLE*16], rax
+    mov [rsp+A_VALS+V_TITLE*16+8], rdx
     mov rdi, r12
     lea rsi, [rsp+A_VALS]
     mov edx, T_ASET
@@ -954,13 +1006,16 @@ admin_route:
     mov rcx, [rsp+A_FLD+FI_TITLE*16+8]
     test rcx, rcx
     jnz .pv_title
-    mov rax, a_t_preview
-    mov rcx, a_t_preview_len
+    mov edi, S_T_PREVIEW
+    call i18n_get
+    mov rcx, rdx
 .pv_title:
     mov [rsp+A_VALS+V_TITLE*16], rax
     mov [rsp+A_VALS+V_TITLE*16+8], rcx
-    mov qword [rsp+A_VALS+V_DATE*16], a_prevdate
-    mov qword [rsp+A_VALS+V_DATE*16+8], a_prevdate_len
+    mov edi, S_PREVDATE
+    call i18n_get
+    mov [rsp+A_VALS+V_DATE*16], rax
+    mov [rsp+A_VALS+V_DATE*16+8], rdx
     mov rdi, r12
     lea rsi, [rsp+A_VALS]
     mov edx, T_POST
@@ -1039,6 +1094,18 @@ csrf_check:
     ret
 .no:
     xor eax, eax
+    ret
+
+; set_locale_radios — pre-check the language radio for [set_locale].
+set_locale_radios:
+    cmp dword [set_locale], 1
+    je .es
+    mov qword [rsp+8+A_VALS+V_SELEN*16], a_checked
+    mov qword [rsp+8+A_VALS+V_SELEN*16+8], a_checked_len
+    ret
+.es:
+    mov qword [rsp+8+A_VALS+V_SELES*16], a_checked
+    mov qword [rsp+8+A_VALS+V_SELES*16+8], a_checked_len
     ret
 
 ; set_id_val — format [rsp+A_ID] into A_NUM and set V_ID.
@@ -1471,43 +1538,6 @@ a_theme_sucre: db 'sucre'
 a_checked: db 'checked'
 a_checked_len equ $-a_checked
 
-a_t_admin: db 'control panel'
-a_t_admin_len equ $-a_t_admin
-a_t_login: db 'login'
-a_t_login_len equ $-a_t_login
-a_t_editor: db 'editor'
-a_t_editor_len equ $-a_t_editor
-a_t_settings: db 'settings'
-a_t_settings_len equ $-a_t_settings
-a_t_delete: db 'delete post'
-a_t_delete_len equ $-a_t_delete
-a_t_preview: db 'preview'
-a_t_preview_len equ $-a_t_preview
-a_prevdate: db '(unsaved preview)'
-a_prevdate_len equ $-a_prevdate
-
-a_e_wrong: db 'wrong password.'
-a_e_wrong_len equ $-a_e_wrong
-a_e_wait: db 'too many attempts - wait a moment and try again.'
-a_e_wait_len equ $-a_e_wait
-a_e_nopw: db 'no admin password set. run: blogd init'
-a_e_nopw_len equ $-a_e_nopw
-a_e_title: db 'title is required (1-256 characters).'
-a_e_title_len equ $-a_e_title
-a_e_slug: db 'slug must be 1-128 chars of a-z, 0-9, dashes.'
-a_e_slug_len equ $-a_e_slug
-a_e_slugdup: db 'that slug is already used by another post.'
-a_e_slugdup_len equ $-a_e_slugdup
-a_e_tags: db 'tags too long (max 256 chars).'
-a_e_tags_len equ $-a_e_tags
-a_e_md: db 'markdown too large (max 32 KB).'
-a_e_md_len equ $-a_e_md
-a_e_save: db 'store write failed.'
-a_e_save_len equ $-a_e_save
-a_e_set: db 'check the fields: title 1-120 chars, posts per page 1-50.'
-a_e_set_len equ $-a_e_set
-a_e_pw: db 'passwords must match and be at least 8 characters.'
-a_e_pw_len equ $-a_e_pw
 
 a_loc_admin: db '/admin'
 a_loc_admin_len equ $-a_loc_admin
@@ -1549,6 +1579,7 @@ n_fcsrf:     db 'csrf'
 n_fppp:      db 'ppp'
 n_fbanner:   db 'banner'
 n_ftheme:    db 'theme'
+n_flocale:   db 'locale'
 
 align 8
 fld_names:                      ; {ptr, len, pad}, indexed by FI_*
@@ -1564,6 +1595,7 @@ fld_names:                      ; {ptr, len, pad}, indexed by FI_*
     dq n_fppp, 3, 0
     dq n_fbanner, 6, 0
     dq n_ftheme, 5, 0
+    dq n_flocale, 6, 0
 
 ; dashboard row fragments (classes must be CSS components; Tailwind
 ; does not scan .asm, only the html templates)
@@ -1577,11 +1609,9 @@ r_tr4: db '</td><td>'
 r_tr4_len equ $-r_tr4
 r_tr5: db '</td><td><a class="dellink" href="/admin/delete/'
 r_tr5_len equ $-r_tr5
-r_tr6: db '">delete</a></td></tr>'
-r_tr6_len equ $-r_tr6
-r_pub: db 'published'
-r_pub_len equ $-r_pub
-r_draft: db '<span class="draft">draft</span>'
-r_draft_len equ $-r_draft
+r_tr6a: db '">'
+r_tr6a_len equ $-r_tr6a
+r_tr6b: db '</a></td></tr>'
+r_tr6b_len equ $-r_tr6b
 
 section .note.GNU-stack noalloc noexec nowrite progbits
