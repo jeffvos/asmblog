@@ -45,6 +45,7 @@ extern sec_headers
 extern sec_headers_len
 extern i18n_get
 extern fmt_date_local
+extern md_excerpt
 
 global page_list
 global page_post
@@ -77,7 +78,8 @@ global theme_class
 %define L_TW      (L_TAGB + 512) ; 24
 %define L_HEAD    (L_TW + 24)    ; 256
 %define L_NUM     (L_HEAD + 256) ; 32
-%define L_FRAME   ((L_NUM + 32 + 15) & -16)
+%define L_EXC     (L_NUM + 32)   ; 192 (excerpt cap 180)
+%define L_FRAME   ((L_EXC + 192 + 15) & -16)
 
 section .text
 
@@ -293,14 +295,14 @@ page_list:
     sub rax, rcx
     mov [rsp+L_VALS+V_TAGS*16], rcx
     mov [rsp+L_VALS+V_TAGS*16+8], rax
-    ; excerpt: first bytes of the markdown source, escaped by renderer
-    mov rax, [r14+P_MD_P]
-    mov [rsp+L_VALS+V_EXCERPT*16], rax
-    mov rax, [r14+P_MD_L]
-    cmp rax, 180
-    jbe .exc_ok
-    mov eax, 180
-.exc_ok:
+    ; excerpt: plain-text synopsis (no embeds/markup), escaped by renderer
+    lea rdi, [rsp+L_EXC]
+    mov esi, 180
+    mov rdx, [r14+P_MD_P]
+    mov rcx, [r14+P_MD_L]
+    call md_excerpt
+    lea rcx, [rsp+L_EXC]
+    mov [rsp+L_VALS+V_EXCERPT*16], rcx
     mov [rsp+L_VALS+V_EXCERPT*16+8], rax
     lea rdi, [rsp+L_W]
     mov esi, T_CARD
@@ -899,7 +901,8 @@ fill_count_val_b:
 ; ---- page_feed ---------------------------------------------------------
 %define F_W     0
 %define F_DATE  24              ; 32
-%define F_FRAME 64
+%define F_EXC   56              ; 192 (excerpt cap 180)
+%define F_FRAME 256
 
 ; page_feed(ctx) — Atom, latest 20 published posts
 page_feed:
@@ -997,12 +1000,13 @@ page_feed:
     mov rsi, a_e5               ; </updated><summary>
     mov edx, a_e5_len
     call emit
-    mov rsi, [r15+P_MD_P]
-    mov rdx, [r15+P_MD_L]
-    cmp rdx, 180
-    jbe .sum_ok
-    mov edx, 180
-.sum_ok:
+    lea rdi, [rsp+F_EXC]        ; plain-text summary, same rules as cards
+    mov esi, 180
+    mov rdx, [r15+P_MD_P]
+    mov rcx, [r15+P_MD_L]
+    call md_excerpt
+    mov rdx, rax
+    lea rsi, [rsp+F_EXC]
     lea rdi, [rsp+F_W]
     call emit_esc
     lea rdi, [rsp+F_W]
@@ -1359,7 +1363,7 @@ a_tail_len equ $-a_tail
 
 s_200: db 'HTTP/1.1 200 OK', 13, 10
 s_200_len equ $-s_200
-s_server: db 'Server: blogd/0.5', 13, 10
+s_server: db 'Server: blogd/0.7', 13, 10
 s_server_len equ $-s_server
 s_ka: db 'Connection: keep-alive', 13, 10
 s_ka_len equ $-s_ka

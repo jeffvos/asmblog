@@ -135,6 +135,8 @@ curl -s -b "$JAR" -o /dev/null --data-urlencode "csrf=$CSRF" --data-urlencode id
 check "flickr embed becomes static figure"  bash -c "curl -s $A/post/pic | grep -qF '<figure class=\"flickr-embed\">'"
 check "flickr script tag is stripped"       bash -c "! curl -s $A/post/pic | grep -q 'embedr.flickr.com'"
 check "flickr image host allowed by CSP"    bash -c "curl -s -D - -o /dev/null $A/ | grep -qi 'live.staticflickr.com'"
+check "embed never leaks into card excerpt" bash -c "! curl -s $A/tag/p | grep -q 'data-flickr' && ! curl -s $A/feed.xml | grep -q 'data-flickr'"
+check "excerpt strips markdown markers"     bash -c "curl -s $A/ | grep -q 'Hello world from' && ! curl -s $A/ | grep -q 'Hello \*\*world'"
 FLBAD='<a data-flickr-embed="true" href="https://phish.example/"><img src="https://evil.com/x.jpg" alt="x"/></a>'
 curl -s -b "$JAR" -o /dev/null --data-urlencode "csrf=$CSRF" --data-urlencode id=0 --data-urlencode "title=Bad" \
     --data-urlencode slug=badpic --data-urlencode tags=p --data-urlencode "md=$FLBAD" --data-urlencode action=publish "$A/admin/save"

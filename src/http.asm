@@ -909,7 +909,7 @@ st400_len equ $-st400
 st500: db 'HTTP/1.1 500 Internal Server Error', 13, 10
 st500_len equ $-st500
 
-hdr_server: db 'Server: blogd/0.6', 13, 10
+hdr_server: db 'Server: blogd/0.7', 13, 10
 hdr_server_len equ $-hdr_server
 
 ; Emitted on every response by all three builders. style-src allows

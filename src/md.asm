@@ -18,6 +18,7 @@ extern emit
 extern emit_esc
 
 global md_render
+global md_excerpt
 
 section .text
 
@@ -674,6 +675,156 @@ url_allowed:
     ret
 .yes:
     mov eax, 1
+    ret
+
+; md_excerpt(dst, cap, md_p, md_l) -> rax = length written.
+; Plain-text synopsis of a markdown source for cards and feed summaries:
+; skips Flickr embed lines, code fences and blank lines; strips block
+; prefixes (# > - * and indentation) and inline markers (* `); joins
+; lines with single spaces; stops at cap without splitting a UTF-8
+; sequence. Output is still escaped by the caller/template.
+md_excerpt:
+    push r12
+    push r13
+    push r14
+    push r15
+    push rbx
+    mov r12, rdi                ; dst
+    mov r13, rsi                ; cap
+    mov r14, rdx                ; cursor
+    lea r15, [rdx+rcx]          ; end
+    xor ebx, ebx                ; out
+.line:
+    cmp r14, r15
+    jae .done
+    cmp rbx, r13
+    jae .done
+    xor ecx, ecx                ; line length
+.fnl:
+    lea rax, [r14+rcx]
+    cmp rax, r15
+    jae .gotline
+    cmp byte [rax], 10
+    je .gotline
+    inc rcx
+    jmp .fnl
+.gotline:
+    lea r9, [r14+rcx+1]         ; next line
+    test rcx, rcx
+    jz .nextline
+    cmp byte [r14+rcx-1], 13
+    jne .nocr
+    dec rcx
+    jz .nextline
+.nocr:
+    ; skip Flickr embed lines
+    cmp rcx, FL_MARK_len
+    jb .notfl
+    xor r10d, r10d
+.flcmp:
+    cmp r10, FL_MARK_len
+    jae .nextline               ; whole marker matched: skip line
+    mov al, [r14+r10]
+    cmp al, [fl_marker+r10]
+    jne .notfl
+    inc r10
+    jmp .flcmp
+.notfl:
+    ; skip fence lines
+    cmp rcx, 3
+    jb .prefix
+    cmp word [r14], '``'
+    jne .prefix
+    cmp byte [r14+2], '`'
+    je .nextline
+.prefix:
+    mov r8, r14                 ; strip leading # > and spaces
+.strip:
+    test rcx, rcx
+    jz .nextline
+    mov al, [r8]
+    cmp al, '#'
+    je .strip1
+    cmp al, '>'
+    je .strip1
+    cmp al, ' '
+    je .strip1
+    jmp .listmark
+.strip1:
+    inc r8
+    dec rcx
+    jmp .strip
+.listmark:                      ; "- " / "* " bullets
+    cmp rcx, 2
+    jb .emitline
+    cmp al, '-'
+    je .lm2
+    cmp al, '*'
+    jne .emitline
+.lm2:
+    cmp byte [r8+1], ' '
+    jne .emitline
+    add r8, 2
+    sub rcx, 2
+.emitline:
+    test rcx, rcx
+    jz .nextline
+    ; separator between lines
+    test rbx, rbx
+    jz .copy
+    cmp rbx, r13
+    jae .done
+    mov byte [r12+rbx], ' '
+    inc rbx
+.copy:
+    test rcx, rcx
+    jz .nextline
+    cmp rbx, r13
+    jae .done
+    mov al, [r8]
+    inc r8
+    dec rcx
+    cmp al, '*'                 ; drop inline emphasis/code markers
+    je .copy
+    cmp al, '`'
+    je .copy
+    mov [r12+rbx], al
+    inc rbx
+    jmp .copy
+.nextline:
+    mov r14, r9
+    jmp .line
+.done:
+    ; trim a trailing space
+    test rbx, rbx
+    jz .ret
+    cmp byte [r12+rbx-1], ' '
+    jne .utf8
+    dec rbx
+.utf8:
+    ; if we stopped at cap, back off to a UTF-8 character boundary
+    cmp rbx, r13
+    jb .ret
+.back:
+    test rbx, rbx
+    jz .ret
+    mov al, [r12+rbx-1]
+    and al, 0xC0
+    cmp al, 0x80                ; continuation byte: keep backing up
+    jne .lead
+    dec rbx
+    jmp .back
+.lead:
+    cmp byte [r12+rbx-1], 0xC0  ; a lead byte whose sequence we may
+    jb .ret                     ; have truncated: drop it too
+    dec rbx
+.ret:
+    mov rax, rbx
+    pop rbx
+    pop r15
+    pop r14
+    pop r13
+    pop r12
     ret
 
 ; bytes_eq(a, b, len) -> 1/0 (local copy; mem_eq lives in util)
