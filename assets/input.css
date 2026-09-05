@@ -388,6 +388,8 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   --md-purple: #7b3fa0;
   --md-dots:   rgba(20, 22, 26, 0.07);
   --md-code:   #f1f2f4;
+  --md-on-yellow: #14161a;   /* text on a yellow fill, dark in both modes */
+  --md-highlight: var(--md-yellow);
   background-color: var(--md-paper);
   /* halftone paper */
   background-image: radial-gradient(circle at 1px 1px, var(--md-dots) 1px, transparent 1.6px);
@@ -432,7 +434,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   padding: 1px 5px;
   border-radius: 6px;
 }
-.theme-medellin .navlink:hover { background: var(--md-yellow); color: var(--md-ink); }
+.theme-medellin .navlink:hover { background: var(--md-yellow); color: var(--md-on-yellow); }
 
 .theme-medellin .banner {                /* vinyl strip, still a marquee */
   background: var(--md-pink);
@@ -519,7 +521,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
 .theme-medellin .tag {                    /* stickers, slapped on */
   display: inline-block;
   background: var(--md-yellow);
-  color: var(--md-ink);
+  color: var(--md-on-yellow);
   border: 2px solid var(--md-ink);
   border-radius: 6px;
   padding: 0 8px;
@@ -530,7 +532,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   transform: rotate(-2deg);
   margin: 0 3px 0 1px;
 }
-.theme-medellin .tag:nth-child(even) { transform: rotate(2deg); background: var(--md-panel); }
+.theme-medellin .tag:nth-child(even) { transform: rotate(2deg); background: var(--md-panel); color: var(--md-ink); }
 .theme-medellin .tag:hover { background: var(--md-pink); color: #fff; }
 
 .theme-medellin .pglink {
@@ -547,7 +549,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   text-decoration: none;
   box-shadow: 3px 3px 0 var(--md-ink);
 }
-.theme-medellin .pglink:hover { background: var(--md-yellow); }
+.theme-medellin .pglink:hover { background: var(--md-yellow); color: var(--md-on-yellow); }
 
 .theme-medellin .hits {
   display: inline-block; vertical-align: middle;
@@ -558,7 +560,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   display: inline-block;
   border: 2px solid var(--md-ink);
   border-radius: 6px;
-  background: var(--md-yellow); color: var(--md-ink);
+  background: var(--md-yellow); color: var(--md-on-yellow);
   font-size: 10px; font-weight: 800; letter-spacing: 0.08em;
   padding: 2px 8px;
 }
@@ -576,7 +578,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   line-height: 1.1;
   padding: 0 6px;
   margin-bottom: 1.1rem;
-  background: linear-gradient(transparent 55%, var(--md-yellow) 55%, var(--md-yellow) 92%, transparent 92%);
+  background: linear-gradient(transparent 55%, var(--md-highlight) 55%, var(--md-highlight) 92%, transparent 92%);
 }
 .theme-medellin .dellink { color: var(--md-pink); font-weight: 800; text-decoration: none; }
 .theme-medellin .dellink:hover { text-decoration: underline; }
@@ -613,6 +615,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   background: var(--md-panel); padding: 6px;
   box-shadow: 6px 6px 0 var(--md-yellow);
 }
+.theme-medellin .content figure img, .theme-medellin .flickr-embed img { border-radius: 10px; }
 
 /* Medellín after dark: the valley at night, the lights still on */
 .theme-medellin { color-scheme: light dark; }
@@ -631,6 +634,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
     --md-purple: #a06ad0;
     --md-dots:   rgba(255, 255, 255, 0.05);
     --md-code:   #24332c;
+    --md-highlight: rgba(255, 212, 94, 0.28);   /* a wash, so light ink stays readable */
   }
   .theme-medellin .btn, .theme-medellin .badge-b, .theme-medellin .badge-c,
   .theme-medellin .tag:hover, .theme-medellin .banner { color: #0f1a14; }
@@ -1651,6 +1655,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
 .theme-santacruz .content figure, .theme-santacruz .flickr-embed {
   background: var(--sc-panel-h); border-radius: 16px 4px 16px 4px; padding: 6px;
 }
+.theme-santacruz .content figure img, .theme-santacruz .flickr-embed img { border-radius: 10px 0 10px 0; }
 
 /* Santa Cruz at night: humid dark, lamps in the windows */
 .theme-santacruz { color-scheme: light dark; }
