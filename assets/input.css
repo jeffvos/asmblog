@@ -1323,7 +1323,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   display: inline-block;
   height: 22px;
   line-height: 22px;
-  padding: 0 9px 0 15px;
+  padding: 0 9px 0 14px;
   margin: 0 3px 0 2px;
   font-size: 0.72rem;
   color: var(--cb-ink);
@@ -1333,10 +1333,10 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   text-decoration: none;
   vertical-align: middle;
 }
-.theme-cochabamba .tag::before {         /* the face, inset 1.5px inside the ink, with the string hole */
+.theme-cochabamba .tag::before {         /* the face, inset 1.5px inside the ink */
   content: "";
   position: absolute; inset: 0; z-index: -1;
-  background: radial-gradient(circle at 6.5px 50%, var(--cb-ink) 1.6px, transparent 2.4px), var(--cb-tagfill);
+  background: var(--cb-tagfill);
   clip-path: polygon(2px 50%, 10.7px 1.5px, calc(100% - 1.5px) 1.5px,
                      calc(100% - 1.5px) calc(100% - 1.5px), 10.7px calc(100% - 1.5px));
 }
