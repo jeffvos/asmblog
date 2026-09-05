@@ -660,9 +660,11 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   --bo-gold:   #c9a03e;
   --bo-gold-d: #9a7420;
   --bo-red:    #7a2e22;   /* brick, darkened, for text */
+  --bo-red-fill: #7a2e22; /* the red badge's fill */
   --bo-plaque: #26292d;
   --bo-ivory:  #ece7dc;
   --bo-emerald:#2e6b4f;
+  --bo-glass:  rgba(38, 41, 45, 0.82);   /* plaque behind text set over the brick */
   background-color: var(--bo-brick);
   /* running-bond brick: mortar and per-brick tints only, so one tile
      serves both the daytime and the night wall */
@@ -695,13 +697,14 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
 }
 .theme-bogota .navlink:hover { border-bottom-color: var(--bo-gold); }
 
-.theme-bogota .banner {                  /* the newspaper's ears */
+.theme-bogota .banner {                  /* the newspaper's ears, on a smoked-glass plaque */
   color: var(--bo-ivory);
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
-  border-top: 1px solid var(--bo-gold);
-  border-bottom: 1px solid var(--bo-gold);
+  background: var(--bo-glass);
+  border: 1px solid var(--bo-gold);
+  border-left: 0;
+  border-right: 0;
   margin: 0.9rem 0 1.4rem;
-  padding: 0.3rem 0.5rem;
+  padding: 0.45rem 1rem;
   text-align: center;
   font-variant: small-caps;
   font-size: 0.85rem;
@@ -791,16 +794,20 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   height: 18px; width: auto;
   border: 1px solid var(--bo-gold);
 }
-.theme-bogota .badge {
+.theme-bogota .badge {                   /* enamel plaques */
   display: inline-block;
   background: var(--bo-plaque); color: var(--bo-ivory);
   border: 1px solid var(--bo-gold);
-  font-size: 10px; font-variant: small-caps; letter-spacing: 0.12em;
-  padding: 2px 9px;
+  box-shadow: inset 0 0 0 1px var(--bo-plaque), inset 0 0 0 2px rgba(201, 160, 62, 0.45), 0 2px 0 rgba(0, 0, 0, 0.5);
+  font-size: 11px; font-weight: 700; font-variant: small-caps; letter-spacing: 0.12em;
+  padding: 3px 11px;
 }
-.theme-bogota .badge-b { background: var(--bo-red); }
-.theme-bogota .badge-c { background: var(--bo-gold); color: var(--bo-plaque); }
+.theme-bogota .badge-b { background: var(--bo-red-fill); box-shadow: inset 0 0 0 1px var(--bo-red-fill), inset 0 0 0 2px rgba(201, 160, 62, 0.45), 0 2px 0 rgba(0, 0, 0, 0.5); }
+.theme-bogota .badge-c { background: var(--bo-gold); color: var(--bo-plaque); box-shadow: inset 0 0 0 1px var(--bo-gold), inset 0 0 0 2px rgba(38, 41, 45, 0.35), 0 2px 0 rgba(0, 0, 0, 0.5); }
 .theme-bogota .footer { color: var(--bo-ivory); text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6); }
+.theme-bogota .footer > div:last-child, .theme-bogota .footer > div:first-child {
+  display: inline-block; background: var(--bo-glass); padding: 0.2rem 0.9rem;
+}
 
 .theme-bogota .listhead {                /* a section title carved over the wall */
   color: var(--bo-ivory);
@@ -822,6 +829,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
 .theme-bogota .content h1, .theme-bogota .content h2, .theme-bogota .content h3 {
   color: var(--bo-ink); font-weight: 700;
 }
+.theme-bogota .content > p:first-of-type { min-height: 2.9em; }   /* room for the drop cap, so it never spills into the next paragraph */
 .theme-bogota .content > p:first-of-type::first-letter {   /* the drop cap */
   float: left;
   font-size: 3.3em;
@@ -868,8 +876,10 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
     --bo-gold:   #e0b34f;
     --bo-gold-d: #c99a35;
     --bo-red:    #d3705f;
+    --bo-red-fill: #8e3a2b;
     --bo-plaque: #121417;
     --bo-ivory:  #ece7dc;
+    --bo-glass:  rgba(12, 10, 9, 0.78);
   }
   .theme-bogota .content code { background: #2a2d31; color: #e0a596; }
 }
