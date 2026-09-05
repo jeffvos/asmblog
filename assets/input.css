@@ -985,8 +985,17 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
 }
 .theme-lapaz .banner span {
   display: inline-block;
-  padding-left: 100%;
+  padding: 4px 0 4px 100%;
+  line-height: 1;
   animation: marquee 24s linear infinite;
+}
+/* Caps in a chip: trim the line box to cap height and baseline so the
+   empty descender space no longer pushes the text off centre (browsers
+   without text-box-trim keep the plain line box). */
+.theme-lapaz .badge, .theme-lapaz .tag, .theme-lapaz .btn, .theme-lapaz .pglink,
+.theme-lapaz .banner span, .theme-lapaz .listhead {
+  text-box-edge: cap alphabetic;
+  text-box-trim: trim-both;
 }
 
 .theme-lapaz .field {
@@ -1005,8 +1014,9 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   border: 0;
   border-radius: 0;
   clip-path: var(--lp-chamfer);
-  padding: 0.55rem 1.2rem;
+  padding: 0.8rem 1.2rem;
   font-size: 0.78rem;
+  line-height: 1;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.14em;
@@ -1039,8 +1049,9 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   background: var(--lp-line);
   color: var(--lp-ink);
   clip-path: var(--lp-chamfer);
-  padding: 2px 9px;
+  padding: 5px 9px;
   font-size: 0.68rem;
+  line-height: 1;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   text-decoration: none;
@@ -1053,9 +1064,10 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   color: var(--lp-teal-l);
   border: 1px solid var(--lp-teal);
   clip-path: var(--lp-chamfer);
-  padding: 0.35rem 0.9rem;
+  padding: 0.6rem 0.9rem;
   margin: 0 4px;
   font-size: 0.75rem;
+  line-height: 1;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   text-decoration: none;
@@ -1073,7 +1085,8 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   clip-path: var(--lp-chamfer);
   background: var(--lp-red); color: #fff;
   font-size: 10px; font-weight: 700; letter-spacing: 0.14em;
-  padding: 3px 9px;
+  padding: 6px 10px;
+  line-height: 1;
 }
 .theme-lapaz .badge-b { background: var(--lp-yellow); color: var(--lp-night); }
 .theme-lapaz .badge-c { background: var(--lp-green); }
