@@ -213,7 +213,7 @@ expect_code "switch back to retro"     303 -b "$JAR" --data-urlencode "csrf=$CSR
     --data-urlencode "title=Smoke Blog" --data-urlencode ppp=5 --data-urlencode theme=retro "$A/admin/settings"
 check "theme survives a settings reload"   bash -c "curl -s $A/ | grep -q 'theme-retro'"
 # localization (site-wide, from settings)
-check "default locale is en-US"            bash -c "curl -s $A/ | grep -q '<html lang=\"en\">' && curl -s $A/ | grep -Eq 'class=\"meta text-xs mt-1\">[A-Z][a-z]+ [0-9]+, [0-9]{4}'"
+check "default locale is en-US"            bash -c "curl -s $A/ | grep -q '<html lang=\"en\">' && curl -s $A/ | grep -Eq 'class=\"date\">[A-Z][a-z]+ [0-9]+, [0-9]{4}'"
 expect_code "switch locale to es-BO"   303 -b "$JAR" --data-urlencode "csrf=$CSRF" \
     --data-urlencode "title=Smoke Blog" --data-urlencode ppp=5 --data-urlencode locale=es "$A/admin/settings"
 check "es-BO templates + lang attr"        bash -c "curl -s $A/ | grep -q '<html lang=\"es-BO\">' && curl -s $A/ | grep -q '>inicio<'"

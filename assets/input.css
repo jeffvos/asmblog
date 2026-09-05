@@ -773,7 +773,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   letter-spacing: 0.06em;
   text-decoration: none;
 }
-.theme-bogota .tag + .tag::before { content: "\00b7\00a0"; color: var(--bo-gold); }
+.theme-bogota .tag:not(:last-child)::after { content: "\00a0\00b7"; color: var(--bo-gold); }   /* trails the tag, so a wrapped line never starts with a dot */
 .theme-bogota .tag:hover { color: var(--bo-gold-d); text-decoration: underline; }
 
 .theme-bogota .pglink {
@@ -1981,6 +1981,17 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
 }
 
 /* ===== shared bits ===== */
+/* The byline under a title: the date and the tag group are separate
+   flex items, so wrapped tags form their own tidy rows instead of
+   running on from the date (every theme; themes style .tag itself). */
+.byline { display: flex; flex-wrap: wrap; align-items: center; column-gap: 0.75rem; row-gap: 0.35rem; }
+.byline .date { white-space: nowrap; }
+.byline .tags { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.4rem; }
+.byline .tags:empty { display: none; }
+.byline .tags .tag { margin: 0; }
+.theme-bogota .byline .tags { gap: 0.2rem 0.3rem; }
+.theme-cochabamba .byline .tags { gap: 0.35rem 0.55rem; }
+.theme-medellin .byline .tags { gap: 0.35rem 0.5rem; }
 .content p { margin: 0.75rem 0; }
 .content h2 { font-size: 1.3rem; margin: 1rem 0 0.5rem; }
 .content h3 { font-size: 1.1rem; margin: 1rem 0 0.5rem; }
