@@ -165,8 +165,10 @@ own shapes, type and textures, not just colours:
 - **Sucre** — a modern take on the whitewashed colonial architecture of
   Sucre, Bolivia (*La Ciudad Blanca*): plaster-grain background, panels
   as white "walls" under a tiled terracotta roofline, colonial-green
-  links, ochre accents, serif display type. The banner is a quiet
-  engraved lintel rather than a marquee.
+  links, ochre accents, serif display type. A golden skyline of the
+  city (the Cathedral's bell tower, San Felipe Neri, La Recoleta) runs
+  along the base of the masthead. The banner is a quiet engraved
+  lintel rather than a marquee.
 - **Medellín** — a Feria de las Flores street poster: halftone paper,
   chunky rounded panels with a thick ink outline and a hard offset
   shadow in a second colour, a silleta flower band under the masthead,

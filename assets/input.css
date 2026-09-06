@@ -175,6 +175,10 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   --su-roof-d: #8f3a24;   /* terracotta, darker         */
   --su-green:  #3f5e50;   /* colonial shutter green     */
   --su-ochre:  #c1852f;   /* window trim ochre          */
+  /* the skyline, as a mask: Casa de la Libertad, San Felipe Neri, the
+     Cathedral and its bell tower, La Recoleta, Cerro Churuquella behind;
+     one path, coloured from the palette in both schemes */
+  --su-skyline: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%20-8%20480%2080'%3E%3Cpath%20fill='%23000'%20fill-opacity='.18'%20d='M0,30Q70,8,150,30T300,26Q380,2,480,18V72H0ZM379.5,4h1v6h-1ZM378,6h4v1h-4Z'/%3E%3Cpath%20fill='%23000'%20fill-opacity='.4'%20d='M88,30a8,8,0,0,1,16,0V72H88ZM160,34a8,7,0,0,1,16,0V72H160ZM278,44H294V72H278ZM336,46L344,38L352,46V72H336ZM440,40a10,8,0,0,1,20,0V72H440Z'/%3E%3Cpath%20fill='%23000'%20fill-rule='evenodd'%20d='M0,20L7,12L14,20V38H90V72H0ZM20,72V56a7,7,0,0,1,14,0V72ZM42,72V56a7,7,0,0,1,14,0V72ZM64,72V56a7,7,0,0,1,14,0V72ZM24,41h6v9h-6ZM46,41h6v9h-6ZM68,41h6v9h-6ZM129.5,14h1v6h-1ZM127.5,16h5v1h-5ZM128,20h4v6h-4ZM116,40a14,14,0,0,1,28,0H160V72H100V40ZM104,60V54a4,4,0,0,1,8,0V60ZM114,60V54a4,4,0,0,1,8,0V60ZM138,60V54a4,4,0,0,1,8,0V60ZM148,60V54a4,4,0,0,1,8,0V60ZM172,34L206,22L240,34V72H172ZM198,72V52a8,8,0,0,1,16,0V72ZM202,42a4,4,0,1,0,8,0a4,4,0,1,0-8,0ZM261.2,-7h1.6v7h-1.6ZM259,-5h6v1.4h-6ZM250,12a12,9,0,0,1,24,0H276V26H280V72H244V26H248V12ZM252,26V18a4,4,0,0,1,8,0V26ZM264,26V18a4,4,0,0,1,8,0V26ZM257,48a5,5,0,1,0,10,0a5,5,0,1,0-10,0ZM290,50L315,40L340,50V72H290ZM296,55h7v8h-7ZM327,55h7v8h-7ZM311,72V56h8V72ZM348,42H430V72H348ZM352,72V56a5,5,0,0,1,10,0V72ZM368,72V56a5,5,0,0,1,10,0V72ZM384,72V56a5,5,0,0,1,10,0V72ZM400,72V56a5,5,0,0,1,10,0V72ZM416,72V56a5,5,0,0,1,10,0V72ZM428,22L439,12L450,22V72H430V22ZM435,36V30a4,4,0,0,1,8,0V36ZM456,54H480V72H456ZM464,59h8v7h-8Z'/%3E%3C/svg%3E");
   background-color: var(--su-wall);
   /* plaster grain: a noise tile at a few percent */
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.3 0 0 0 0 0.25 0 0 0 0 0.18 0 0 0 0.09 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)'/%3E%3C/svg%3E");
@@ -190,12 +194,23 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   border-top: 0;
   border-radius: 3px 3px 8px 8px;
   box-shadow: 0 6px 18px rgba(51, 48, 43, 0.06);
-  padding: calc(1.1rem + 6px) 1.25rem 1.1rem;
+  isolation: isolate;                    /* keeps the skyline under the text */
+  padding: calc(1.1rem + 6px) 1.25rem 3.4rem;
 }
 .theme-sucre .masthead::before {         /* the roofline, laid in tiles */
   content: "";
   position: absolute; left: 0; right: 0; top: 0; height: 6px;
   background: repeating-linear-gradient(90deg, var(--su-roof) 0 11px, var(--su-roof-d) 11px 13px);
+}
+.theme-sucre .masthead::after {          /* the golden city along the base */
+  content: "";
+  position: absolute; right: 0; bottom: 0; z-index: -1;
+  width: 100%; height: 64px;
+  background: var(--su-ochre);
+  opacity: 0.4;
+  -webkit-mask: var(--su-skyline) right bottom / auto 100% no-repeat;
+  mask: var(--su-skyline) right bottom / auto 100% no-repeat;
+  pointer-events: none;
 }
 .theme-sucre .brand {
   font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
@@ -382,6 +397,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
     --su-ochre:  #d9a24e;
   }
   .theme-sucre { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 0.95 0 0 0 0 0.85 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)'/%3E%3C/svg%3E"); }
+  .theme-sucre .masthead::after { opacity: 0.32; }
   .theme-sucre .field, .theme-sucre .pglink { background: #211d19; color: var(--su-ink); }
   .theme-sucre .tag, .theme-sucre .badge { background: #352e27; }
   .theme-sucre .content code { background: #3a3128; color: #f0c9b8; }
