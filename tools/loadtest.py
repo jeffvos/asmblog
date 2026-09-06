@@ -26,6 +26,17 @@ already run. Standard library only. Examples:
   tools/loadtest.py --url http://127.0.0.1:8080 --pid $(cat /run/blogd.pid)
   tools/loadtest.py --no-keepalive --paths /,/feed.xml --json out.json
 
+Two machines over the LAN, so the client's CPU never competes with the
+server's:
+
+  machine A:  tools/loadtest.py --serve                 # prints the URL to use
+  machine B:  tools/loadtest.py --url http://A:8090     # full table, server columns included
+
+--serve binds the throwaway server to every interface (plain HTTP, a
+seeded demo site) and runs a stats endpoint on the next port that
+reports the server's /proc figures; the client finds it by itself
+(or pass --stats). Ctrl-C on A stops and deletes everything.
+
 The client is several processes, each an asyncio loop with a share of
 the connections; it comfortably drives tens of thousands of requests
 per second. Raise the fd limit (ulimit -n) for levels above ~900.
@@ -43,6 +54,7 @@ import threading
 import time
 import urllib.request
 from array import array
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from multiprocessing import Pipe, Process
 
 DEFAULT_LEVELS = "1,4,16,64,256,1000"
@@ -150,22 +162,22 @@ def run_level(host, port, conns, paths, duration, warmup, keepalive, procs):
 # ----------------------------------------------------------------- sampler
 
 class ProcSampler(threading.Thread):
-    """Samples /proc/<pid> every `interval` seconds: cumulative CPU ticks,
-    VmRSS, VmHWM, Threads, open fds."""
+    """Samples /proc/<pid> every `interval` seconds: cumulative CPU
+    seconds (all threads), VmRSS, VmHWM, Threads, open fds."""
 
     def __init__(self, pid, interval=0.2):
         super().__init__(daemon=True)
         self.pid = pid
         self.interval = interval
-        self.samples = []       # (t, ticks, rss_kb, hwm_kb, threads, fds)
+        self.samples = []       # (t, cpu_s, rss_kb, hwm_kb, threads, fds)
         self.stop = threading.Event()
-        self.ok = os.path.exists("/proc/%d/stat" % pid)
+        self.ok = pid is not None and os.path.exists("/proc/%d/stat" % pid)
 
     def read(self):
         with open("/proc/%d/stat" % self.pid) as f:
             stat = f.read()
         fields = stat[stat.rindex(")") + 2:].split()
-        ticks = int(fields[11]) + int(fields[12])        # utime + stime
+        cpu_s = (int(fields[11]) + int(fields[12])) / CLK_TCK   # utime + stime
         rss = hwm = threads = 0
         with open("/proc/%d/status" % self.pid) as f:
             for line in f:
@@ -179,7 +191,7 @@ class ProcSampler(threading.Thread):
             fds = len(os.listdir("/proc/%d/fd" % self.pid))
         except OSError:
             fds = 0
-        return (time.perf_counter(), ticks, rss, hwm, threads, fds)
+        return (time.perf_counter(), cpu_s, rss, hwm, threads, fds)
 
     def run(self):
         while not self.stop.is_set():
@@ -197,15 +209,68 @@ class ProcSampler(threading.Thread):
         if len(s) < 2:
             return None
         elapsed = s[-1][0] - s[0][0]
-        cpu = (s[-1][1] - s[0][1]) / CLK_TCK / elapsed * 100.0 if elapsed > 0 else 0.0
+        cpu = (s[-1][1] - s[0][1]) / elapsed * 100.0 if elapsed > 0 else 0.0
         return {
             "cpu_pct": cpu,
             "rss_max_kb": max(x[2] for x in s),
             "rss_last_kb": s[-1][2],
-            "hwm_kb": s[-1][3],
+            "hwm_kb": max(s[-1][3], max(x[2] for x in s)),   # /proc's VmRSS can briefly read above VmHWM
             "threads": max(x[4] for x in s),
             "fds_max": max(x[5] for x in s),
         }
+
+
+class RemoteSampler(ProcSampler):
+    """The same figures fetched from a --serve stats endpoint."""
+
+    def __init__(self, stats_url, interval=0.2):
+        super().__init__(None, interval)
+        self.url = stats_url
+        try:
+            self.read()
+            self.ok = True
+        except Exception:
+            self.ok = False
+
+    def read(self):
+        with urllib.request.urlopen(self.url, timeout=2) as r:
+            d = json.loads(r.read())
+        return (time.perf_counter(), d["cpu_s"], d["rss_kb"], d["hwm_kb"], d["threads"], d["fds"])
+
+
+class StatsServer(threading.Thread):
+    """GET /stats -> the sampler's current reading as JSON (the --serve side)."""
+
+    def __init__(self, sampler, port):
+        super().__init__(daemon=True)
+        outer = self
+
+        class H(BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path != "/stats":
+                    self.send_error(404)
+                    return
+                try:
+                    t, cpu_s, rss, hwm, threads, fds = outer.sampler.read()
+                except OSError:
+                    self.send_error(503, "server gone")
+                    return
+                body = json.dumps({"pid": outer.sampler.pid, "cpu_s": cpu_s, "rss_kb": rss,
+                                   "hwm_kb": hwm, "threads": threads, "fds": fds}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        self.sampler = sampler
+        self.httpd = ThreadingHTTPServer(("0.0.0.0", port), H)
+
+    def run(self):
+        self.httpd.serve_forever()
 
 
 # ------------------------------------------------------------------ server
@@ -239,8 +304,22 @@ def raise_fd_limit():
     return resource.getrlimit(resource.RLIMIT_NOFILE)[0]
 
 
-def spawn_server(threads):
-    """A seeded throwaway blogd in a scratch dir -> (proc, url, tmpdir)."""
+def lan_ip():
+    """The address this host uses to reach the LAN (no packets are sent)."""
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("10.255.255.255", 1))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except OSError:
+        return socket.gethostbyname(socket.gethostname())
+
+
+def spawn_server(threads, port=None, bind_all=False):
+    """A seeded throwaway blogd in a scratch dir -> (proc, url, tmpdir).
+    bind_all listens on every interface (the --serve side)."""
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     binary = os.path.join(root, "build", "blogd")
     if not os.access(binary, os.X_OK):
@@ -251,10 +330,13 @@ def spawn_server(threads):
     subprocess.run([binary, "init"], cwd=tmp, input=b"Load Blog\n5\nloadpass12345\nloadpass12345\n",
                    stdout=subprocess.DEVNULL, check=True)
     subprocess.run([binary, "seed"], cwd=tmp, stdout=subprocess.DEVNULL, check=True)
-    port = free_port()
+    port = port or free_port()
     log = open(os.path.join(tmp, "server.log"), "wb")
+    env = dict(os.environ)
+    if bind_all:
+        env["BLOGD_BIND_ALL"] = "1"
     proc = subprocess.Popen([binary, str(port), str(threads)], cwd=tmp, stdout=log, stderr=log,
-                            preexec_fn=raise_fd_limit)
+                            preexec_fn=raise_fd_limit, env=env)
     url = "http://127.0.0.1:%d" % port
     if not wait_up(url + "/health"):
         proc.kill()
@@ -286,10 +368,16 @@ def main():
     ap.add_argument("--no-keepalive", action="store_true", help="one connection per request")
     ap.add_argument("--threads", type=int, default=os.cpu_count() or 2, help="worker threads for the spawned server")
     ap.add_argument("--url", help="test this server instead of spawning one")
-    ap.add_argument("--pid", type=int, help="PID to sample when --url is given")
+    ap.add_argument("--pid", type=int, help="PID to sample when --url is given (same machine)")
+    ap.add_argument("--stats", help="stats endpoint of a --serve instance (default: --url's port + 1)")
+    ap.add_argument("--serve", action="store_true", help="run the throwaway server for another machine and exit on Ctrl-C")
+    ap.add_argument("--port", type=int, default=8090, help="--serve port (default 8090; stats on port + 1)")
     ap.add_argument("--slo", type=float, default=50.0, help="p99 latency budget in ms for the knee report (default 50)")
     ap.add_argument("--json", help="write every number to this file")
     args = ap.parse_args()
+
+    if args.serve:
+        return serve(args)
 
     levels = [int(x) for x in args.levels.split(",") if x.strip()]
     paths = [p.strip() for p in args.paths.split(",") if p.strip()]
@@ -308,7 +396,19 @@ def main():
     host, port = url.split("//", 1)[1].split(":")
     port = int(port)
 
-    sampler = ProcSampler(pid) if pid else None
+    if pid:
+        sampler = ProcSampler(pid)
+    elif args.url:
+        stats = args.stats or "http://%s:%d/stats" % (host, port + 1)
+        sampler = RemoteSampler(stats)
+        if sampler.ok:
+            print("server figures from %s" % stats)
+        elif args.stats:
+            sys.exit("loadtest: no stats endpoint at %s (is --serve running there?)" % stats)
+        else:
+            print("no stats endpoint at %s: server columns will be blank (start the other side with --serve, or pass --pid on the same machine)" % stats)
+    else:
+        sampler = None
     if sampler and sampler.ok:
         sampler.start()
         time.sleep(0.5)
@@ -408,6 +508,34 @@ def main():
                        "idle": {"rss_kb": idle[2], "threads": idle[4], "fds": idle[5]} if idle else None,
                        "rows": rows}, f, indent=1)
         print("wrote %s" % args.json)
+
+
+def serve(args):
+    """--serve: the throwaway server on every interface plus /stats."""
+    proc, url, tmp = spawn_server(args.threads, args.port, bind_all=True)
+    sampler = ProcSampler(proc.pid)
+    stats = StatsServer(sampler, args.port + 1)
+    stats.start()
+    ip = lan_ip()
+    print("throwaway seeded blogd on every interface (plain HTTP, demo content, %d threads)" % args.threads)
+    print("stats endpoint: http://%s:%d/stats" % (ip, args.port + 1))
+    print()
+    print("on the other machine:  tools/loadtest.py --url http://%s:%d" % (ip, args.port))
+    print()
+    print("Ctrl-C stops the server and deletes %s" % tmp)
+    sys.stdout.flush()
+    try:
+        while proc.poll() is None:
+            time.sleep(0.5)
+        print("server exited with %d (see %s/server.log)" % (proc.returncode, tmp))
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+            proc.wait()
+        stats.httpd.shutdown()
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":

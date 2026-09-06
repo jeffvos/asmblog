@@ -312,6 +312,22 @@ you already run, `--no-keepalive` measures connection setup, `--paths`
 changes the mix and `--json` keeps every number. Raise `ulimit -n`
 for levels above ~900 connections.
 
+On one machine the client competes with the server for cores, so the
+honest way to find the server's ceiling is two machines on a LAN:
+
+```bash
+# machine A: throwaway seeded server on every interface (plain HTTP)
+make loadserver                    # prints the URL to use; Ctrl-C stops and deletes it
+# machine B
+make load LOAD_ARGS="--url http://<A's ip>:8090"
+```
+
+`--serve` also runs a small stats endpoint on the next port that
+reports the server's `/proc` figures, and the client finds it by
+itself, so the CPU, memory and fd columns are filled in remotely too
+(`--stats` overrides the location). Both sides are plain HTTP; the
+demo site and the endpoint are meant for a private network only.
+
 ### Storage housekeeping
 
 Every edit appends a new version of the post and every delete a

@@ -88,10 +88,14 @@ fuzz: all
 load: all
 	python3 tools/loadtest.py $(LOAD_ARGS)
 
+# `make loadserver` on one machine, `make load LOAD_ARGS="--url http://<ip>:8090"` on another
+loadserver: all
+	python3 tools/loadtest.py --serve $(LOAD_ARGS)
+
 image:
 	docker build -t blogd .
 
 clean:
 	rm -rf build static/main.css static/main.css.gz static/main.css.br static/*-main.css static/*-main.css.gz static/*-main.css.br
 
-.PHONY: all css icons deps run test fuzz load image clean
+.PHONY: all css icons deps run test fuzz load loadserver image clean
