@@ -272,15 +272,28 @@ Flickr is left as escaped text, never rendered as a live tag. This is
 the only remote content the app allows, and it never relaxes
 `script-src 'none'`.
 
-Requires: `nasm`, GNU binutils, `libsodium-dev`, `python3` (the CSS
-build, the icon generator and the tests), `brotli` (the `.br` siblings;
-`BLOGD_NO_BROTLI=1` skips them on a machine without the CLI), `curl`
-(tests), and the Tailwind standalone CLI at `tools/tailwindcss`
-(gitignored). CI and the Docker build pin Tailwind to one release and
-verify its SHA-256 (`TAILWIND_VERSION`/`TAILWIND_SHA256` in
-[ci.yml](.github/workflows/ci.yml) and the [Dockerfile](Dockerfile));
-for a local build download the same `tailwindcss-linux-x64` from the
-Tailwind GitHub releases and `chmod +x` it.
+Requires: `nasm` (2.x or 3.x), GNU binutils, the libsodium development
+package, `python3` (the CSS build, the icon generator and the tests),
+`brotli` (the `.br` siblings; `BLOGD_NO_BROTLI=1` skips them on a
+machine without the CLI), `curl`, and the Tailwind standalone CLI at
+`tools/tailwindcss` (gitignored: `make` fetches the pinned release and
+verifies its SHA-256 when the file is absent). `make deps` checks all
+of that and names what is missing. Per distribution:
+
+```bash
+# Debian / Ubuntu
+sudo apt install nasm binutils libsodium-dev python3 brotli curl
+# RHEL / AlmaLinux / Rocky (libsodium lives in EPEL)
+sudo dnf install epel-release && sudo dnf install nasm binutils libsodium-devel python3 brotli curl
+# Alpine
+apk add nasm binutils libsodium-dev python3 brotli curl
+```
+
+At run time only the libsodium shared library is needed (`libsodium23`
+/ `libsodium` / `libsodium`), not the development package. The Makefile, CI and the Docker build all pin the same Tailwind
+release and checksum (`TAILWIND_VERSION`/`TAILWIND_SHA256` in the
+[Makefile](Makefile), [ci.yml](.github/workflows/ci.yml) and the
+[Dockerfile](Dockerfile)); bump them together.
 
 ### Load testing
 

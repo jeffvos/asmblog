@@ -8,3 +8,4 @@ static/*-main.css
 static/*-main.css.gz
 static/*-main.css.br
 __pycache__/
+tools/tailwindcss.tmp
