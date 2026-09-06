@@ -406,6 +406,15 @@ def main():
     if args.url:
         url = args.url.rstrip("/")
         pid = args.pid
+        try:
+            urllib.request.urlopen(url + "/health", timeout=5).read()
+        except Exception as e:
+            sys.exit("loadtest: cannot reach %s/health (%s)\n"
+                     "  If the server machine runs a firewall, open its ports there:\n"
+                     "    RHEL/Alma/Rocky:  sudo firewall-cmd --add-port=<port>-<port+1>/tcp\n"
+                     "    Ubuntu/Debian:    sudo ufw allow <port>:<port+1>/tcp\n"
+                     "  (--serve prints the exact command; --remove-port / ufw delete when done)"
+                     % (url, e))
     else:
         proc, url, tmp = spawn_server(args.threads)
         pid = proc.pid
@@ -526,6 +535,26 @@ def main():
         print("wrote %s" % args.json)
 
 
+def firewall_hint(port):
+    """A ready-to-paste command when a host firewall is active (it would
+    drop the other machine's connections and the stats probe alike)."""
+    def active(unit):
+        try:
+            return subprocess.run(["systemctl", "is-active", "--quiet", unit],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+        except OSError:
+            return False
+    if active("firewalld"):
+        return ("firewalld is active: other machines are blocked until you run\n"
+                "  sudo firewall-cmd --add-port=%d-%d/tcp      (runtime only; --remove-port=... when done)"
+                % (port, port + 1))
+    if active("ufw"):
+        return ("ufw is active: other machines are blocked until you run\n"
+                "  sudo ufw allow %d:%d/tcp                    (sudo ufw delete allow %d:%d/tcp when done)"
+                % (port, port + 1, port, port + 1))
+    return None
+
+
 def serve(args):
     """--serve: the throwaway server on every interface plus /stats."""
     for p in (args.port, args.port + 1):
@@ -542,6 +571,10 @@ def serve(args):
     print()
     print("on the other machine:  tools/loadtest.py --url http://%s:%d" % (ip, args.port))
     print()
+    fw = firewall_hint(args.port)
+    if fw:
+        print(fw)
+        print()
     print("Ctrl-C stops the server and deletes %s" % tmp)
     sys.stdout.flush()
     try:
