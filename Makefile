@@ -47,10 +47,13 @@ test: all
 fuzz: all
 	./tests/fuzz.sh
 
+load: all
+	python3 tools/loadtest.py $(LOAD_ARGS)
+
 image:
 	docker build -t blogd .
 
 clean:
 	rm -rf build static/main.css static/main.css.gz static/main.css.br static/*-main.css static/*-main.css.gz static/*-main.css.br
 
-.PHONY: all css icons run test fuzz image clean
+.PHONY: all css icons run test fuzz load image clean

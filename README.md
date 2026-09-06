@@ -22,6 +22,7 @@ make            # nasm + ld -> build/blogd, tailwind -> one stylesheet per theme
 make run        # serve on http://127.0.0.1:8080
 make test       # contrast floor + smoke suite (store selftest, HTTP, content, admin)
 make fuzz       # mutation-fuzz the HTTP and markdown parsers
+make load       # step through concurrency levels, report latency/CPU/RSS knees
 ./build/blogd init       # first-run setup (title, posts/page, admin password)
 ./build/blogd seed       # demo posts for development
 ./build/blogd compact    # rewrite data/store.blg with only the live records
@@ -280,6 +281,23 @@ verify its SHA-256 (`TAILWIND_VERSION`/`TAILWIND_SHA256` in
 [ci.yml](.github/workflows/ci.yml) and the [Dockerfile](Dockerfile));
 for a local build download the same `tailwindcss-linux-x64` from the
 Tailwind GitHub releases and `chmod +x` it.
+
+### Load testing
+
+`tools/loadtest.py` (`make load`, or `make load LOAD_ARGS="--levels 16,64,256 --duration 10"`)
+starts a seeded throwaway server and steps it through a list of
+concurrency levels. Each level runs a fixed number of keep-alive
+connections cycling over a mix of public URLs for a few seconds and
+reports throughput, latency (average, p50/p95/p99/max), errors and
+non-200s, and the server's CPU (all threads), resident memory, thread
+and fd counts sampled from `/proc` while the level runs, plus the
+client's own CPU so a client-bound level is starred rather than
+misread. It ends with the break points: where p99 crosses the `--slo`
+budget, where throughput stops growing, where errors begin, and the
+memory cost per open connection. `--url`/`--pid` point it at a server
+you already run, `--no-keepalive` measures connection setup, `--paths`
+changes the mix and `--json` keeps every number. Raise `ulimit -n`
+for levels above ~900 connections.
 
 ### Storage housekeeping
 
