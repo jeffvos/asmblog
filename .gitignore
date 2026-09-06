@@ -4,3 +4,7 @@ tools/tailwindcss
 static/main.css
 static/main.css.gz
 static/main.css.br
+static/*-main.css
+static/*-main.css.gz
+static/*-main.css.br
+__pycache__/

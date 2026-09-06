@@ -38,7 +38,7 @@
 ; pages.asm
 %define NTHEMES 8
 
-; In-memory post struct (112 bytes, allocated from the store arena;
+; In-memory post struct (128 bytes, allocated from the store arena;
 ; string pointers point either into the loaded file image or into
 ; arena copies made at append time — both live as long as the arena):
 %define P_ID        0
@@ -55,8 +55,11 @@
 %define P_MD_L      88
 %define P_HTML_P    96
 %define P_HTML_L    104
-%define P_SIZE      112
+%define P_EXC_P     112         ; plain-text excerpt, derived once at
+%define P_EXC_L     120         ; load/save time (cards, feed, meta)
+%define P_SIZE      128
 
+%define EXC_CAP     180         ; excerpt cap; buffers hold EXC_CAP + 3
 ; Append spec passed to store_append_post (96 bytes, caller-owned):
 %define S_ID        0           ; 0 = assign new id
 %define S_FLAGS     8
@@ -73,3 +76,4 @@
 %define S_SIZE      96
 
 %define MAX_POSTS   4096
+%define COMPACT_MIN 65536       ; auto-compact only files past this size

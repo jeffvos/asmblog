@@ -10,6 +10,10 @@ on:
 # Set the BLOGD_ADMIN_PASSWORD repository secret to override the default.
 env:
   ADMIN_PASSWORD: ${{ secrets.BLOGD_ADMIN_PASSWORD || 'changeme-blogd' }}
+  # Tailwind standalone CLI, pinned and checksummed (the Dockerfile pins the
+  # musl build the same way). Bump both together.
+  TAILWIND_VERSION: v4.3.3
+  TAILWIND_SHA256: dc61b3ac6b8c9ca874c0cc4c57b2409791a64c5540404ca5f5367360babc313a
 
 jobs:
   build-test:
@@ -21,23 +25,24 @@ jobs:
       - name: toolchain
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y --no-install-recommends nasm binutils libsodium-dev gzip curl
+          sudo apt-get install -y --no-install-recommends nasm binutils libsodium-dev gzip brotli curl python3
 
       - name: tailwind standalone cli
         run: |
           mkdir -p tools
           curl -fsSL -o tools/tailwindcss \
-            https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64
+            "https://github.com/tailwindlabs/tailwindcss/releases/download/${TAILWIND_VERSION}/tailwindcss-linux-x64"
+          echo "${TAILWIND_SHA256}  tools/tailwindcss" | sha256sum -c -
           chmod +x tools/tailwindcss
 
       - name: build
         run: make
 
-      - name: smoke suite (store selftest, HTTP, content, admin, i18n)
+      - name: smoke suite (contrast floor, store selftest, HTTP, content, admin, i18n)
         run: make test
 
       - name: fuzz (short)
-        run: ./tests/fuzz.sh 800 8140
+        run: ./tests/fuzz.sh 800
 
       - uses: actions/upload-artifact@v4
         with:

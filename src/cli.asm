@@ -1,4 +1,4 @@
-; cli.asm — `blogd init` and `blogd selftest`.
+; cli.asm — `blogd init`, `blogd selftest`, `blogd seed`, `blogd compact`.
 ;
 ; init: interactive first-run setup — site title, posts per page,
 ; admin password read with terminal echo disabled, hashed with
@@ -24,6 +24,7 @@ extern store_compact
 extern store_find_by_id
 extern posts_cnt
 extern next_id
+extern store_size
 extern set_ppp
 extern set_hash
 extern set_banner_l
@@ -43,8 +44,63 @@ extern u64_to_dec
 global init_main
 global selftest_main
 global seed_main
+global compact_main
 
 section .text
+
+; blogd compact — rewrite data/store.blg with only the live records.
+; Startup does this by itself once superseded versions and tombstones
+; dominate a file past 64 KiB; this is the on-demand form. Prints the
+; sizes before and after.
+compact_main:
+    call store_open
+    test rax, rax
+    jnz .fail
+    mov r12, [store_size]       ; before
+    call store_compact
+    test rax, rax
+    jnz .fail
+    mov rdi, cbuf
+    mov rsi, m_c1
+    mov edx, m_c1_len
+    call mem_copy
+    mov rdi, r12
+    mov rsi, rax
+    call u64_to_dec
+    mov rdi, rax
+    mov rsi, m_c2
+    mov edx, m_c2_len
+    call mem_copy
+    mov rdi, [store_size]
+    mov rsi, rax
+    call u64_to_dec
+    mov rdi, rax
+    mov rsi, m_c3
+    mov edx, m_c3_len
+    call mem_copy
+    mov rdi, [posts_cnt]
+    mov rsi, rax
+    call u64_to_dec
+    mov rdi, rax
+    mov rsi, m_c4
+    mov edx, m_c4_len
+    call mem_copy
+    mov rsi, rax
+    sub rsi, cbuf
+    mov rdi, cbuf
+    call print
+    xor edi, edi
+    mov eax, SYS_exit_group
+    syscall
+.fail:
+    mov edi, STDERR
+    mov rsi, m_cfail
+    mov edx, m_cfail_len
+    mov eax, SYS_write
+    syscall
+    mov edi, 1
+    mov eax, SYS_exit_group
+    syscall
 
 ; print(ptr, len) to stdout
 print:
@@ -590,6 +646,16 @@ e_fail_len equ $-e_fail
 p_crypto: db 'store ok; testing Argon2id (a few seconds)...', 10
 p_crypto_len equ $-p_crypto
 p_ok: db 'selftest ok', 10
+m_c1: db 'compacted data/store.blg: '
+m_c1_len equ $-m_c1
+m_c2: db ' -> '
+m_c2_len equ $-m_c2
+m_c3: db ' bytes ('
+m_c3_len equ $-m_c3
+m_c4: db ' posts kept)', 10
+m_c4_len equ $-m_c4
+m_cfail: db 'blogd: compact failed (run from the site directory: data/store.blg)', 10
+m_cfail_len equ $-m_cfail
 p_ok_len equ $-p_ok
 p_seeded: db 'seeded 9 posts (8 published, 1 draft)', 10
 p_seeded_len equ $-p_seeded
@@ -743,6 +809,7 @@ t_wrongpw_len equ $-t_wrongpw
 
 section .bss
 
+cbuf: resb 160
 title_buf: resb 128
 title_len: resq 1
 num_buf:   resb 32

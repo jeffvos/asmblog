@@ -1,6 +1,6 @@
 ; main.asm — entry point: CLI, worker spawn.
 ;
-; Usage: blogd [port] [threads]
+; Usage: blogd [port] [threads] | blogd init|selftest|seed|compact
 ;   port    default 8080, always binds 127.0.0.1 (TLS/the outside world
 ;           are the reverse proxy's job)
 ;   threads default = CPU count (clamped 1..16)
@@ -22,6 +22,7 @@ extern store_open
 extern init_main
 extern selftest_main
 extern seed_main
+extern compact_main
 extern tmpl_load_all
 extern load_static
 extern hits_init
@@ -33,6 +34,7 @@ extern workers_ready
 global _start
 global listen_addr
 global getenv_value
+global idle_secs
 
 section .text
 
@@ -68,6 +70,14 @@ _start:
     jz .not_seed
     call seed_main              ; exits
 .not_seed:
+    mov rdi, [rbx+8]
+    mov rsi, cmd_compact
+    mov edx, 7
+    call cstr_eq
+    test eax, eax
+    jz .not_compact
+    call compact_main           ; exits
+.not_compact:
     mov rdi, [rbx+8]
     call parse_u64
     test rax, rax
@@ -124,7 +134,20 @@ _start:
 .bind_done:
     mov qword [listen_addr+8], 0
 
-    ; "blogd 0.9 listening on http://127.0.0.1:P (threads: N)\n"
+    ; idle connection timeout, seconds (BLOGD_IDLE_SECS; 0 disables)
+    mov qword [idle_secs], 20
+    mov rdi, env_idle
+    call getenv_value
+    test rax, rax
+    jz .idle_done
+    mov rdi, rax                ; NUL-terminated by the kernel
+    call parse_u64
+    test rax, rax
+    js .idle_done
+    mov [idle_secs], rax
+.idle_done:
+
+    ; "blogd 0.10 listening on http://127.0.0.1:P (threads: N)\n"
     mov rdi, banner_buf
     mov rsi, [bind_msg]
     mov rdx, [bind_msg_len]
@@ -301,14 +324,14 @@ getenv_value:
 
 section .data
 
-msg_listen: db 'blogd 0.9 listening on http://127.0.0.1:'
+msg_listen: db 'blogd 0.10 listening on http://127.0.0.1:'
 msg_listen_len equ $-msg_listen
-msg_listen_all: db 'blogd 0.9 listening on http://0.0.0.0:'
+msg_listen_all: db 'blogd 0.10 listening on http://0.0.0.0:'
 msg_listen_all_len equ $-msg_listen_all
 env_bindall: db 'BLOGD_BIND_ALL', 0
 msg_thr: db ' (threads: '
 msg_thr_len equ $-msg_thr
-msg_usage: db 'usage: blogd [init|selftest] | blogd [port 1-65535] [threads 1-16]', 10
+msg_usage: db 'usage: blogd [init|selftest|seed|compact] | blogd [port 1-65535] [threads 1-16]', 10
 msg_usage_len equ $-msg_usage
 msg_store: db 'blogd: cannot open data/store.blg', 10
 msg_store_len equ $-msg_store
@@ -321,9 +344,11 @@ msg_sodium_len equ $-msg_sodium
 msg_seccomp: db 'blogd: seccomp install failed (try BLOGD_NO_SECCOMP=1)', 10
 msg_seccomp_len equ $-msg_seccomp
 env_nosec: db 'BLOGD_NO_SECCOMP', 0
+env_idle: db 'BLOGD_IDLE_SECS', 0
 cmd_init: db 'init'
 cmd_selftest: db 'selftest'
 cmd_seed: db 'seed'
+cmd_compact: db 'compact'
 
 section .bss
 
@@ -332,5 +357,6 @@ banner_buf:  resb 96
 envp:        resq 1
 bind_msg:    resq 1
 bind_msg_len: resq 1
+idle_secs:   resq 1
 
 section .note.GNU-stack noalloc noexec nowrite progbits

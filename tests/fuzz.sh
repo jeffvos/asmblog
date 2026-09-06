@@ -13,7 +13,7 @@ trap '' PIPE            # the server closes malformed conns mid-write
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 ITERS="${1:-3000}"
-PORT="${2:-8140}"
+PORT="${2:-$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')}"
 
 TMP="$(mktemp -d)"
 cp -r "$ROOT/templates" "$ROOT/static" "$TMP/"

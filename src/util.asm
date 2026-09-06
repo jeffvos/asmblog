@@ -31,8 +31,25 @@ global parse_u64
 section .text
 
 ; arena_create(size) -> arena ptr, or 0 on failure.
-; Layout: [0]=capacity (total mapping size), [8]=bump offset, data at +16.
+; Every slab: [0]=capacity (its mapping size), [8]=bump offset,
+; [16]=next slab (0 = last), [24]=current slab (meaningful on the head),
+; data at +32. An exhausted arena grows by mapping another slab of at
+; least the head's size (or the one oversize request), so allocation
+; only fails when mmap itself does — the store arena in particular no
+; longer runs dry after enough saves and refuses every edit until a
+; restart.
 arena_create:
+    call slab_map
+    test rax, rax
+    jz .fail
+    mov [rax+24], rax
+    ret
+.fail:
+    xor eax, eax
+    ret
+
+; slab_map(size) -> a fresh slab ([0]=size, [8]=0, [16]=0), or 0
+slab_map:
     mov rsi, rdi
     xor edi, edi
     mov edx, PROT_READ | PROT_WRITE
@@ -45,38 +62,79 @@ arena_create:
     jae .fail
     mov [rax], rsi
     mov qword [rax+8], 0
+    mov qword [rax+16], 0
     ret
 .fail:
     xor eax, eax
     ret
 
-; arena_alloc(arena, size) -> ptr or 0 if exhausted. 16-byte aligned.
+; arena_alloc(arena, size) -> ptr or 0 if a new slab cannot be mapped.
+; 16-byte aligned.
 arena_alloc:
     add rsi, 15
     and rsi, -16
-    mov rax, [rdi+8]
+    mov rcx, [rdi+24]           ; current slab
+    mov rax, [rcx+8]
     lea rdx, [rax+rsi]
-    lea rcx, [rdx+16]
-    cmp rcx, [rdi]
-    ja .fail
-    mov [rdi+8], rdx
-    lea rax, [rdi+rax+16]
+    lea r8, [rdx+32]
+    cmp r8, [rcx]
+    ja .grow
+    mov [rcx+8], rdx
+    lea rax, [rcx+rax+32]
+    ret
+.grow:
+    push rdi
+    push rsi
+    mov rax, [rdi]              ; a slab the head's size, or larger when
+    lea rcx, [rsi+32+4095]      ; this one request needs more
+    and rcx, -4096
+    cmp rcx, rax
+    jbe .sized
+    mov rax, rcx
+.sized:
+    mov rdi, rax
+    call slab_map
+    pop rsi
+    pop rdi
+    test rax, rax
+    jz .fail
+    mov rcx, [rdi+24]
+    mov [rcx+16], rax           ; link after the current slab
+    mov [rdi+24], rax
+    mov [rax+8], rsi            ; the request fits by construction
+    add rax, 32
     ret
 .fail:
     xor eax, eax
     ret
 
-; arena_reset(arena) — free everything at once.
-arena_reset:
-    mov qword [rdi+8], 0
-    ret
-
-; arena_destroy(arena) — unmap the whole thing.
-arena_destroy:
-    mov rsi, [rdi]              ; capacity == mapping size
+; slab_free_chain(first) — munmap a slab and everything linked after it
+slab_free_chain:
+.l:
+    test rsi, rsi
+    jz .done
+    push qword [rsi+16]
+    mov rdi, rsi
+    mov rsi, [rsi]
     mov eax, SYS_munmap
     syscall
+    pop rsi
+    jmp .l
+.done:
     ret
+
+; arena_reset(arena) — free everything at once (extra slabs go back).
+arena_reset:
+    mov rsi, [rdi+16]
+    mov qword [rdi+16], 0
+    mov [rdi+24], rdi
+    mov qword [rdi+8], 0
+    jmp slab_free_chain
+
+; arena_destroy(arena) — unmap every slab.
+arena_destroy:
+    mov rsi, rdi                ; the head is first in its own chain
+    jmp slab_free_chain
 
 ; cstr_eq(cstr, lit, litlen) -> 1 if cstr is exactly lit, else 0
 cstr_eq:

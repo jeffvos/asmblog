@@ -4,14 +4,14 @@
   <form method="post" action="/admin/save">
     <input type="hidden" name="csrf" value="{{csrf}}">
     <input type="hidden" name="id" value="{{id}}">
-    <label class="text-xs block">title</label>
-    <input name="title" value="{{etitle}}" class="field w-full mb-2">
-    <label class="text-xs block">slug (leave blank to derive from the title)</label>
-    <input name="slug" value="{{eslug}}" class="field w-full mb-2">
-    <label class="text-xs block">tags (comma-separated, a-z 0-9 dashes)</label>
-    <input name="tags" value="{{etags}}" class="field w-full mb-2">
-    <label class="text-xs block">markdown</label>
-    <textarea name="md" rows="18" class="field w-full mb-3 font-mono text-sm">{{emd}}</textarea>
+    <label class="text-xs block" for="f-title">title</label>
+    <input id="f-title" name="title" value="{{etitle}}" class="field w-full mb-2">
+    <label class="text-xs block" for="f-slug">slug (leave blank to derive from the title)</label>
+    <input id="f-slug" name="slug" value="{{eslug}}" class="field w-full mb-2">
+    <label class="text-xs block" for="f-tags">tags (comma-separated, a-z 0-9 dashes)</label>
+    <input id="f-tags" name="tags" value="{{etags}}" class="field w-full mb-2">
+    <label class="text-xs block" for="f-md">markdown</label>
+    <textarea id="f-md" name="md" rows="18" class="field w-full mb-3 font-mono text-sm">{{emd}}</textarea>
     <button class="btn" type="submit" name="action" value="publish">Publish</button>
     <button class="btn" type="submit" name="action" value="draft">Save Draft</button>
     <button class="btn" type="submit" name="action" value="preview" formaction="/admin/preview">Preview</button>

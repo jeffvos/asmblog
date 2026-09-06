@@ -169,7 +169,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   --su-panel:  #fffdf8;   /* sunlit wall                */
   --su-ink:    #33302b;   /* espresso text              */
   --su-soft:   #6f665a;   /* muted secondary text       */
-  --su-faint:  #9a8f7c;   /* meta / captions            */
+  --su-faint:  #746b5d;   /* meta / captions            */
   --su-line:   #e7ddcb;   /* warm hairline border       */
   --su-roof:   #b0492e;   /* terracotta roof tile       */
   --su-roof-d: #8f3a24;   /* terracotta, darker         */
@@ -226,9 +226,8 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   font-size: 0.8rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
 }
 .theme-sucre .banner span { display: inline; }
 
@@ -367,6 +366,31 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   padding-left: 0.9rem;
 }
 
+/* Sucre after dark: the same building at night */
+.theme-sucre { color-scheme: light dark; }
+@media (prefers-color-scheme: dark) {
+  .theme-sucre {
+    --su-wall:   #1f1b17;
+    --su-panel:  #2a2520;
+    --su-ink:    #ece3d3;
+    --su-soft:   #bfb3a0;
+    --su-faint:  #9a9081;
+    --su-line:   #3d362e;
+    --su-roof:   #d0644a;
+    --su-roof-d: #b04d34;
+    --su-green:  #8fb89f;
+    --su-ochre:  #d9a24e;
+  }
+  .theme-sucre { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 0.95 0 0 0 0 0.85 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)'/%3E%3C/svg%3E"); }
+  .theme-sucre .field, .theme-sucre .pglink { background: #211d19; color: var(--su-ink); }
+  .theme-sucre .tag, .theme-sucre .badge { background: #352e27; }
+  .theme-sucre .content code { background: #3a3128; color: #f0c9b8; }
+  .theme-sucre .content figure, .theme-sucre .flickr-embed { background: #211d19; }
+  .theme-sucre .masthead, .theme-sucre .card, .theme-sucre .article, .theme-sucre .notice {
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  }
+}
+
 /* =====================================================================
    THEME: MEDELLÍN — Feria de las Flores street poster.
    Screen-printed poster on halftone paper: chunky rounded panels with
@@ -379,7 +403,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   --md-panel:  #ffffff;
   --md-ink:    #14161a;
   --md-soft:   #4b5058;
-  --md-faint:  #7a808a;
+  --md-faint:  #6e747d;
   --md-green:  #1f7a3e;   /* the valley's eternal green   */
   --md-green-d:#155a2d;
   --md-pink:   #e4327b;   /* bougainvillea / silleta      */
@@ -429,7 +453,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  font-size: 0.78rem;
+  font-size: 0.8125rem;
   text-decoration: none;
   padding: 1px 5px;
   border-radius: 6px;
@@ -654,7 +678,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   --bo-panel2: #fbfaf7;
   --bo-ink:    #26292d;
   --bo-soft:   #4a4744;
-  --bo-faint:  #7b766f;
+  --bo-faint:  #6f6b64;
   --bo-line:   #d8d2c8;
   --bo-frame:  #3a3532;
   --bo-gold:   #c9a03e;
@@ -709,9 +733,8 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   font-variant: small-caps;
   font-size: 0.85rem;
   letter-spacing: 0.16em;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
 }
 .theme-bogota .banner span { display: inline; }
 
@@ -760,7 +783,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   color: var(--bo-faint);
   font-variant: small-caps;
   letter-spacing: 0.08em;
-  font-size: 0.8rem;
+  font-size: 0.875rem;
 }
 .theme-bogota .excerpt { color: var(--bo-soft); }
 .theme-bogota .backlink { color: var(--bo-ivory); text-decoration: none; border-bottom: 1px solid var(--bo-gold); }
@@ -870,7 +893,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
     --bo-panel2: #17191c;
     --bo-ink:    #e8e2d6;
     --bo-soft:   #b8b1a6;
-    --bo-faint:  #8c867c;
+    --bo-faint:  #8f8a80;
     --bo-line:   #3a3d42;
     --bo-frame:  #6b655e;
     --bo-gold:   #e0b34f;
@@ -963,7 +986,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   color: var(--lp-teal-l);
   text-transform: uppercase;
   letter-spacing: 0.16em;
-  font-size: 0.72rem;
+  font-size: 0.8125rem;
   text-decoration: none;
 }
 .theme-lapaz .navlink:hover { color: var(--lp-yellow); }
@@ -1039,7 +1062,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-.theme-lapaz .meta { color: var(--lp-faint); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.7rem; }
+.theme-lapaz .meta { color: var(--lp-faint); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.8125rem; }
 .theme-lapaz .excerpt { color: var(--lp-soft); }
 .theme-lapaz .backlink { color: var(--lp-teal-l); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.75rem; text-decoration: none; }
 .theme-lapaz .backlink:hover { color: var(--lp-yellow); }
@@ -1151,7 +1174,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
     --lp-deep:   #e9e3f5;
     --lp-ink:    #1b1526;
     --lp-soft:   #4d4461;
-    --lp-faint:  #7c7391;
+    --lp-faint:  #78708d;
     --lp-line:   #d9d2e8;
     --lp-violet: #6a2fa0;
     --lp-teal:   #0f7f77;
@@ -1186,7 +1209,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   --cb-wood:    #8b5a2b;
   --cb-ink:     #2b2320;
   --cb-soft:    #5c4f45;
-  --cb-faint:   #8a7a6a;
+  --cb-faint:   #76695b;
   --cb-line:    #8a7a6a;
   --cb-red:     #c0392b;
   --cb-yellow:  #e9b427;
@@ -1243,9 +1266,8 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
 }
 .theme-cochabamba .banner span { display: inline; }
 
@@ -1436,7 +1458,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
     --cb-slate-d: #101416;
     --cb-ink:     #f1ebe0;
     --cb-soft:    #cfc4b3;
-    --cb-faint:   #a3968a;
+    --cb-faint:   #a89c91;
     --cb-line:    #8a7a6a;
     --cb-red:     #e2574a;
     --cb-yellow:  #f0c04a;
@@ -1464,7 +1486,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   --sc-panel-h: rgba(255, 255, 255, 0.9);
   --sc-ink:     #1e2a26;
   --sc-soft:    #4f5d58;
-  --sc-faint:   #7f8b86;
+  --sc-faint:   #66706c;
   --sc-line:    rgba(30, 42, 38, 0.1);
   --sc-green:   #177245;
   --sc-green-d: #0f4d33;
@@ -1526,9 +1548,8 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   font-weight: 600;
   letter-spacing: 0.25em;
   text-transform: uppercase;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
 }
 .theme-santacruz .banner span { display: inline; }
 
@@ -1575,7 +1596,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   font-weight: 300;
   font-size: 2rem;
 }
-.theme-santacruz .meta { color: var(--sc-faint); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.68rem; }
+.theme-santacruz .meta { color: var(--sc-faint); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.8125rem; }
 .theme-santacruz .excerpt { color: var(--sc-soft); }
 .theme-santacruz .backlink { color: var(--sc-green); text-decoration: none; }
 .theme-santacruz .backlink:hover { color: var(--sc-coral); }
@@ -1719,7 +1740,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   --pg-black:   #101214;
   --pg-ink:     #f2f0ea;
   --pg-soft:    #c2c5c9;
-  --pg-faint:   #8a9097;
+  --pg-faint:   #91979d;
   --pg-line:    #4a5057;
   --pg-gold:    #ffb81c;
   --pg-gold-d:  #d99a10;
@@ -1773,7 +1794,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   color: var(--pg-soft);
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  font-size: 0.78rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   text-decoration: none;
   border-bottom: 2px solid transparent;
@@ -1852,7 +1873,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }
-.theme-pittsburgh .meta { color: var(--pg-faint); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.7rem; }
+.theme-pittsburgh .meta { color: var(--pg-faint); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.8125rem; }
 .theme-pittsburgh .excerpt { color: var(--pg-soft); }
 .theme-pittsburgh .backlink { color: var(--pg-gold-t); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.78rem; font-weight: 700; text-decoration: none; }
 .theme-pittsburgh .backlink:hover { color: var(--pg-ink); }
@@ -1965,7 +1986,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
     --pg-plate2:  #f8f9f9;
     --pg-ink:     #15181b;
     --pg-soft:    #3f454b;
-    --pg-faint:   #6b727a;
+    --pg-faint:   #656b73;
     --pg-line:    #b4b9be;
     --pg-gold-t:  #a86f00;
     --pg-brush:   rgba(0, 0, 0, 0.035);
@@ -1981,6 +2002,11 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
 }
 
 /* ===== shared bits ===== */
+/* Legibility floor: bylines, metadata and the footer never render below
+   13px, whatever utility class the template applies; a theme may set a
+   larger size (its scoped rule wins on specificity), never a smaller one
+   (tools/contrast.py checks that, and the 4.5:1 contrast of faint text). */
+.byline, .meta, .footer { font-size: 0.8125rem; }
 /* The byline under a title: the date and the tag group are separate
    flex items, so wrapped tags form their own tidy rows instead of
    running on from the date (every theme; themes style .tag itself). */
@@ -2027,31 +2053,6 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
 }
 .theme-retro .content pre code { background: none; color: inherit; padding: 0; }
 .content h1:target, .content h2:target, .content h3:target { text-decoration: underline; }
-
-/* Sucre after dark: the same building at night */
-.theme-sucre { color-scheme: light dark; }
-@media (prefers-color-scheme: dark) {
-  .theme-sucre {
-    --su-wall:   #1f1b17;
-    --su-panel:  #2a2520;
-    --su-ink:    #ece3d3;
-    --su-soft:   #bfb3a0;
-    --su-faint:  #8f8474;
-    --su-line:   #3d362e;
-    --su-roof:   #d0644a;
-    --su-roof-d: #b04d34;
-    --su-green:  #8fb89f;
-    --su-ochre:  #d9a24e;
-  }
-  .theme-sucre { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 0.95 0 0 0 0 0.85 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)'/%3E%3C/svg%3E"); }
-  .theme-sucre .field, .theme-sucre .pglink { background: #211d19; color: var(--su-ink); }
-  .theme-sucre .tag, .theme-sucre .badge { background: #352e27; }
-  .theme-sucre .content code { background: #3a3128; color: #f0c9b8; }
-  .theme-sucre .content figure, .theme-sucre .flickr-embed { background: #211d19; }
-  .theme-sucre .masthead, .theme-sucre .card, .theme-sucre .article, .theme-sucre .notice {
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
-  }
-}
 
 /* print: the article, nothing else */
 @media print {

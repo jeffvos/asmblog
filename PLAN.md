@@ -40,7 +40,9 @@ pointer+length. Limits: 2 KB request line, 8 KB headers, 1 MB body.
 fsync per write. Compaction at startup/on demand via write-temp + rename.
 Startup builds in-memory indexes: date-sorted published list (pagination =
 array slice), slug hash table, tag -> posts. Rendered HTML stored alongside
-markdown at save time (zero parse cost at serve time). Settings record: site
+markdown at save time (zero parse cost at serve time); the plain-text
+excerpt is derived once per load/save the same way. Compaction runs at
+startup once dead records dominate, or via `blogd compact`. Settings record: site
 title, posts_per_page (default 5, clamp 1-50, admin-editable), session TTL,
 Argon2id hash. Search: case-insensitive SSE2 memmem over title+content.
 
@@ -52,7 +54,9 @@ Admin: login/logout, dashboard (drafts + published), new/edit/save
 (draft|publish), preview (render without save), delete, settings
 (posts-per-page, site title, password change).
 Parser accepts only well-formed HTTP/1.1 GET/POST/HEAD with Content-Length
-bodies; keep-alive supported; everything else 400.
+bodies; keep-alive supported; malformed 400, oversized 413/431, chunked
+411. Idle connections are swept by a per-worker timerfd. Repeat requests
+for an unchanged page are served from a small ETag-keyed render cache.
 
 ## Security
 

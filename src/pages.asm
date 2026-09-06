@@ -56,7 +56,7 @@ extern sec_headers
 extern sec_headers_len
 extern i18n_get
 extern fmt_date_local
-extern md_excerpt
+extern pcache_store
 
 global page_list
 global page_post
@@ -312,13 +312,10 @@ page_list:
     sub rax, rcx
     mov [rsp+L_VALS+V_TAGS*16], rcx
     mov [rsp+L_VALS+V_TAGS*16+8], rax
-    ; excerpt: plain-text synopsis (no embeds/markup), escaped by renderer
-    lea rdi, [rsp+L_EXC]
-    mov esi, 180
-    mov rdx, [r14+P_MD_P]
-    mov rcx, [r14+P_MD_L]
-    call md_excerpt
-    lea rcx, [rsp+L_EXC]
+    ; excerpt: plain-text synopsis (no embeds/markup), derived at
+    ; load/save time and escaped by the renderer
+    mov rcx, [r14+P_EXC_P]
+    mov rax, [r14+P_EXC_L]
     mov [rsp+L_VALS+V_EXCERPT*16], rcx
     mov [rsp+L_VALS+V_EXCERPT*16+8], rax
     lea rdi, [rsp+L_W]
@@ -884,19 +881,14 @@ page_post:
     mov rcx, [rsp+Q_W]
     sub rcx, rax
     mov [rsp+Q_VALS+V_CONTENT*16+8], rcx
-    ; <head> block after the content: description from the markdown
-    lea rdi, [rsp+Q_DESC]
-    mov esi, 160
-    mov rdx, [r15+P_MD_P]
-    mov rcx, [r15+P_MD_L]
-    call md_excerpt
-    mov r8, rax
+    ; <head> block after the content: description = the stored excerpt
+    mov r8, [r15+P_EXC_L]
     mov rax, [rsp+Q_W]
     mov [rsp+Q_VALS+V_META*16], rax
     lea rdi, [rsp+Q_W]
     mov rsi, r12
     mov rdx, r15
-    lea rcx, [rsp+Q_DESC]
+    mov rcx, [r15+P_EXC_P]
     call meta_post
     mov rax, [rsp+Q_W]
     sub rax, [rsp+Q_VALS+V_META*16]
@@ -1094,13 +1086,8 @@ page_feed:
     mov r10d, a_cat_c_len
     call emit_tag_list
     EMITS a_e5b, rbx            ; <summary type="text">
-    lea rdi, [rsp+F_EXC]        ; plain-text summary, same rules as cards
-    mov esi, 180
-    mov rdx, [r15+P_MD_P]
-    mov rcx, [r15+P_MD_L]
-    call md_excerpt
-    mov rdx, rax
-    lea rsi, [rsp+F_EXC]
+    mov rdx, [r15+P_EXC_L]      ; plain-text summary, same text as cards
+    mov rsi, [r15+P_EXC_P]
     mov rdi, rbx
     call emit_esc
     EMITS a_e6, rbx             ; </summary>
@@ -1188,7 +1175,8 @@ page_feed:
 %define TH_HITBG   48           ; 7 bytes
 %define TH_HITFG   56           ; 7 bytes
 %define TH_SIZE    64
-%define NSTATIC   (6 + 5*(NTHEMES-1))
+%define NSTATIC   (6 + 6*(NTHEMES-1))
+%define CSS_ALT   (6 + 5*(NTHEMES-1))   ; first themed stylesheet entry
 
 ; page_static(ctx, name_p, name_l)
 page_static:
@@ -2338,7 +2326,7 @@ path_sfx:
 
 ; load_static() -> 0 / -1. Loads every table entry (main.css required,
 ; the rest optional) plus .gz/.br siblings, records crc32c validators,
-; and derives the stylesheet version token for cache busting.
+; and derives the per-theme stylesheet version tokens for cache busting.
 load_static:
     push r12
     push r13
@@ -2405,10 +2393,28 @@ load_static:
     inc r13
     jmp .ent
 .ok:
-    mov edi, [static_tbl + ST_CRC]  ; main.css version token
-    mov rsi, css_ver
+    ; stylesheet version tokens, one per theme: retro is entry 0, every
+    ; other theme its static/<theme>-main.css entry, or entry 0 when
+    ; that file is missing (page_static falls back the same way)
+    xor r13d, r13d
+.ver:
+    cmp r13, NTHEMES
+    jae .verdone
+    mov edi, [static_tbl + ST_CRC]
+    test r13, r13
+    jz .put
+    lea rax, [r13 + CSS_ALT - 1]
+    imul rax, rax, ST_SIZE
+    cmp qword [static_tbl + rax + ST_P], 0
+    je .put
+    mov edi, [static_tbl + rax + ST_CRC]
+.put:
+    lea rsi, [css_ver + r13*8]
     mov edx, 8
     call put_hex
+    inc r13
+    jmp .ver
+.verdone:
     xor eax, eax
     jmp .ret
 .fail:
@@ -2563,7 +2569,10 @@ shell_vals:
     add rax, TH_COLOR
     mov [rdi+V_THCOLOR*16], rax
     mov qword [rdi+V_THCOLOR*16+8], 7
-    mov qword [rdi+V_CSSV*16], css_ver
+    mov eax, [set_theme]        ; the active theme's stylesheet token
+    shl rax, 3
+    add rax, css_ver
+    mov [rdi+V_CSSV*16], rax
     mov qword [rdi+V_CSSV*16+8], 8
     ret
 
@@ -2643,6 +2652,12 @@ finish_page:
     sub rsp, 1040
     mov [rsp+1024], r8
     mov [rsp+1032], r9
+    mov rdi, r12                ; keep a publicly cacheable page for the
+    mov rsi, r13                ; next identical request (pcache.asm)
+    mov rdx, r14
+    mov rcx, r15
+    mov r8, r9
+    call pcache_store
     mov rdi, rsp
     mov rsi, s_200
     mov edx, s_200_len
@@ -2993,7 +3008,7 @@ a_head2c: db '/feed.xml"/>', 10, '<id>tag:blogd:feed</id><updated>'
 a_head2c_len equ $-a_head2c
 a_head3: db '</updated>', 10, '<author><name>'
 a_head3_len equ $-a_head3
-a_head3b: db '</name></author><generator>blogd 0.9</generator>', 10
+a_head3b: db '</name></author><generator>blogd 0.10</generator>', 10
 a_head3b_len equ $-a_head3b
 a_icon: db '<icon>'
 a_icon_len equ $-a_icon
@@ -3034,7 +3049,7 @@ s_200: db 'HTTP/1.1 200 OK', 13, 10
 s_200_len equ $-s_200
 s_304: db 'HTTP/1.1 304 Not Modified', 13, 10
 s_304_len equ $-s_304
-s_server: db 'Server: blogd/0.9', 13, 10
+s_server: db 'Server: blogd/0.10', 13, 10
 s_server_len equ $-s_server
 s_ka: db 'Connection: keep-alive', 13, 10
 s_ka_len equ $-s_ka
@@ -3121,6 +3136,8 @@ p_%1_i512: db 'static/', %2, 'icon-512.png', 0
 p_%1_i512_l equ $-p_%1_i512-8
 p_%1_og: db 'static/', %2, 'og.png', 0
 p_%1_og_l equ $-p_%1_og-8
+p_%1_css: db 'static/', %2, 'main.css', 0
+p_%1_css_l equ $-p_%1_css-8
 %endmacro
 TPATHS sucre, 'sucre-'
 TPATHS mde, 'medellin-'
@@ -3138,27 +3155,29 @@ TPATHS pgh, 'pittsburgh-'
 %endmacro
 align 8
 static_tbl:                     ; main.css must stay first (css_ver)
-    STATIC p_css, 8, ct_css, ct_css_len, CACHE_HOUR, -1
+    STATIC p_css, 8, ct_css, ct_css_len, CACHE_HOUR, CSS_ALT
     STATIC p_favsvg, 11, ct_svg, ct_svg_len, CACHE_DAY, 6
     STATIC p_favico, 11, ct_ico, ct_ico_len, CACHE_DAY, 6+1*(NTHEMES-1)
     STATIC p_i192, 12, ct_png, ct_png_len, CACHE_DAY, 6+2*(NTHEMES-1)
     STATIC p_i512, 12, ct_png, ct_png_len, CACHE_DAY, 6+3*(NTHEMES-1)
     STATIC p_og, 6, ct_png, ct_png_len, CACHE_DAY, 6+4*(NTHEMES-1)
-; themed variants, one group per file in theme-id order (sucre first)
-%macro TGROUP 3                 ; file stem, ctype, ctype len
-    STATIC p_sucre_%1, p_sucre_%1_l, %2, %3, CACHE_DAY, -1
-    STATIC p_mde_%1, p_mde_%1_l, %2, %3, CACHE_DAY, -1
-    STATIC p_bog_%1, p_bog_%1_l, %2, %3, CACHE_DAY, -1
-    STATIC p_lpb_%1, p_lpb_%1_l, %2, %3, CACHE_DAY, -1
-    STATIC p_cbb_%1, p_cbb_%1_l, %2, %3, CACHE_DAY, -1
-    STATIC p_srz_%1, p_srz_%1_l, %2, %3, CACHE_DAY, -1
-    STATIC p_pgh_%1, p_pgh_%1_l, %2, %3, CACHE_DAY, -1
+; themed variants, one group per file in theme-id order (sucre first);
+; the stylesheet group must stay last (CSS_ALT)
+%macro TGROUP 4                 ; file stem, ctype, ctype len, cache mode
+    STATIC p_sucre_%1, p_sucre_%1_l, %2, %3, %4, -1
+    STATIC p_mde_%1, p_mde_%1_l, %2, %3, %4, -1
+    STATIC p_bog_%1, p_bog_%1_l, %2, %3, %4, -1
+    STATIC p_lpb_%1, p_lpb_%1_l, %2, %3, %4, -1
+    STATIC p_cbb_%1, p_cbb_%1_l, %2, %3, %4, -1
+    STATIC p_srz_%1, p_srz_%1_l, %2, %3, %4, -1
+    STATIC p_pgh_%1, p_pgh_%1_l, %2, %3, %4, -1
 %endmacro
-    TGROUP favsvg, ct_svg, ct_svg_len
-    TGROUP favico, ct_ico, ct_ico_len
-    TGROUP i192, ct_png, ct_png_len
-    TGROUP i512, ct_png, ct_png_len
-    TGROUP og, ct_png, ct_png_len
+    TGROUP favsvg, ct_svg, ct_svg_len, CACHE_DAY
+    TGROUP favico, ct_ico, ct_ico_len, CACHE_DAY
+    TGROUP i192, ct_png, ct_png_len, CACHE_DAY
+    TGROUP i512, ct_png, ct_png_len, CACHE_DAY
+    TGROUP og, ct_png, ct_png_len, CACHE_DAY
+    TGROUP css, ct_css, ct_css_len, CACHE_HOUR
 
 svg1: db '<svg xmlns="http://www.w3.org/2000/svg" width="'
 svg1_len equ $-svg1
@@ -3180,6 +3199,6 @@ section .bss
 
 hits_p:     resq 1              ; -> the counter qword (mapped file or local)
 hits_local: resq 1
-css_ver:    resb 8              ; crc32c of main.css as hex: ?v= token
+css_ver:    resb 8*NTHEMES      ; per theme: crc32c of its stylesheet as hex (?v=)
 
 section .note.GNU-stack noalloc noexec nowrite progbits

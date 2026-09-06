@@ -18,14 +18,18 @@ See [PLAN.md](PLAN.md) for the full architecture.
 ## Build & run
 
 ```
-make            # nasm + ld -> build/blogd, tailwind -> static/main.css
+make            # nasm + ld -> build/blogd, tailwind -> one stylesheet per theme
 make run        # serve on http://127.0.0.1:8080
-make test       # smoke suite (store selftest + HTTP + content + admin)
+make test       # contrast floor + smoke suite (store selftest, HTTP, content, admin)
 make fuzz       # mutation-fuzz the HTTP and markdown parsers
 ./build/blogd init       # first-run setup (title, posts/page, admin password)
 ./build/blogd seed       # demo posts for development
+./build/blogd compact    # rewrite data/store.blg with only the live records
 ./build/blogd 9000 8     # custom port + thread count
 ```
+
+`make test` is hermetic: every server it starts gets a free port and is
+stopped by its own PID, so it can run beside a live blogd.
 
 Deployment configs (TLS reverse proxy + hardened systemd unit) live in
 [deploy/](deploy/). blogd installs its own seccomp syscall allowlist at
@@ -63,6 +67,7 @@ front of the container. Environment:
 | `BLOGD_SEED` | `0` | `1` seeds demo posts on first boot |
 | `BLOGD_THREADS` | `2` | worker threads |
 | `BLOGD_PORT` | `8080` | listen port inside the container |
+| `BLOGD_IDLE_SECS` | `20` | close connections quiet for this long (`0` = never) |
 
 CI's container smoke test logs in with the `BLOGD_ADMIN_PASSWORD`
 repository secret (falling back to the default). `make image` builds
@@ -104,19 +109,35 @@ client-side code involved.
 - **One URL per page**: trailing slashes, `/page/1` and `/tag/x/page/1`
   301 to the canonical form.
 - **Validators**: HTML, the feed, the sitemap and `robots.txt` carry a
-  weak `ETag` (`W/"<store generation>-<crc32c of host+path+query>"`)
+  weak `ETag` (`W/"<store generation>-<crc32c of host+scheme+path+query>"`)
   and `Last-Modified`; static assets carry a strong `ETag`. The
   generation changes on every write and every restart (templates and
   CSS load at boot), so an `If-None-Match` hit is answered with a 304
-  before anything is rendered. Pages are `public, max-age=0,
-  must-revalidate`; the feed is cacheable for five minutes; the versioned
-  stylesheet (`/static/main.css?v=<crc>`) is `immutable` for a year;
-  icons for a day; `/admin` and the counter are `no-store`.
+  before anything is rendered; without an `If-None-Match`, an
+  `If-Modified-Since` (IMF-fixdate) is checked against the store's last
+  write instead, which is what most feed readers send. Pages are
+  `public, max-age=0, must-revalidate`; the feed is cacheable for five
+  minutes; the versioned stylesheet (`/static/main.css?v=<crc>`) is
+  `immutable` for a year; icons for a day; `/admin` and the counter are
+  `no-store`.
+- **Rendered-page cache**: because the ETag pins the exact bytes, a
+  small shared cache keyed on it (plus host, scheme and request target)
+  serves a repeat request for the same page as a copy, skipping the
+  store lock and the template and markdown work; a write or restart
+  moves the generation and every entry simply stops matching.
+- **Request limits are named honestly**: a body over 100 KB is a `413`,
+  a head that never ends inside 8 KiB is a `431`, and a body framed with
+  `Transfer-Encoding` (chunked) is a `411` (bodies are framed by
+  `Content-Length` only); each of those closes the connection. A
+  connection that goes quiet — a half-sent head, an unused keep-alive,
+  a peer that stopped reading — is closed after `BLOGD_IDLE_SECS`
+  (default 20) by a per-worker timer, and its buffers are returned to
+  the kernel.
 - **`HEAD`** is supported everywhere; `Date`, `Content-Language`,
   `Vary: Accept-Encoding` (on negotiated assets) and `Allow` (on 405)
-  are emitted; `Accept-Encoding` is tokenised (`;q=0` is honoured, and a
-  `static/main.css.br` is served to clients that accept brotli when the
-  `brotli` CLI was available at build time).
+  are emitted; `Accept-Encoding` is tokenised (`;q=0` is honoured); every stylesheet
+  ships with `.gz` and `.br` siblings and the best one the client accepts
+  is served.
 - **Atom feed**: absolute links, `<author>`, `<published>`,
   `<category>` per tag, `<summary type="text">` plus
   `<content type="html">` for posts up to 16 KB, `xml:lang`, and
@@ -187,12 +208,23 @@ one table in [src/pages.asm](src/pages.asm).
 Templates use semantic classes (`.masthead`, `.card`, `.btn`, `.tag`, …)
 that each theme restyles under a `.theme-<name>` scope in
 [assets/input.css](assets/input.css). Textures are inline only — CSS
-gradients and tiny data-URI SVG tiles — so the site is still one
-stylesheet and no extra requests. All themes but Retro follow
-`prefers-color-scheme`; every theme respects `prefers-reduced-motion`,
-has a print stylesheet, and uses cross-document view transitions for
-page-to-page navigation where the browser supports them (no script
-involved).
+gradients and tiny data-URI SVG tiles — so a page still loads one
+stylesheet and no extra requests. That stylesheet is built per theme:
+`tools/mkcss.py` splits `input.css` at the `THEME:` banners and runs
+Tailwind once per section, producing `static/main.css` (Retro) and
+`static/<theme>-main.css` for the rest (4–6 KB gzipped each rather than
+the 14 KB of all eight together), and `/static/main.css` serves
+whichever matches the active theme with its own `?v=` token. All themes
+but Retro follow `prefers-color-scheme`; every theme respects
+`prefers-reduced-motion`, has a print stylesheet, and uses
+cross-document view transitions for page-to-page navigation where the
+browser supports them (no script involved).
+
+Small text has a floor across themes: `tools/contrast.py` (run by
+`make test`) resolves each theme's palette variables for both colour
+schemes and fails the build if byline/excerpt text drops under WCAG AA
+4.5:1 against its panel, or if any `.meta`/`.byline`/`.navlink`/`.footer`
+rule sets a size below 13 px.
 
 ### Localization
 
@@ -239,11 +271,25 @@ Flickr is left as escaped text, never rendered as a live tag. This is
 the only remote content the app allows, and it never relaxes
 `script-src 'none'`.
 
-Requires: `nasm`, GNU binutils, `libsodium-dev`, `curl` and `python3`
-(tests only), and the Tailwind standalone CLI at
-`tools/tailwindcss` (gitignored; download `tailwindcss-linux-x64` from the
-Tailwind GitHub releases and `chmod +x`). Optional: `brotli` (a `.br`
-sibling of the stylesheet is produced when present).
+Requires: `nasm`, GNU binutils, `libsodium-dev`, `python3` (the CSS
+build, the icon generator and the tests), `brotli` (the `.br` siblings;
+`BLOGD_NO_BROTLI=1` skips them on a machine without the CLI), `curl`
+(tests), and the Tailwind standalone CLI at `tools/tailwindcss`
+(gitignored). CI and the Docker build pin Tailwind to one release and
+verify its SHA-256 (`TAILWIND_VERSION`/`TAILWIND_SHA256` in
+[ci.yml](.github/workflows/ci.yml) and the [Dockerfile](Dockerfile));
+for a local build download the same `tailwindcss-linux-x64` from the
+Tailwind GitHub releases and `chmod +x` it.
+
+### Storage housekeeping
+
+Every edit appends a new version of the post and every delete a
+tombstone, so `data/store.blg` grows until it is compacted. blogd
+rewrites it at startup once superseded records make up more than half
+of a file past 64 KiB, and `blogd compact` does the same on demand
+(run it in the site directory; it prints the sizes before and after).
+The in-memory arena the records load into grows in slabs, so a long
+run of saves never exhausts it.
 
 ## Roadmap
 

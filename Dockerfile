@@ -14,8 +14,11 @@ ARG ALPINE_VERSION=3.20
 
 # ---------------------------------------------------------------- build
 FROM alpine:${ALPINE_VERSION} AS build
-ARG TAILWIND_VERSION=latest
-RUN apk add --no-cache nasm make binutils libsodium-dev gzip curl
+# Tailwind standalone CLI (musl build), pinned and checksummed; the CI
+# workflow pins the glibc build of the same release. Bump both together.
+ARG TAILWIND_VERSION=v4.3.3
+ARG TAILWIND_SHA256=a04d34ceacc8f52cbe8920ad846cdeb61d3d0021dba32db0d1f77c9d9fad7a6c
+RUN apk add --no-cache nasm make binutils libsodium-dev gzip brotli curl python3
 
 WORKDIR /src
 COPY Makefile ./
@@ -25,14 +28,14 @@ COPY templates ./templates
 COPY static ./static
 COPY tests ./tests
 
+COPY tools/mkcss.py tools/contrast.py ./tools/
+
 # Tailwind standalone CLI (musl build) for the CSS step
 RUN mkdir -p tools static && \
-    if [ "$TAILWIND_VERSION" = "latest" ]; then \
-      URL="https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64-musl"; \
-    else \
-      URL="https://github.com/tailwindlabs/tailwindcss/releases/download/${TAILWIND_VERSION}/tailwindcss-linux-x64-musl"; \
-    fi && \
-    curl -fsSL -o tools/tailwindcss "$URL" && chmod +x tools/tailwindcss
+    curl -fsSL -o tools/tailwindcss \
+      "https://github.com/tailwindlabs/tailwindcss/releases/download/${TAILWIND_VERSION}/tailwindcss-linux-x64-musl" && \
+    echo "${TAILWIND_SHA256}  tools/tailwindcss" | sha256sum -c - && \
+    chmod +x tools/tailwindcss
 
 RUN make
 

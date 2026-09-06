@@ -28,6 +28,7 @@ extern rd_lock
 extern rd_unlock
 extern wr_lock
 extern wr_unlock
+extern md_excerpt
 
 global store_open
 global store_reset
@@ -41,6 +42,8 @@ global crc32c
 global crc32c_raw
 global store_gen
 global store_mtime
+global store_size
+global store_live_bytes
 global set_url
 global set_url_l
 global store_lock
@@ -280,12 +283,60 @@ store_open:
 .load:
     mov rdi, r12
     call store_load
+    test rax, rax
+    jnz .ret
+    ; housekeeping: once superseded versions and tombstones make up more
+    ; than half of a file big enough to matter, rewrite it now, before
+    ; serving (the in-memory state is unaffected). `blogd compact` does
+    ; the same on demand.
+    cmp qword [store_size], COMPACT_MIN
+    jb .ret
+    call store_live_bytes
+    shl rax, 1
+    cmp rax, [store_size]
+    ja .clean
+    call store_compact          ; best effort: a failure keeps the old file
+.clean:
+    xor eax, eax
     jmp .ret
 .fail:
     mov rax, -1
 .ret:
     pop rbx
     pop r12
+    ret
+
+; store_live_bytes() -> rax = bytes the live records occupy after a
+; compaction (each record header + payload, 8-aligned, plus the file
+; header and the settings record).
+store_live_bytes:
+    mov rax, 16
+    xor ecx, ecx
+.l:
+    cmp rcx, [posts_cnt]
+    jae .settings
+    mov rdx, [posts_arr]
+    mov rdx, [rdx+rcx*8]
+    mov rsi, [rdx+P_TITLE_L]
+    add rsi, [rdx+P_SLUG_L]
+    add rsi, [rdx+P_TAGS_L]
+    add rsi, [rdx+P_MD_L]
+    add rsi, [rdx+P_HTML_L]
+    add rsi, R_HDR + 7
+    and rsi, -8
+    add rax, rsi
+    inc rcx
+    jmp .l
+.settings:
+    cmp byte [set_present], 0
+    je .ret
+    mov rsi, [set_title_l]
+    add rsi, [set_banner_l]
+    add rsi, [set_url_l]
+    add rsi, R_HDR + SET_HDR + 128 + 4 + 7
+    and rsi, -8
+    add rax, rsi
+.ret:
     ret
 
 ; store_reset() — close and forget everything (selftest / compact reload).
@@ -539,6 +590,8 @@ apply_record:
     mov [r13+P_HTML_P], rax
     mov ecx, [r12+R_HLEN]
     mov [r13+P_HTML_L], rcx
+    mov rdi, r13
+    call post_excerpt           ; derived once here, not on every render
 .bump:
     mov rax, [r12+R_ID]
     inc rax
@@ -547,6 +600,31 @@ apply_record:
     mov [next_id], rax
 .done:
     pop r13
+    pop r12
+    ret
+
+; post_excerpt(post) — fill P_EXC_P/L with the plain-text synopsis of
+; the post's markdown, allocated from the store arena. Rendering reads
+; it back for cards, the feed summary and the meta description, so the
+; markdown is scanned once per load/save rather than per request. An
+; exhausted arena leaves the excerpt empty rather than failing the post.
+post_excerpt:
+    push r12
+    mov r12, rdi
+    mov qword [r12+P_EXC_L], 0
+    mov rdi, [st_arena]
+    mov esi, EXC_CAP + 3
+    call arena_alloc
+    test rax, rax
+    jz .ret
+    mov [r12+P_EXC_P], rax
+    mov rdi, rax
+    mov esi, EXC_CAP
+    mov rdx, [r12+P_MD_P]
+    mov rcx, [r12+P_MD_L]
+    call md_excerpt
+    mov [r12+P_EXC_L], rax
+.ret:
     pop r12
     ret
 
@@ -749,6 +827,9 @@ memize_post:
     ARENIZE P_TAGS_P
     ARENIZE P_MD_P
     ARENIZE P_HTML_P
+
+    mov rdi, r12
+    call post_excerpt
 
     mov rdi, [r12+P_ID]
     call find_idx

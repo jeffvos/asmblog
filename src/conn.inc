@@ -24,8 +24,12 @@
 ;   +122 https       byte    X-Forwarded-Proto said https
 ;   +123 inm         byte    If-None-Match matched etag → 304 eligible
 ;   +124 vary        byte    emit Vary: Accept-Encoding (negotiated asset)
-;   +128 inbuf       (request head <= 8 KiB + body <= 100 KB)
-;   +131200 outbuf
+;   +125 cont        byte    "100 Continue" already sent for this request
+;   +128 lprev/lnext qword   the worker's active-connection list (idle sweep)
+;   +144 last        qword   last activity, seconds (the worker's clock)
+;   +152 tgt_p/l     qword   request target (path?query) for the page cache
+;   +192 inbuf       (request head <= 8 KiB + body <= 100 KB)
+;   +131264 outbuf
 
 %define CTX_FD        0
 %define CTX_IN_USED   8
@@ -48,9 +52,15 @@
 %define CTX_HTTPS     122
 %define CTX_INM       123
 %define CTX_VARY      124
-%define CTX_IN        128
+%define CTX_CONT      125
+%define CTX_LPREV     128
+%define CTX_LNEXT     136
+%define CTX_LAST      144
+%define CTX_TGT_P     152
+%define CTX_TGT_L     160
+%define CTX_IN        192
 %define CTX_INBUF_SZ  131072
-%define CTX_OUT       131200
+%define CTX_OUT       131264
 %define CTX_OUTBUF_SZ 524288
 
 ; Cache-Control modes (CTX_CACHE); the header text lives in pages.asm
@@ -81,7 +91,7 @@
 %define CTX_MDHTML_OFF   425984
 %define CTX_MDHTML_END   524288
 
-%define CTX_TOTAL     659456    ; 131200 + 524288, rounded up to pages
+%define CTX_TOTAL     659456    ; 131264 + 524288, rounded up to pages
 
 %define MAX_REQS_PER_CONN 200
 %define MD_MAX 32768            ; markdown source cap per post

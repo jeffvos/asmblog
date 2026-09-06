@@ -33,6 +33,9 @@
 %define SYS_accept4     288
 %define SYS_epoll_create1 291
 %define SYS_prctl       157
+%define SYS_madvise     28
+%define SYS_timerfd_create  283
+%define SYS_timerfd_settime 286
 %define SYS_seccomp     317
 %define SYS_getrandom   318
 
@@ -59,6 +62,11 @@
 %define MAP_PRIVATE     2
 %define MAP_ANONYMOUS   0x20
 %define MAP_STACK       0x20000
+%define MADV_DONTNEED   4
+
+%define CLOCK_MONOTONIC 1
+%define TFD_NONBLOCK    0x800
+%define TFD_CLOEXEC     0x80000
 
 %define EAGAIN          11
 %define EINTR           4

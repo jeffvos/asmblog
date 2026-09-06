@@ -25,7 +25,7 @@
   </header>
   <div class="banner" aria-hidden="true"><span>{{banner}}</span></div>
   <form action="/search" method="get" class="mb-5 flex gap-2">
-    <input type="text" name="q" value="{{q}}" placeholder="search the archives..." class="field flex-1 min-w-0">
+    <input type="text" name="q" value="{{q}}" aria-label="search" placeholder="search the archives..." class="field flex-1 min-w-0">
     <button type="submit" class="btn">Search</button>
   </form>
   <main>
@@ -34,7 +34,7 @@
   <footer class="footer mt-10 text-center text-xs">
     <div class="mb-3">you are visitor number <img class="hits" src="/hits.svg" alt="" width="56" height="18"></div>
     <div class="mb-3">
-      <span class="badge badge-a">blogd 0.9</span>
+      <span class="badge badge-a">blogd 0.10</span>
       <span class="badge badge-b">100% ASM</span>
       <span class="badge badge-c">0 BYTES OF JS</span>
     </div>

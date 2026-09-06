@@ -933,7 +933,11 @@ img_allowed:
     mov eax, 1
     ret
 
-; md_excerpt(dst, cap, md_p, md_l) -> rax = length written.
+; md_excerpt(dst, cap, md_p, md_l) -> rax = length written (dst must
+; have room for cap + 3 bytes). When the text was cut at cap and does
+; not already end a sentence, a trailing "…" (U+2026) is appended, so
+; callers never add their own and a synopsis that ends on a full stop
+; is left alone ("...a design tool." rather than "...a design tool.…").
 ; Plain-text synopsis of a markdown source for cards and feed summaries:
 ; skips Flickr embed lines, code fences and blank lines; strips block
 ; prefixes (# > - * and indentation) and inline markers (* `); joins
@@ -945,16 +949,18 @@ md_excerpt:
     push r14
     push r15
     push rbx
+    push rbp
     mov r12, rdi                ; dst
     mov r13, rsi                ; cap
     mov r14, rdx                ; cursor
     lea r15, [rdx+rcx]          ; end
     xor ebx, ebx                ; out
+    xor ebp, ebp                ; 1 = stopped at cap: the text was cut
 .line:
     cmp r14, r15
     jae .done
     cmp rbx, r13
-    jae .done
+    jae .cut
     xor ecx, ecx                ; line length
 .fnl:
     lea rax, [r14+rcx]
@@ -1032,14 +1038,14 @@ md_excerpt:
     test rbx, rbx
     jz .copy
     cmp rbx, r13
-    jae .done
+    jae .cut
     mov byte [r12+rbx], ' '
     inc rbx
 .copy:
     test rcx, rcx
     jz .nextline
     cmp rbx, r13
-    jae .done
+    jae .cut
     mov al, [r8]
     inc r8
     dec rcx
@@ -1053,6 +1059,8 @@ md_excerpt:
 .nextline:
     mov r14, r9
     jmp .line
+.cut:
+    mov ebp, 1
 .done:
     ; trim a trailing space
     test rbx, rbx
@@ -1063,7 +1071,7 @@ md_excerpt:
 .utf8:
     ; if we stopped at cap, back off to a UTF-8 character boundary
     cmp rbx, r13
-    jb .ret
+    jb .ellipsis
 .back:
     test rbx, rbx
     jz .ret
@@ -1075,10 +1083,38 @@ md_excerpt:
     jmp .back
 .lead:
     cmp byte [r12+rbx-1], 0xC0  ; a lead byte whose sequence we may
-    jb .ret                     ; have truncated: drop it too
+    jb .ellipsis                ; have truncated: drop it too
     dec rbx
+.ellipsis:
+    ; cut text ends in "…" unless it already closes a sentence; a
+    ; dangling comma/semicolon/colon is dropped first
+    test ebp, ebp
+    jz .ret
+    test rbx, rbx
+    jz .ret
+    mov al, [r12+rbx-1]
+    cmp al, '.'
+    je .ret
+    cmp al, '!'
+    je .ret
+    cmp al, '?'
+    je .ret
+    cmp al, ','
+    je .strip_punct
+    cmp al, ';'
+    je .strip_punct
+    cmp al, ':'
+    jne .add
+.strip_punct:
+    dec rbx
+.add:
+    mov byte [r12+rbx], 0xE2
+    mov byte [r12+rbx+1], 0x80
+    mov byte [r12+rbx+2], 0xA6
+    add rbx, 3
 .ret:
     mov rax, rbx
+    pop rbp
     pop rbx
     pop r15
     pop r14

@@ -8,7 +8,9 @@
 ; build_page(). Nothing here touches the socket — conn_flush owns all
 ; writes.
 ;
-; Error page indices: 1 = health, 2 = 404, 3 = 405, 4 = 400, 5 = 500
+; Error page indices: 1 = health, 2 = 404, 3 = 405, 4 = 400, 5 = 500,
+; 6 = 413 (body over HTTP_BODY_MAX), 7 = 431 (head over HTTP_HEAD_MAX),
+; 8 = 411 (Transfer-Encoding: only Content-Length bodies are accepted)
 
 BITS 64
 %include "src/sys.inc"
@@ -22,6 +24,7 @@ extern put_hex
 extern emit_date_hdr
 extern crc32c_raw
 extern store_gen
+extern store_mtime
 extern set_locale
 extern theme_class
 extern page_list
@@ -33,9 +36,11 @@ extern page_robots
 extern page_sitemap
 extern page_manifest
 extern admin_route
+extern pcache_lookup
 
 global http_handle
 global http_body_len
+global http_expects_continue
 global build_page
 global ci_find
 global ci_prefix
@@ -190,6 +195,8 @@ http_handle:
 .method_done:
     pop rdi                     ; path pointer
     pop rsi                     ; path length
+    mov [r12+CTX_TGT_P], rdi    ; the request target, for the page cache
+    mov [r12+CTX_TGT_L], rsi
     mov r14, rdi                ; (inbuf base no longer needed)
     mov r15, rsi
     mov [rsp+168], r10          ; is_post
@@ -267,6 +274,13 @@ http_handle:
     call dyn_etag
     mov rdi, r12
     call inm_check
+    test eax, eax
+    jnz .r_root                 ; the client holds it: handlers answer 304
+    mov rdi, r12
+    call pcache_lookup          ; an identical page already rendered?
+    test eax, eax
+    jnz .fin
+.r_root:
     ; "/"
     cmp r15, 1
     jne .r_health
@@ -603,7 +617,9 @@ http_handle:
     ret
 
 ; http_body_len(ctx, head_len) -> Content-Length value; 0 if absent,
-; -1 if unparseable.
+; -1 if unparseable, -2 if a Transfer-Encoding header is present (the
+; parser frames bodies by Content-Length only, so the caller answers
+; 411 rather than misreading chunk framing as the next request).
 http_body_len:
     push r12
     push r13
@@ -634,6 +650,15 @@ http_body_len:
     inc r14
     jmp .fcr
 .have:
+    cmp r14, 18
+    jb .chk_cl
+    mov rdi, r12
+    mov rsi, str_te_lc
+    mov edx, 18
+    call ci_prefix
+    test eax, eax
+    jnz .te
+.chk_cl:
     cmp r14, 15
     jb .adv
     mov rdi, r12
@@ -674,11 +699,42 @@ http_body_len:
 .none:
     xor eax, eax
     jmp .ret
+.te:
+    mov rax, -2
+    jmp .ret
 .bad:
     mov rax, -1
 .ret:
     pop r14
     pop r13
+    pop r12
+    ret
+
+; http_expects_continue(ctx) -> 1 if the buffered head (CTX_HLEN set)
+; carries "Expect: 100-continue" (RFC 9110 §10.1.1), else 0.
+http_expects_continue:
+    push r12
+    mov r12, rdi
+    call hdr_block
+    test rax, rax
+    jz .no
+    mov rdi, rax
+    mov rsi, rdx
+    mov rdx, str_expect_lc
+    mov ecx, 7
+    call find_header
+    test rax, rax
+    jz .no
+    cmp rdx, 12
+    jne .no
+    mov rdi, rax
+    mov rsi, str_100cont_lc
+    mov edx, 12
+    call ci_prefix
+    pop r12
+    ret
+.no:
+    xor eax, eax
     pop r12
     ret
 
@@ -1055,8 +1111,9 @@ scan_origin:
     ret
 
 ; dyn_etag(ctx, path, plen, qs, qslen) — stage the weak validator for a
-; dynamic page: W/"<store generation hex>-<crc32c(host,path,query) hex>".
-; Same generation + same URL => byte-identical page (the counter lives
+; dynamic page: W/"<store generation hex>-<crc32c(host,scheme,path,query)>".
+; Same generation + same URL (and forwarded scheme, which decides the
+; absolute URLs in the page) => byte-identical page (the counter lives
 ; in /hits.svg, not the HTML), so this is exact, and it costs no render.
 dyn_etag:
     push r12
@@ -1072,6 +1129,10 @@ dyn_etag:
     mov edi, -1
     mov rsi, [r12+CTX_HOST_P]
     mov rdx, [r12+CTX_HOST_L]
+    call crc32c_raw
+    mov edi, eax
+    lea rsi, [r12+CTX_HTTPS]
+    mov edx, 1
     call crc32c_raw
     mov edi, eax
     mov rsi, r13
@@ -1106,6 +1167,9 @@ dyn_etag:
 
 ; inm_check(ctx) -> 1 and CTX_INM = 1 if If-None-Match carries the staged
 ; CTX_ETAG (or "*"); weak/strong prefixes are ignored on both sides.
+; Without an If-None-Match, If-Modified-Since is evaluated instead (RFC
+; 9110 §13.1.3) against the store's last-modified time for dynamic pages
+; (feed readers commonly send only the date).
 inm_check:
     push r12
     push r13
@@ -1126,7 +1190,7 @@ inm_check:
     mov ecx, 14
     call find_header
     test rax, rax
-    jz .no
+    jz .ims
     mov r13, rax                ; cursor
     mov r14, rdx                ; remaining
 .tok:
@@ -1189,12 +1253,189 @@ inm_check:
     add r13, r15
     sub r14, r15
     jmp .tok
+.ims:
+    ; dynamic pages (the 29-byte weak validator) are as old as the
+    ; store's last write; static assets stage no Last-Modified
+    cmp byte [r12+CTX_ETAG_L], 29
+    jne .no
+    mov rdi, r12
+    call hdr_block
+    mov rdi, rax
+    mov rsi, rdx
+    mov rdx, str_ims_lc
+    mov ecx, 18
+    call find_header
+    test rax, rax
+    jz .no
+    mov rdi, rax
+    mov rsi, rdx
+    call parse_httpdate
+    test rax, rax
+    js .no
+    mov rcx, [store_mtime]
+    test rcx, rcx
+    jz .no
+    cmp rcx, rax                ; nothing written since the client's copy
+    ja .no
 .yes:
     mov byte [r12+CTX_INM], 1
     mov eax, 1
     jmp .ret
 .no:
     xor eax, eax
+.ret:
+    pop rbx
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    ret
+
+; dec2(p) -> rax = two-digit decimal, or -1
+dec2:
+    movzx eax, byte [rdi]
+    sub eax, '0'
+    cmp eax, 9
+    ja .bad
+    movzx ecx, byte [rdi+1]
+    sub ecx, '0'
+    cmp ecx, 9
+    ja .bad
+    lea eax, [rax+rax*4]
+    lea eax, [rcx+rax*2]
+    ret
+.bad:
+    mov rax, -1
+    ret
+
+; parse_httpdate(p, len) -> rax = unix seconds, or -1 when the value is
+; not an IMF-fixdate ("Sun, 06 Nov 1994 08:49:37 GMT", RFC 9110 §5.6.7,
+; the one form every sender must produce). The obsolete RFC 850 and
+; asctime shapes are rejected: such a client simply gets a 200.
+parse_httpdate:
+    push r12
+    push r13
+    push r14
+    push r15
+    push rbx
+    mov r12, rdi
+    cmp rsi, 29
+    jne .bad
+    cmp byte [r12+3], ','
+    jne .bad
+    cmp byte [r12+4], ' '
+    jne .bad
+    cmp byte [r12+7], ' '
+    jne .bad
+    cmp byte [r12+11], ' '
+    jne .bad
+    cmp byte [r12+16], ' '
+    jne .bad
+    cmp byte [r12+19], ':'
+    jne .bad
+    cmp byte [r12+22], ':'
+    jne .bad
+    cmp dword [r12+25], ' GMT'
+    jne .bad
+    lea rdi, [r12+5]            ; day
+    call dec2
+    test rax, rax
+    jle .bad
+    cmp rax, 31
+    ja .bad
+    mov r13, rax
+    xor ecx, ecx                ; month name -> 1..12
+.mon:
+    cmp ecx, 12
+    jae .bad
+    lea rax, [rcx+rcx*2]
+    mov dx, [mon3_tbl + rax]
+    cmp dx, [r12+8]
+    jne .monnext
+    mov dl, [mon3_tbl + rax + 2]
+    cmp dl, [r12+10]
+    je .monok
+.monnext:
+    inc ecx
+    jmp .mon
+.monok:
+    lea r14, [rcx+1]
+    lea rdi, [r12+12]           ; year, two digit pairs
+    call dec2
+    test rax, rax
+    js .bad
+    imul r15, rax, 100
+    lea rdi, [r12+14]
+    call dec2
+    test rax, rax
+    js .bad
+    add r15, rax
+    cmp r15, 1970
+    jb .bad
+    lea rdi, [r12+17]           ; hh:mm:ss -> rbx seconds of day
+    call dec2
+    test rax, rax
+    js .bad
+    cmp rax, 23
+    ja .bad
+    imul rbx, rax, 3600
+    lea rdi, [r12+20]
+    call dec2
+    test rax, rax
+    js .bad
+    cmp rax, 59
+    ja .bad
+    imul rax, rax, 60
+    add rbx, rax
+    lea rdi, [r12+23]
+    call dec2
+    test rax, rax
+    js .bad
+    cmp rax, 60                 ; leap second
+    ja .bad
+    add rbx, rax
+    ; days_from_civil (Howard Hinnant): y = r15, m = r14, d = r13
+    mov rax, r15
+    cmp r14, 2
+    ja .y_ok
+    dec rax                     ; March-based year
+.y_ok:
+    xor edx, edx
+    mov ecx, 400
+    div rcx                     ; rax = era, rdx = yoe
+    mov r8, rax
+    mov r9, rdx
+    mov rax, r14
+    sub rax, 3                  ; mp: Mar = 0 .. Feb = 11
+    jns .mp_ok
+    add rax, 12
+.mp_ok:
+    imul rax, rax, 153
+    add rax, 2
+    xor edx, edx
+    mov ecx, 5
+    div rcx
+    add rax, r13
+    dec rax                     ; doy
+    mov r10, rax
+    imul r11, r9, 365           ; doe = yoe*365 + yoe/4 - yoe/100 + doy
+    mov rax, r9
+    shr rax, 2
+    add r11, rax
+    mov rax, r9
+    xor edx, edx
+    mov ecx, 100
+    div rcx
+    sub r11, rax
+    add r11, r10
+    imul r8, r8, 146097
+    add r11, r8
+    sub r11, 719468             ; days since 1970-01-01
+    imul rax, r11, 86400
+    add rax, rbx
+    jmp .ret
+.bad:
+    mov rax, -1
 .ret:
     pop rbx
     pop r15
@@ -1584,6 +1825,11 @@ str_host_lc:  db 'host:'
 str_xfp_lc:   db 'x-forwarded-proto:'
 str_https_lc: db 'https'
 str_inm_lc:   db 'if-none-match:'
+str_ims_lc:   db 'if-modified-since:'
+str_te_lc:    db 'transfer-encoding:'
+str_expect_lc: db 'expect:'
+str_100cont_lc: db '100-continue'
+mon3_tbl:     db 'JanFebMarAprMayJunJulAugSepOctNovDec'
 str_health:   db '/health'
 str_feed:     db '/feed.xml'
 str_hits:     db '/hits.svg'
@@ -1619,13 +1865,19 @@ st500: db 'HTTP/1.1 500 Internal Server Error', 13, 10
 st500_len equ $-st500
 st301: db 'HTTP/1.1 301 Moved Permanently', 13, 10
 st301_len equ $-st301
+st413: db 'HTTP/1.1 413 Content Too Large', 13, 10
+st413_len equ $-st413
+st431: db 'HTTP/1.1 431 Request Header Fields Too Large', 13, 10
+st431_len equ $-st431
+st411: db 'HTTP/1.1 411 Length Required', 13, 10
+st411_len equ $-st411
 hdr_loc: db 'Location: '
 hdr_loc_len equ $-hdr_loc
 hdr_301_tail: db 13, 10, 'Cache-Control: public, max-age=86400', 13, 10
               db 'Content-Length: 0', 13, 10, 13, 10
 hdr_301_tail_len equ $-hdr_301_tail
 
-hdr_server: db 'Server: blogd/0.9', 13, 10
+hdr_server: db 'Server: blogd/0.10', 13, 10
 hdr_server_len equ $-hdr_server
 
 ; Emitted on every response by all the builders. Everything is
@@ -1690,13 +1942,19 @@ body_400: db 'bad request', 10
 body_400_len equ $-body_400
 body_500: db 'internal error', 10
 body_500_len equ $-body_500
+body_413: db 'request body too large', 10
+body_413_len equ $-body_413
+body_431: db 'request header fields too large', 10
+body_431_len equ $-body_431
+body_411: db 'length required: send Content-Length (chunked bodies are not accepted)', 10
+body_411_len equ $-body_411
 
 align 8
-tbl_status:     dq st200, st200, st404, st405, st400, st500
-tbl_status_len: dq st200_len, st200_len, st404_len, st405_len, st400_len, st500_len
-tbl_ctype:      dq ct_html, ct_text, ct_html, ct_text, ct_text, ct_text
-tbl_ctype_len:  dq ct_html_len, ct_text_len, ct_html_len, ct_text_len, ct_text_len, ct_text_len
-tbl_body:       dq b404a_en, body_ok, b404a_en, body_405, body_400, body_500
-tbl_body_len:   dq b404a_en_len, body_ok_len, b404a_en_len, body_405_len, body_400_len, body_500_len
+tbl_status:     dq st200, st200, st404, st405, st400, st500, st413, st431, st411
+tbl_status_len: dq st200_len, st200_len, st404_len, st405_len, st400_len, st500_len, st413_len, st431_len, st411_len
+tbl_ctype:      dq ct_html, ct_text, ct_html, ct_text, ct_text, ct_text, ct_text, ct_text, ct_text
+tbl_ctype_len:  dq ct_html_len, ct_text_len, ct_html_len, ct_text_len, ct_text_len, ct_text_len, ct_text_len, ct_text_len, ct_text_len
+tbl_body:       dq b404a_en, body_ok, b404a_en, body_405, body_400, body_500, body_413, body_431, body_411
+tbl_body_len:   dq b404a_en_len, body_ok_len, b404a_en_len, body_405_len, body_400_len, body_500_len, body_413_len, body_431_len, body_411_len
 
 section .note.GNU-stack noalloc noexec nowrite progbits

@@ -11,17 +11,19 @@ LDLIBS    := -lsodium
 
 SRC := src/main.asm src/net.asm src/http.asm src/threads.asm src/util.asm \
        src/store.asm src/crypto.asm src/cli.asm src/tmpl.asm src/pages.asm \
-       src/auth.asm src/md.asm src/admin.asm src/seccomp.asm src/i18n.asm
+       src/auth.asm src/md.asm src/admin.asm src/seccomp.asm src/i18n.asm \
+       src/pcache.asm
 OBJ := $(patsubst src/%.asm,build/%.o,$(SRC))
 
 all: build/blogd static/main.css
 
 css: static/main.css
 
-static/main.css: assets/input.css $(wildcard templates/*/*.html) tools/tailwindcss
-	tools/tailwindcss -i assets/input.css -o static/main.css --minify
-	gzip -9 -kf static/main.css
-	@command -v brotli >/dev/null 2>&1 && brotli -kf -q 11 static/main.css || true
+# One stylesheet per theme (static/main.css is retro, static/<theme>-main.css
+# the rest), each with .gz/.br siblings. tools/mkcss.py splits input.css at
+# the THEME banners and runs Tailwind once per theme; brotli is required.
+static/main.css: assets/input.css $(wildcard templates/*/*.html) tools/tailwindcss tools/mkcss.py
+	python3 tools/mkcss.py
 
 icons:
 	python3 tools/mkicons.py
@@ -39,6 +41,7 @@ run: all
 	./build/blogd
 
 test: all
+	python3 tools/contrast.py
 	./tests/smoke.sh
 
 fuzz: all
@@ -48,6 +51,6 @@ image:
 	docker build -t blogd .
 
 clean:
-	rm -rf build static/main.css static/main.css.gz static/main.css.br
+	rm -rf build static/main.css static/main.css.gz static/main.css.br static/*-main.css static/*-main.css.gz static/*-main.css.br
 
 .PHONY: all css icons run test fuzz image clean

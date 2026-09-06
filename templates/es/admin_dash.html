@@ -11,9 +11,13 @@
     </div>
   </div>
   <table class="table w-full text-sm border-collapse">
+    <thead>
     <tr class="text-left text-xs meta">
-      <th class="pb-1">título</th><th class="pb-1">fecha</th><th class="pb-1">estado</th><th></th>
+      <th scope="col" class="pb-1">título</th><th scope="col" class="pb-1">fecha</th><th scope="col" class="pb-1">estado</th><th scope="col"><span class="sr-only">acciones</span></th>
     </tr>
+    </thead>
+    <tbody>
 {{rows}}
+    </tbody>
   </table>
 </div>
