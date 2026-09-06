@@ -340,8 +340,24 @@ def spawn_server(threads, port=None, bind_all=False):
     url = "http://127.0.0.1:%d" % port
     if not wait_up(url + "/health"):
         proc.kill()
-        sys.exit("loadtest: server did not come up (see %s/server.log)" % tmp)
+        log.close()
+        with open(os.path.join(tmp, "server.log"), errors="replace") as f:
+            tail = f.read().strip()
+        sys.exit("loadtest: server did not come up:\n%s" % tail)
     return proc, url, tmp
+
+
+def port_free(port, host="0.0.0.0"):
+    import socket
+    s = socket.socket()
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        s.bind((host, port))
+        return True
+    except OSError:
+        return False
+    finally:
+        s.close()
 
 
 # ------------------------------------------------------------------ report
@@ -512,6 +528,10 @@ def main():
 
 def serve(args):
     """--serve: the throwaway server on every interface plus /stats."""
+    for p in (args.port, args.port + 1):
+        if not port_free(p):
+            sys.exit("loadtest: port %d is already in use (ss -ltnp | grep ':%d'); pick another with --port"
+                     % (p, args.port))
     proc, url, tmp = spawn_server(args.threads, args.port, bind_all=True)
     sampler = ProcSampler(proc.pid)
     stats = StatsServer(sampler, args.port + 1)

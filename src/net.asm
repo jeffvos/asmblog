@@ -22,6 +22,7 @@ BITS 64
 %include "src/conn.inc"
 
 extern mem_copy
+extern u64_to_dec
 extern http_handle
 extern http_body_len
 extern http_expects_continue
@@ -58,7 +59,7 @@ worker_main:
     mov eax, SYS_mmap
     syscall
     cmp rax, -4095
-    jae .fatal
+    jae .f_mmap
     mov r12, rax                ; r12 = ws for the rest of the loop
 
     ; nonblocking listener with SO_REUSEPORT
@@ -68,7 +69,7 @@ worker_main:
     mov eax, SYS_socket
     syscall
     test rax, rax
-    js .fatal
+    js .f_socket
     mov [r12+WS_LFD], rax
     mov rdi, rax
     mov esi, SOL_SOCKET
@@ -90,19 +91,19 @@ worker_main:
     mov eax, SYS_bind
     syscall
     test rax, rax
-    js .fatal
+    js .f_bind
     mov rdi, [r12+WS_LFD]
     mov esi, 512
     mov eax, SYS_listen
     syscall
     test rax, rax
-    js .fatal
+    js .f_listen
 
     xor edi, edi
     mov eax, SYS_epoll_create1
     syscall
     test rax, rax
-    js .fatal
+    js .f_epoll
     mov [r12+WS_EP], rax
 
     ; register the listener with data = 0
@@ -117,7 +118,7 @@ worker_main:
     syscall
     add rsp, 16
     test rax, rax
-    js .fatal
+    js .f_epctl
 
     ; the idle sweep: a periodic timerfd registered with data = 1
     mov edi, CLOCK_MONOTONIC
@@ -125,7 +126,7 @@ worker_main:
     mov eax, SYS_timerfd_create
     syscall
     test rax, rax
-    js .fatal
+    js .f_timer
     mov [r12+WS_TFD], rax
     sub rsp, 32                 ; struct itimerspec { interval; value }
     mov qword [rsp], IDLE_TICK
@@ -140,7 +141,7 @@ worker_main:
     syscall
     add rsp, 32
     test rax, rax
-    js .fatal
+    js .f_timer
     sub rsp, 16
     mov dword [rsp], EPOLLIN
     mov qword [rsp+4], 1
@@ -152,7 +153,7 @@ worker_main:
     syscall
     add rsp, 16
     test rax, rax
-    js .fatal
+    js .f_epctl
 
     ; signal setup complete: main waits for all workers before it
     ; installs the seccomp filter (whose allowlist excludes the
@@ -248,10 +249,69 @@ worker_main:
     inc rbx
     jmp .evloop
 
-.fatal:
+; setup failures: say which step and which errno, since "bind" with
+; EADDRINUSE (another process on the port) is by far the common case
+.f_mmap:
+    mov r14, wf_mmap
+    mov r15d, wf_mmap_len
+    jmp .fatal
+.f_socket:
+    mov r14, wf_socket
+    mov r15d, wf_socket_len
+    jmp .fatal
+.f_bind:
+    mov r14, wf_bind
+    mov r15d, wf_bind_len
+    jmp .fatal
+.f_listen:
+    mov r14, wf_listen
+    mov r15d, wf_listen_len
+    jmp .fatal
+.f_epoll:
+    mov r14, wf_epoll
+    mov r15d, wf_epoll_len
+    jmp .fatal
+.f_epctl:
+    mov r14, wf_epctl
+    mov r15d, wf_epctl_len
+    jmp .fatal
+.f_timer:
+    mov r14, wf_timer
+    mov r15d, wf_timer_len
+.fatal:                         ; rax = -errno
+    neg rax
+    mov rbx, rax
+    sub rsp, 192
+    mov rdi, rsp
+    mov rsi, wf_1
+    mov edx, wf_1_len
+    call mem_copy
+    mov rdi, rax
+    mov rsi, r14
+    mov rdx, r15
+    call mem_copy
+    mov rdi, rax
+    mov rsi, wf_2
+    mov edx, wf_2_len
+    call mem_copy
+    mov rdi, rbx
+    mov rsi, rax
+    call u64_to_dec
+    mov byte [rax], ')'
+    inc rax
+    cmp rbx, 98                 ; EADDRINUSE
+    jne .f_nohint
+    mov rdi, rax
+    mov rsi, wf_inuse
+    mov edx, wf_inuse_len
+    call mem_copy
+.f_nohint:
+    mov byte [rax], 10
+    inc rax
+    mov rdx, rax
+    sub rdx, rsp
     mov edi, STDERR
-    mov rsi, msg_wfatal
-    mov edx, msg_wfatal_len
+    mov rsi, rsp
     mov eax, SYS_write
     syscall
     mov edi, 1
@@ -637,8 +697,26 @@ section .data
 one_dw: dd 1
 s_100: db 'HTTP/1.1 100 Continue', 13, 10, 13, 10
 s_100_len equ $-s_100
-msg_wfatal: db 'blogd: worker fatal: socket/bind/listen/epoll/timerfd failed', 10
-msg_wfatal_len equ $-msg_wfatal
+wf_1: db 'blogd: worker fatal: '
+wf_1_len equ $-wf_1
+wf_2: db ' failed (errno '
+wf_2_len equ $-wf_2
+wf_inuse: db ': the port is already in use by another process'
+wf_inuse_len equ $-wf_inuse
+wf_mmap: db 'mmap'
+wf_mmap_len equ $-wf_mmap
+wf_socket: db 'socket'
+wf_socket_len equ $-wf_socket
+wf_bind: db 'bind'
+wf_bind_len equ $-wf_bind
+wf_listen: db 'listen'
+wf_listen_len equ $-wf_listen
+wf_epoll: db 'epoll_create1'
+wf_epoll_len equ $-wf_epoll
+wf_epctl: db 'epoll_ctl'
+wf_epctl_len equ $-wf_epctl
+wf_timer: db 'timerfd'
+wf_timer_len equ $-wf_timer
 
 section .bss
 workers_ready: resq 1
