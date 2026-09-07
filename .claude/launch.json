@@ -4,8 +4,24 @@
     {
       "name": "blogd-preview",
       "runtimeExecutable": "tools/preview.sh",
-      "runtimeArgs": ["8080"],
+      "runtimeArgs": [
+        "8080"
+      ],
       "port": 8080
+    },
+    {
+      "name": "theme-mocks",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8765",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "build/mock"
+      ],
+      "port": 8765
     }
   ]
 }
