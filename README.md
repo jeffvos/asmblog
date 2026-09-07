@@ -161,7 +161,8 @@ own shapes, type and textures, not just colours:
 
 - **Retro** (default) — polished 1990s web: navy backdrop with a tiled
   8-pixel dither, beveled silver panels, monospace, a scrolling
-  marquee, a green-LED hit counter.
+  marquee, a green-LED hit counter, and above the footer a pixel-art
+  construction barricade over a rainbow rule.
 - **Sucre** — a modern take on the whitewashed colonial architecture of
   Sucre, Bolivia (*La Ciudad Blanca*): plaster-grain background, panels
   as white "walls" under a tiled terracotta roofline, colonial-green

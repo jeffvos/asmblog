@@ -126,6 +126,16 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
 .theme-retro .badge-b { background: #006400; }
 .theme-retro .badge-c { background: #551a8b; }
 .theme-retro .footer { color: #a0a0b0; }
+.theme-retro .footer::before {          /* under construction, forever; then the rainbow rule */
+  content: "";
+  display: block;
+  height: 72px;
+  margin: 0 auto 10px;
+  background:
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2026%2016'%20shape-rendering='crispEdges'%3E%3Cpath%20fill='%23000000'%20d='M10%200h1v1h-1zM14%200h1v1h-1zM3%203h2v1h-2zM7%203h2v1h-2zM11%203h2v1h-2zM15%203h2v1h-2zM19%203h2v1h-2zM23%203h2v1h-2zM2%204h2v1h-2zM6%204h2v1h-2zM10%204h2v1h-2zM14%204h2v1h-2zM18%204h2v1h-2zM22%204h2v1h-2zM1%205h2v1h-2zM5%205h2v1h-2zM9%205h2v1h-2zM13%205h2v1h-2zM17%205h2v1h-2zM21%205h2v1h-2zM1%206h1v1h-1zM4%206h2v1h-2zM8%206h2v1h-2zM12%206h2v1h-2zM16%206h2v1h-2zM20%206h2v1h-2zM24%206h1v1h-1zM3%207h2v1h-2zM7%207h2v1h-2zM11%207h2v1h-2zM15%207h2v1h-2zM19%207h2v1h-2zM23%207h2v1h-2z'/%3E%3Cpath%20fill='%23ff0000'%20d='M11%200h3v1h-3zM10%201h2v1h-2zM13%201h2v1h-2z'/%3E%3Cpath%20fill='%23ffffff'%20d='M12%201h1v1h-1z'/%3E%3Cpath%20fill='%23c0c0c0'%20d='M1%202h24v1h-24z'/%3E%3Cpath%20fill='%23ffff00'%20d='M1%203h2v1h-2zM5%203h2v1h-2zM9%203h2v1h-2zM13%203h2v1h-2zM17%203h2v1h-2zM21%203h2v1h-2zM1%204h1v1h-1zM4%204h2v1h-2zM8%204h2v1h-2zM12%204h2v1h-2zM16%204h2v1h-2zM20%204h2v1h-2zM24%204h1v1h-1zM3%205h2v1h-2zM7%205h2v1h-2zM11%205h2v1h-2zM15%205h2v1h-2zM19%205h2v1h-2zM23%205h2v1h-2zM2%206h2v1h-2zM6%206h2v1h-2zM10%206h2v1h-2zM14%206h2v1h-2zM18%206h2v1h-2zM22%206h2v1h-2zM1%207h2v1h-2zM5%207h2v1h-2zM9%207h2v1h-2zM13%207h2v1h-2zM17%207h2v1h-2zM21%207h2v1h-2z'/%3E%3Cpath%20fill='%23808080'%20d='M1%208h24v1h-24zM3%209h1v1h-1zM6%209h1v1h-1zM20%209h1v1h-1zM23%209h1v1h-1zM3%2010h1v1h-1zM6%2010h1v1h-1zM20%2010h1v1h-1zM23%2010h1v1h-1zM3%2011h1v1h-1zM6%2011h1v1h-1zM20%2011h1v1h-1zM23%2011h1v1h-1zM4%2012h2v1h-2zM21%2012h2v1h-2zM4%2013h2v1h-2zM21%2013h2v1h-2zM4%2014h2v1h-2zM21%2014h2v1h-2zM4%2015h2v1h-2zM21%2015h2v1h-2z'/%3E%3C/svg%3E") center top / 104px 64px no-repeat,
+    linear-gradient(90deg, #ff0000, #ff8000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff) center bottom / 100% 4px no-repeat;
+  image-rendering: pixelated;
+}
 
 .theme-retro .listhead {
   border: 2px inset #fff; background: #000; color: #00ff00;
