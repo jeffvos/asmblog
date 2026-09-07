@@ -184,8 +184,10 @@ own shapes, type and textures, not just colours:
   corners cut with `clip-path`, a glossy teal→violet stroke around every
   panel, the masthead framed in aguayo stripes, a minibus destination
   sign for the banner, Teleférico line colours on the badges, wide
-  geometric caps. A thin-air daytime palette follows a light
-  `prefers-color-scheme`.
+  geometric caps. Illimani rises over the city inside the frame, with
+  houses climbing the slopes and a Teleférico line strung across the
+  front, all revealed in the teal→violet stroke. A thin-air daytime
+  palette follows a light `prefers-color-scheme`.
 - **Cochabamba** — La Cancha market: kraft paper with a fibre grain,
   chalkboard menus in wooden frames, posts as pinned index cards with
   dashed hand-ruled borders and coloured push-pins, string price tags,

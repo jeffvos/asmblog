@@ -973,6 +973,10 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
       var(--lp-red) 0 12px, var(--lp-orange) 12px 24px, var(--lp-yellow) 24px 36px,
       var(--lp-green) 36px 48px, var(--lp-sky) 48px 60px, var(--lp-violet) 60px 72px,
       var(--lp-magenta) 72px 84px);
+  /* the skyline, as a mask: Illimani's snow massif over the near ridge,
+     houses climbing the slopes, the downtown towers, and a Mi Teleférico
+     mast with cabins on the cable; reveals the teal→violet stroke */
+  --lp-skyline: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%20-20%20900%20100%22%3E%3Cpath%20fill=%22%23000%22%20fill-opacity=%22.35%22%20d=%22M470,62Q540,50,596,34Q630,14,662,0Q676,-6,690,4Q705,-6,735,-12Q760,-16,790,-14Q812,-8,832,4Q856,16,880,26Q890,30,900,32V80H470Z%22/%3E%3Cpath%20fill=%22%23000%22%20fill-opacity=%22.95%22%20d=%22M596,34Q630,14,662,0Q676,-6,690,4Q705,-6,735,-12Q760,-16,790,-14Q812,-8,832,4Q856,16,880,26L872,34Q850,28,828,36Q800,30,770,38Q740,30,708,40Q680,32,650,40Q625,34,610,36Z%22/%3E%3Cpath%20fill=%22%23000%22%20fill-opacity=%22.5%22%20d=%22M0,50Q50,50,100,42Q150,42,200,47Q250,47,300,45Q350,45,400,46Q450,46,500,52Q550,52,600,54Q650,54,700,51Q750,51,800,52Q850,52,900,58V80H0Z%22/%3E%3Cpath%20fill=%22%23000%22%20fill-opacity=%22.85%22%20d=%22M4,68h8v4h-8ZM4,74h8v3h-8ZM20,54h5v5h-5ZM20,61h5v4h-5ZM20,74h5v4h-5ZM33,59h7v5h-7ZM33,65h7v4h-7ZM33,72h7v3h-7ZM46,51h6v3h-6ZM46,73h6v4h-6ZM56,52h8v3h-8ZM56,60h8v4h-8ZM56,66h8v3h-8ZM69,48h5v5h-5ZM69,54h5v5h-5ZM69,68h5v5h-5ZM69,75h5v4h-5ZM82,50h7v4h-7ZM82,64h7v4h-7ZM82,71h7v4h-7ZM95,46h5v4h-5ZM95,52h5v5h-5ZM95,58h5v4h-5ZM95,66h5v4h-5ZM95,72h5v4h-5ZM105,48h6v5h-6ZM105,55h6v3h-6ZM105,61h6v4h-6ZM117,56h6v3h-6ZM117,69h6v4h-6ZM117,76h6v3h-6ZM128,47h6v5h-6ZM128,55h6v4h-6ZM128,69h6v4h-6ZM128,77h6v3h-6ZM142,48h7v5h-7ZM155,66h8v5h-8ZM155,73h8v3h-8ZM170,66h7v3h-7ZM170,73h7v4h-7ZM183,53h6v5h-6ZM183,60h6v4h-6ZM183,66h6v4h-6ZM183,73h6v5h-6ZM195,52h8v5h-8ZM195,66h8v4h-8ZM195,74h8v4h-8ZM208,59h5v5h-5ZM208,74h5v5h-5ZM221,57h8v4h-8ZM221,65h8v3h-8ZM221,72h8v4h-8ZM237,60h6v3h-6ZM237,68h6v4h-6ZM279,51h8v4h-8ZM306,51h8v3h-8ZM321,52h8v3h-8ZM337,50h7v4h-7ZM351,51h5v3h-5ZM351,64h5v5h-5ZM361,49h8v5h-8ZM361,56h8v5h-8ZM361,76h8v4h-8ZM375,50h7v5h-7ZM375,57h7v4h-7ZM375,72h7v5h-7ZM389,52h6v4h-6ZM416,53h8v4h-8ZM416,60h8v3h-8ZM416,66h8v4h-8ZM431,59h7v3h-7ZM443,67h5v5h-5ZM443,73h5v5h-5ZM454,53h8v3h-8ZM454,61h8v5h-8ZM454,67h8v4h-8ZM454,75h8v3h-8ZM467,55h8v4h-8ZM467,63h8v3h-8ZM493,69h8v4h-8ZM493,76h8v4h-8ZM507,71h8v4h-8ZM521,58h5v3h-5ZM521,65h5v4h-5ZM521,72h5v3h-5ZM534,58h5v3h-5ZM546,58h5v4h-5ZM546,65h5v4h-5ZM546,72h5v4h-5ZM556,63h7v5h-7ZM556,71h7v4h-7ZM568,64h7v4h-7ZM568,70h7v5h-7ZM582,59h5v4h-5ZM582,67h5v4h-5ZM582,73h5v5h-5ZM592,66h8v4h-8ZM592,73h8v3h-8ZM606,58h7v4h-7ZM606,72h7v4h-7ZM617,57h5v3h-5ZM617,64h5v4h-5ZM617,70h5v4h-5ZM629,58h7v4h-7ZM629,72h7v3h-7ZM644,64h6v4h-6ZM657,57h6v3h-6ZM657,64h6v3h-6ZM657,71h6v5h-6ZM683,56h7v5h-7ZM698,56h7v4h-7ZM698,68h7v5h-7ZM711,57h6v4h-6ZM711,64h6v4h-6ZM711,71h6v3h-6ZM724,63h5v3h-5ZM724,70h5v3h-5ZM734,75h6v4h-6ZM748,56h6v3h-6ZM763,66h8v4h-8ZM777,56h6v5h-6ZM777,63h6v5h-6ZM777,70h6v3h-6ZM788,65h6v3h-6ZM788,71h6v4h-6ZM799,57h8v4h-8ZM799,65h8v4h-8ZM815,66h8v3h-8ZM815,73h8v3h-8ZM844,59h7v5h-7ZM844,67h7v4h-7ZM844,74h7v4h-7ZM860,61h7v4h-7ZM872,76h5v3h-5ZM883,63h5v3h-5ZM883,70h5v4h-5Z%22/%3E%3Cpath%20fill=%22%23000%22%20fill-rule=%22evenodd%22%20d=%22M246,34h14V80h-14ZM264,26h12V80h-12ZM280,40h10V80h-10ZM294,30h16V80h-16ZM314,44h12V80h-12ZM330,36h10V80h-10ZM248,38h10v1.5h-10ZM248,43h10v1.5h-10ZM248,48h10v1.5h-10ZM248,53h10v1.5h-10ZM248,58h10v1.5h-10ZM248,63h10v1.5h-10ZM248,68h10v1.5h-10ZM248,73h10v1.5h-10ZM266,30h8v1.5h-8ZM266,35h8v1.5h-8ZM266,40h8v1.5h-8ZM266,45h8v1.5h-8ZM266,50h8v1.5h-8ZM266,55h8v1.5h-8ZM266,60h8v1.5h-8ZM266,65h8v1.5h-8ZM266,70h8v1.5h-8ZM266,75h8v1.5h-8ZM282,44h6v1.5h-6ZM282,49h6v1.5h-6ZM282,54h6v1.5h-6ZM282,59h6v1.5h-6ZM282,64h6v1.5h-6ZM282,69h6v1.5h-6ZM282,74h6v1.5h-6ZM296,34h12v1.5h-12ZM296,39h12v1.5h-12ZM296,44h12v1.5h-12ZM296,49h12v1.5h-12ZM296,54h12v1.5h-12ZM296,59h12v1.5h-12ZM296,64h12v1.5h-12ZM296,69h12v1.5h-12ZM296,74h12v1.5h-12ZM316,48h8v1.5h-8ZM316,53h8v1.5h-8ZM316,58h8v1.5h-8ZM316,63h8v1.5h-8ZM316,68h8v1.5h-8ZM316,73h8v1.5h-8ZM332,40h6v1.5h-6ZM332,45h6v1.5h-6ZM332,50h6v1.5h-6ZM332,55h6v1.5h-6ZM332,60h6v1.5h-6ZM332,65h6v1.5h-6ZM332,70h6v1.5h-6ZM332,75h6v1.5h-6Z%22/%3E%3Cpath%20fill=%22%23000%22%20fill-opacity=%22.9%22%20d=%22M397,-10h6V80h-6ZM380,-10h40v4h-40ZM378,-6h8v6h-8ZM414,-6h8v6h-8Z%22/%3E%3Cpath%20stroke=%22%23000%22%20stroke-opacity=%22.9%22%20stroke-width=%221.6%22%20fill=%22none%22%20d=%22M0,10Q190,16,380,-4M420,-4Q660,18,900,12%22/%3E%3Cpath%20fill=%22%23000%22%20fill-opacity=%22.95%22%20d=%22M149,8h2v6h-2ZM142,14h16a5,5,0,0,1,5,5v1a5,5,0,0,1,-5,5h-16a5,5,0,0,1,-5,-5v-1a5,5,0,0,1,5,-5ZM299,4h2v6h-2ZM292,10h16a5,5,0,0,1,5,5v1a5,5,0,0,1,-5,5h-16a5,5,0,0,1,-5,-5v-1a5,5,0,0,1,5,-5ZM559,6h2v6h-2ZM552,12h16a5,5,0,0,1,5,5v1a5,5,0,0,1,-5,5h-16a5,5,0,0,1,-5,-5v-1a5,5,0,0,1,5,-5Z%22/%3E%3C/svg%3E");
   /* stepped corners, two steps of 10px */
   --lp-steps: polygon(
       0 20px, 10px 20px, 10px 10px, 20px 10px, 20px 0,
@@ -1005,8 +1009,22 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
 .theme-lapaz .masthead { background: var(--lp-aguayo); }   /* framed in aguayo */
 .theme-lapaz .masthead::before { inset: 6px; }
 .theme-lapaz .masthead {
-  padding: 1.4rem 1.8rem;
+  padding: 1.4rem 1.8rem 4.6rem;
   background-image: var(--lp-aguayo);
+}
+.theme-lapaz .masthead::after {          /* Illimani over the city, the Teleférico in front */
+  content: "";
+  position: absolute; left: 6px; right: 6px; bottom: 6px; z-index: -1;
+  height: 80px;
+  background: var(--lp-stroke);
+  opacity: 0.6;
+  /* the face's stepped bottom corners */
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 20px), calc(100% - 10px) calc(100% - 20px),
+      calc(100% - 10px) calc(100% - 10px), calc(100% - 20px) calc(100% - 10px), calc(100% - 20px) 100%,
+      20px 100%, 20px calc(100% - 10px), 10px calc(100% - 10px), 10px calc(100% - 20px), 0 calc(100% - 20px));
+  -webkit-mask: var(--lp-skyline) right bottom / auto 100% no-repeat;
+  mask: var(--lp-skyline) right bottom / auto 100% no-repeat;
+  pointer-events: none;
 }
 .theme-lapaz .brand {
   color: var(--lp-title);
@@ -1225,6 +1243,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   .theme-lapaz .pglink { background: #fff; }
   .theme-lapaz .tag { color: var(--lp-ink); }
   .theme-lapaz .btn { color: #fff; }
+  .theme-lapaz .masthead::after { opacity: 0.5; }
 }
 
 /* =====================================================================
