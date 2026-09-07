@@ -1271,6 +1271,11 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
    ===================================================================== */
 .theme-cochabamba {
   --cb-kraft:   #dcc39b;
+  /* the skyline, chalked on the board: the Tunari range with snow on the
+     peaks, the city's towers outlined below, San Pedro hill with the
+     Cristo de la Concordia and its stairs. Strokes only, roughened by a
+     displacement filter, grained by noise, coloured with the chalk */
+  --cb-skyline: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%20-20%20900%20100%22%3E%3Cfilter%20id=%22c%22%20x=%22-3%25%22%20y=%22-8%25%22%20width=%22106%25%22%20height=%22116%25%22%3E%3CfeTurbulence%20type=%22fractalNoise%22%20baseFrequency=%22.05%22%20numOctaves=%222%22%20seed=%223%22%20result=%22t%22/%3E%3CfeDisplacementMap%20in=%22SourceGraphic%22%20in2=%22t%22%20scale=%222.4%22%20xChannelSelector=%22R%22%20yChannelSelector=%22G%22%20result=%22d%22/%3E%3CfeTurbulence%20type=%22fractalNoise%22%20baseFrequency=%22.8%22%20numOctaves=%221%22%20seed=%225%22%20result=%22g%22/%3E%3CfeColorMatrix%20in=%22g%22%20values=%220%200%200%200%201%200%200%200%200%201%200%200%200%200%201%201.1%200%200%200%20.35%22%20result=%22ga%22/%3E%3CfeComposite%20in=%22d%22%20in2=%22ga%22%20operator=%22in%22/%3E%3C/filter%3E%3Cg%20filter=%22url(%23c)%22%20fill=%22none%22%20stroke=%22%23fff%22%20stroke-width=%221.7%22%20stroke-linecap=%22round%22%20stroke-linejoin=%22round%22%3E%3Cpath%20d=%22M0,36L60,30L110,34L160,22L200,28L240,16L275,24L320,12L350,20L400,14L440,22L500,18L540,26L600,20L660,28L720,24L780,32L840,30L900,36%22/%3E%3Cpath%20stroke-width=%221.2%22%20stroke-opacity=%22.8%22%20d=%22M160,24l-5,7M168,26l-5,7M240,18l-5,7M248,20l-5,7M320,14l-5,7M328,16l-5,7M400,16l-5,7M408,18l-5,7M500,20l-5,7M508,22l-5,7M600,22l-5,7M608,24l-5,7%22/%3E%3Cpath%20stroke-opacity=%22.6%22%20d=%22M0,46Q150,40,300,46T620,44%22/%3E%3Cpath%20d=%22M48,80V58h16V80M80,80V50h14V80M112,80V62h20V80M146,80V46h14V80M176,80V56h12V80M202,80V52h18V80M236,80V60h12V80M264,80V44h16V80M296,80V54h12V80M324,80V48h20V80M360,80V58h14V80M390,80V50h10V80M416,80V62h16V80M448,80V54h12V80M476,80V46h14V80M506,80V58h18V80M540,80V52h10V80M566,80V60h14V80%22/%3E%3Cpath%20stroke-width=%221.2%22%20stroke-opacity=%22.7%22%20d=%22M51,63h10M51,69h10M51,75h10M83,55h8M83,61h8M83,67h8M83,73h8M115,67h14M115,73h14M149,51h8M149,57h8M149,63h8M149,69h8M149,75h8M179,61h6M179,67h6M179,73h6M205,57h12M205,63h12M205,69h12M205,75h12M239,65h6M239,71h6M267,49h10M267,55h10M267,61h10M267,67h10M267,73h10M299,59h6M299,65h6M299,71h6M327,53h14M327,59h14M327,65h14M327,71h14M363,63h8M363,69h8M363,75h8M393,55h4M393,61h4M393,67h4M393,73h4M419,67h10M419,73h10M451,59h6M451,65h6M451,71h6M479,51h8M479,57h8M479,63h8M479,69h8M479,75h8M509,63h12M509,69h12M509,75h12M543,57h4M543,63h4M543,69h4M543,75h4M569,65h8M569,71h8%22/%3E%3Cpath%20d=%22M600,80Q660,52,720,42Q780,36,830,42Q880,50,900,60%22/%3E%3Cpath%20fill=%22%23fff%22%20fill-opacity=%22.12%22%20stroke=%22none%22%20d=%22M600,80Q660,52,720,42Q780,36,830,42Q880,50,900,60V80H600Z%22/%3E%3Cpath%20stroke-width=%221.3%22%20stroke-opacity=%22.8%22%20d=%22M700,48h6M706,46h6M712,44h6M718,42h6M724,41h6M730,40h6M736,39h6%22/%3E%3Cpath%20fill=%22%23fff%22%20fill-opacity=%22.18%22%20stroke=%22none%22%20d=%22M752,28L754,4H768L770,28Z%22/%3E%3Cpath%20stroke-width=%222%22%20d=%22M744,38H778M750,38V28H772V38M752,28L754,4H768L770,28M740,6L754,5M768,5L782,6M737,4l3,2M782,4l3,2M761,-2a4,4,0,1,0,.1,0%22/%3E%3C/g%3E%3C/svg%3E");
   --cb-kraft-d: #c4a878;
   --cb-card:    #f6efdd;
   --cb-paper:   #fffdf7;
@@ -1302,7 +1307,19 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   border: 7px solid var(--cb-wood);
   border-radius: 3px;
   box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.45), 2px 3px 0 rgba(43, 35, 32, 0.25);
-  padding: 1.1rem 1.3rem;
+  position: relative;
+  isolation: isolate;                    /* keeps the sketch under the text */
+  padding: 1.1rem 1.3rem 4.4rem;
+}
+.theme-cochabamba .masthead::after {     /* the chalk sketch along the bottom of the board */
+  content: "";
+  position: absolute; right: 0; bottom: 0; z-index: -1;
+  width: 100%; height: 72px;
+  background: var(--cb-chalk);
+  opacity: 0.8;
+  -webkit-mask: var(--cb-skyline) right bottom / auto 100% no-repeat;
+  mask: var(--cb-skyline) right bottom / auto 100% no-repeat;
+  pointer-events: none;
 }
 .theme-cochabamba .brand {
   font-family: Rockwell, "Roboto Slab", "Zilla Slab", "DejaVu Serif", "Bitstream Vera Serif", serif;

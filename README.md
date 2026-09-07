@@ -194,7 +194,10 @@ own shapes, type and textures, not just colours:
 - **Cochabamba** — La Cancha market: kraft paper with a fibre grain,
   chalkboard menus in wooden frames, posts as pinned index cards with
   dashed hand-ruled borders and coloured push-pins, string price tags,
-  sticker badges, slab-serif signboard type.
+  sticker badges, slab-serif signboard type. The masthead board
+  carries a chalk sketch: the Tunari range with snow on its peaks, the
+  city's towers, and San Pedro hill with the Cristo de la Concordia and
+  its stairs.
 - **Santa Cruz de la Sierra** — tropical lowland and mission woodwork:
   sand with an afternoon sun glow, open borderless panels with
   leaf-shaped corners, a painted-column band from the Chiquitos
