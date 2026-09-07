@@ -705,6 +705,11 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   --bo-ivory:  #ece7dc;
   --bo-emerald:#2e6b4f;
   --bo-glass:  rgba(38, 41, 45, 0.82);   /* plaque behind text set over the brick */
+  /* the skyline, as a mask: the Cerros Orientales with Monserrate's church
+     and the Guadalupe statue on their peaks, the teleférico climbing to
+     the summit, the Santamaría bullring's arcades, Salmona's Torres del
+     Parque with their terraces, Torre Colpatria; gold in both schemes */
+  --bo-skyline: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%20-20%20900%20100%22%3E%3Cpath%20fill=%22%23000%22%20fill-opacity=%22.3%22%20d=%22M0,62Q150,58,300,52T520,36Q560,26,590,12Q600,5,608,8Q620,14,640,26Q665,42,700,40Q740,36,770,30Q790,23,800,24Q812,26,830,34Q860,42,900,44V80H0Z%22/%3E%3Cpath%20fill=%22%23000%22%20fill-opacity=%22.65%22%20d=%22M596,-16L599.5,-24L603,-16V12H596ZM603,-2L615.5,-8L628,-2V12H603ZM796,18H804V26H796ZM798,6H802V18H798ZM798,4a2,2,0,1,0,4,0a2,2,0,1,0-4,0Z%22/%3E%3Cpath%20stroke=%22%23000%22%20stroke-opacity=%22.6%22%20stroke-width=%221.8%22%20fill=%22none%22%20d=%22M690,64L606,10%22/%3E%3Cpath%20fill=%22%23000%22%20fill-opacity=%22.75%22%20d=%22M625.4,23h1.2v3h-1.2ZM621,26h10a1.5,1.5,0,0,1,1.5,1.5v4a1.5,1.5,0,0,1-1.5,1.5h-10a1.5,1.5,0,0,1-1.5-1.5v-4a1.5,1.5,0,0,1,1.5-1.5Z%22/%3E%3Cpath%20fill=%22%23000%22%20fill-opacity=%22.5%22%20d=%22M760,52H800V80H760ZM804,46H818V80H804Z%22/%3E%3Cpath%20fill=%22%23000%22%20fill-rule=%22evenodd%22%20d=%22M540,64a4,4,0,0,1,4,-4H636a4,4,0,0,1,4,4V80H540ZM546,70V66a3,3,0,0,1,6,0V70ZM556.5,70V66a3,3,0,0,1,6,0V70ZM567,70V66a3,3,0,0,1,6,0V70ZM577.5,70V66a3,3,0,0,1,6,0V70ZM588,70V66a3,3,0,0,1,6,0V70ZM598.5,70V66a3,3,0,0,1,6,0V70ZM609,70V66a3,3,0,0,1,6,0V70ZM619.5,70V66a3,3,0,0,1,6,0V70ZM630,70V66a3,3,0,0,1,6,0V70ZM546,79V76a3,3,0,0,1,6,0V79ZM556.5,79V76a3,3,0,0,1,6,0V79ZM567,79V76a3,3,0,0,1,6,0V79ZM577.5,79V76a3,3,0,0,1,6,0V79ZM588,79V76a3,3,0,0,1,6,0V79ZM598.5,79V76a3,3,0,0,1,6,0V79ZM609,79V76a3,3,0,0,1,6,0V79ZM619.5,79V76a3,3,0,0,1,6,0V79ZM630,79V76a3,3,0,0,1,6,0V79ZM640,80V25a3,3,0,0,1,3,-3H657a3,3,0,0,1,3,3V28H664V34H668V40H676V32H680V24H684V8a4,4,0,0,1,4,-4H708a4,4,0,0,1,4,4V80ZM642,28H658V29.5H642ZM642,33H658V34.5H642ZM642,38H658V39.5H642ZM642,43H658V44.5H642ZM642,48H658V49.5H642ZM642,53H658V54.5H642ZM642,58H658V59.5H642ZM642,63H658V64.5H642ZM642,68H658V69.5H642ZM642,73H658V74.5H642ZM690,10H710V11.5H690ZM690,15H710V16.5H690ZM690,20H710V21.5H690ZM690,25H710V26.5H690ZM690,30H710V31.5H690ZM690,35H710V36.5H690ZM690,40H710V41.5H690ZM690,45H710V46.5H690ZM690,50H710V51.5H690ZM690,55H710V56.5H690ZM690,60H710V61.5H690ZM690,65H710V66.5H690ZM690,70H710V71.5H690ZM690,75H710V76.5H690ZM720,80V37a3,3,0,0,1,3,-3H735a3,3,0,0,1,3,3V44H742V52H746V60H750V68H754V80ZM722,40H736V41.5H722ZM722,45H736V46.5H722ZM722,50H736V51.5H722ZM722,55H736V56.5H722ZM722,60H736V61.5H722ZM722,65H736V66.5H722ZM722,70H736V71.5H722ZM722,75H736V76.5H722ZM828,4H852V80H828ZM826,0H854V6H826ZM839,-8H841V0H839Z%22/%3E%3C/svg%3E");
   background-color: var(--bo-brick);
   /* running-bond brick: mortar and per-brick tints only, so one tile
      serves both the daytime and the night wall */
@@ -718,7 +723,20 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   color: var(--bo-ivory);
   border: 1px solid var(--bo-gold);
   border-bottom-width: 3px;
-  padding: 1rem 1.3rem;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;                    /* keeps the skyline under the text */
+  padding: 1rem 1.3rem 4.2rem;
+}
+.theme-bogota .masthead::after {         /* the city and the hills, in gold */
+  content: "";
+  position: absolute; right: 0; bottom: 0; z-index: -1;
+  width: 100%; height: 80px;
+  background: var(--bo-gold);
+  opacity: 0.38;
+  -webkit-mask: var(--bo-skyline) right bottom / auto 100% no-repeat;
+  mask: var(--bo-skyline) right bottom / auto 100% no-repeat;
+  pointer-events: none;
 }
 .theme-bogota .brand {
   color: var(--bo-ivory);
@@ -921,6 +939,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
     --bo-glass:  rgba(12, 10, 9, 0.78);
   }
   .theme-bogota .content code { background: #2a2d31; color: #e0a596; }
+  .theme-bogota .masthead::after { opacity: 0.3; }
 }
 
 /* =====================================================================

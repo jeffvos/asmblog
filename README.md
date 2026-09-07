@@ -176,7 +176,10 @@ own shapes, type and textures, not just colours:
 - **Bogotá** — brick and gold, editorial: the page is a running-bond
   brick wall (one SVG tile tinted by the background), panels are
   window openings framed in a double line, Muisca gold accents, a
-  literary serif with small caps and a drop cap. Nothing rounded.
+  literary serif with small caps and a drop cap. The masthead plaque
+  carries the city in gold: the Cerros Orientales with Monserrate's
+  church and the Guadalupe statue, the Santamaría bullring, Salmona's
+  Torres del Parque and Torre Colpatria. Nothing rounded.
 - **La Paz** — neo-Andean cholet, dark by default: stepped chakana
   corners cut with `clip-path`, a glossy teal→violet stroke around every
   panel, the masthead framed in aguayo stripes, a minibus destination
