@@ -210,7 +210,10 @@ own shapes, type and textures, not just colours:
   are riveted steel plates, the masthead carries a bridge-truss band,
   the banner is a mill hazard stripe, badges take the Steelmark colours,
   the footer shows the three rivers meeting at the Point, condensed
-  industrial caps. An overcast brushed-steel day mode follows a light
+  industrial caps. The Golden Triangle runs along the base of the
+  masthead as seen from the Duquesne Incline: the Point fountain, the
+  Fort Pitt Bridge, PPG Place, the US Steel Tower, the Gulf Tower, with
+  the incline car in the foreground. An overcast brushed-steel day mode follows a light
   `prefers-color-scheme`.
 
 The favicon, touch icons, `og:image` card, web manifest colours,

@@ -1861,6 +1861,11 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   --pg-gold:    #ffb81c;
   --pg-gold-d:  #d99a10;
   --pg-gold-t:  #ffb81c;    /* gold as text (darkened by day) */
+  /* the skyline, as a mask, seen from the Duquesne Incline: the Point and
+     its fountain, the Fort Pitt Bridge, Gateway Center, Fifth Avenue
+     Place, PPG Place, One Mellon, the US Steel Tower, One Oxford Centre,
+     the Gulf Tower, Koppers, the Grant Building; the incline car in front */
+  --pg-skyline: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%20-20%20900%20100%22%3E%3Cpath%20fill=%22%23000%22%20fill-opacity=%22.18%22%20d=%22M280,52Q400,36,520,42Q640,48,760,34Q840,26,900,32V64H280Z%22/%3E%3Cpath%20fill=%22%23000%22%20fill-opacity=%22.55%22%20d=%22M300,64V50h24V64ZM426,64V40h14V64ZM540,64V36h16V64ZM616,64V30h10V64ZM664,64V34h8V64ZM704,64V40h6V64ZM736,64V44h6V64ZM764,64V38h20V64ZM788,64V46h14V64Z%22/%3E%3Cpath%20fill=%22%23000%22%20d=%22M330,64V44h14V64ZM352,64V44h14V64ZM374,64V44h14V64ZM400,64V8h24V64ZM400,8L412,-8L424,8ZM411,-18h2v10h-2ZM446,64V-2h38V64ZM446,-2L448.0,-11L450,-2ZM455,-2L457.0,-11L459,-2ZM464,-2L466.0,-11L468,-2ZM473,-2L475.0,-11L477,-2ZM480,-2L482.0,-11L484,-2ZM436,64V30h10V64ZM484,64V30h10V64ZM437,30L439.0,23L441,30ZM443,30L445.0,23L447,30ZM485,30L487.0,23L489,30ZM491,30L493.0,23L495,30ZM506,64V10h30V64ZM511,10V4h20V10ZM560,64V-14h52V64ZM630,64V16h30V64ZM636,16V8h18V16ZM641,8V2h8V8ZM676,64V12h24V64ZM679,12V6h18V12ZM682,6V0h12V6ZM685,0V-6h6V0ZM687,-6h2v-8h-2ZM712,64V14h20V64ZM712,14L716,6H728L732,14ZM744,64V18h16V64ZM751,18h2v-10h-2Z%22/%3E%3Cpath%20fill=%22%23000%22%20fill-opacity=%22.8%22%20d=%22M0,70L150,70L166,66L150,62L0,62Z%22/%3E%3Cpath%20fill=%22%23000%22%20fill-opacity=%22.7%22%20d=%22M80,66Q76,40,78,22Q80,10,82,22Q84,40,80,66ZM74,30a1.5,1.5,0,1,0,.1,0ZM87,26a1.5,1.5,0,1,0,.1,0ZM71,40a1.2,1.2,0,1,0,.1,0ZM90,38a1.2,1.2,0,1,0,.1,0Z%22/%3E%3Cpath%20stroke=%22%23000%22%20stroke-width=%223.5%22%20fill=%22none%22%20stroke-linecap=%22round%22%20d=%22M182,72Q300,-24,418,72%22/%3E%3Cpath%20stroke=%22%23000%22%20stroke-width=%223%22%20fill=%22none%22%20d=%22M166,56H434%22/%3E%3Cpath%20stroke=%22%23000%22%20stroke-width=%221.2%22%20fill=%22none%22%20d=%22M214,56V40M240,56V27M266,56V18M300,56V14M334,56V18M360,56V27M386,56V40%22/%3E%3Cpath%20fill=%22%23000%22%20d=%22M190,64V80h6V64ZM404,64V80h6V64Z%22/%3E%3Cpath%20stroke=%22%23000%22%20stroke-width=%222.5%22%20fill=%22none%22%20d=%22M812,44L900,82%22/%3E%3Cpath%20fill=%22%23000%22%20fill-rule=%22evenodd%22%20d=%22M826,38L850,38L854,50L830,50ZM832,50h2v6h-2ZM846,50h2v6h-2ZM830,41h4v5h-4ZM836,41h4v5h-4ZM842,41h4v5h-4Z%22/%3E%3C/svg%3E");
   --pg-red:     #e3453b;
   --pg-blue:    #0a5aa8;
   --pg-river:   #3f8fb5;
@@ -1890,7 +1895,19 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   position: relative;
   overflow: hidden;
   border-top: 0;
+  isolation: isolate;                    /* keeps the skyline under the text */
   padding-top: calc(1.2rem + 14px);
+  padding-bottom: 4.4rem;
+}
+.theme-pittsburgh .masthead::after {    /* the Golden Triangle along the base */
+  content: "";
+  position: absolute; right: 0; bottom: 0; z-index: -1;
+  width: 100%; height: 80px;
+  background: var(--pg-gold-t);
+  opacity: 0.5;
+  -webkit-mask: var(--pg-skyline) right bottom / auto 100% no-repeat;
+  mask: var(--pg-skyline) right bottom / auto 100% no-repeat;
+  pointer-events: none;
 }
 .theme-pittsburgh .masthead::before {   /* the bridge truss */
   content: "";
@@ -2115,6 +2132,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   .theme-pittsburgh .field { background: #fff; }
   .theme-pittsburgh .pglink { background: #fff; }
   .theme-pittsburgh .content code { color: #a86f00; background: #e3e6e8; }
+  .theme-pittsburgh .masthead::after { opacity: 0.42; }
 }
 
 /* ===== shared bits ===== */
