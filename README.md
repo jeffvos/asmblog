@@ -202,7 +202,9 @@ own shapes, type and textures, not just colours:
   sand with an afternoon sun glow, open borderless panels with
   leaf-shaped corners, a painted-column band from the Chiquitos
   missions under the masthead, concentric *anillos* as ornaments, a
-  light humanist sans and a lowercase brand.
+  light humanist sans and a lowercase brand. Above the column band
+  stands the plaza: the Basílica de San Lorenzo's two towers in brick,
+  royal palms, and a toborochi in flower.
 - **Pittsburgh** — Steel City, black and gold, dark by default: panels
   are riveted steel plates, the masthead carries a bridge-truss band,
   the banner is a mill hazard stripe, badges take the Steelmark colours,
