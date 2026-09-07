@@ -173,6 +173,9 @@ own shapes, type and textures, not just colours:
   chunky rounded panels with a thick ink outline and a hard offset
   shadow in a second colour, a silleta flower band under the masthead,
   slapped-on sticker tags, a vinyl-strip marquee, heavy grotesque caps.
+  The valley is screen-printed above the flowers in two passes, ink
+  over off-register pink: the cordillera, comuna houses up the slope,
+  the brick tower forest with Coltejer's needle top, the Metrocable.
 - **Bogotá** — brick and gold, editorial: the page is a running-bond
   brick wall (one SVG tile tinted by the background), panels are
   window openings framed in a double line, Muisca gold accents, a
