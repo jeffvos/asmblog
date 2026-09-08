@@ -1,0 +1,6 @@
+POST /admin/login HTTP/1.1
+Host: t.example
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 17
+
+password=hunter22

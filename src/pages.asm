@@ -1196,7 +1196,8 @@ page_static:
     cmp rcx, NSTATIC
     jae .missing
     imul rax, rcx, ST_SIZE
-    lea r13, [static_tbl + rax]
+    mov r13, [static_cur]
+    add r13, rax
     cmp rdx, [r13+ST_NLEN]
     jne .next
     push rcx
@@ -1223,7 +1224,7 @@ page_static:
     add eax, [set_theme]
     dec rax
     imul rax, rax, ST_SIZE
-    lea rax, [static_tbl + rax]
+    add rax, [static_cur]
     cmp qword [rax+ST_P], 0
     je .themed                  ; variant missing: keep the default
     mov r13, rax
@@ -2369,22 +2370,52 @@ path_sfx:
 ; load_static() -> 0 / -1. Loads every table entry (main.css required,
 ; the rest optional) plus .gz/.br siblings, records crc32c validators,
 ; and derives the per-theme stylesheet version tokens for cache busting.
+;
+; At boot the table in .data is filled in place and becomes the live
+; one ([static_cur]). A reload (reload.asm) works on a copy in the new
+; arena and swaps [static_cur] to it only when everything loaded, so
+; the workers read a consistent table throughout; the old arena stays
+; mapped for whoever is still sending from it.
 load_static:
     push r12
     push r13
     push r14
+    push r15
     sub rsp, 64                 ; sibling path scratch
     mov edi, 0x100000
     call arena_create
     test rax, rax
     jz .fail
     mov r12, rax
+    mov r15, static_tbl         ; boot: fill the .data table itself
+    cmp qword [static_cur], 0
+    je .table_ok
+    mov rdi, r12                ; reload: a private copy of the live table
+    mov esi, NSTATIC*ST_SIZE
+    call arena_alloc
+    test rax, rax
+    jz .fail
+    mov r15, rax
+    mov rdi, rax
+    mov rsi, [static_cur]
+    mov edx, NSTATIC*ST_SIZE
+    call mem_copy
+.table_ok:
     xor r13d, r13d
 .ent:
     cmp r13, NSTATIC
     jae .ok
     imul rax, r13, ST_SIZE
-    lea r14, [static_tbl + rax]
+    lea r14, [r15 + rax]
+    xor eax, eax                ; forget what an earlier load found: a
+    mov [r14+ST_P], rax         ; file gone since then must go 404,
+    mov [r14+ST_L], rax         ; not keep serving the old bytes
+    mov [r14+ST_GZP], rax
+    mov [r14+ST_GZL], rax
+    mov [r14+ST_BRP], rax
+    mov [r14+ST_BRL], rax
+    mov [r14+ST_CRC], rax
+    mov [r14+ST_CRC+8], eax
     mov rdi, [r14+ST_PATH]
     mov rsi, r12
     lea rdx, [r14+ST_P]
@@ -2438,22 +2469,24 @@ load_static:
     ; stylesheet version tokens, one per theme: retro is entry 0, every
     ; other theme its static/<theme>-main.css entry, or entry 0 when
     ; that file is missing (page_static falls back the same way)
+    mov [static_cur], r15       ; publish (one aligned store)
     xor r13d, r13d
 .ver:
     cmp r13, NTHEMES
     jae .verdone
-    mov edi, [static_tbl + ST_CRC]
+    mov edi, [r15 + ST_CRC]
     test r13, r13
     jz .put
     lea rax, [r13 + CSS_ALT - 1]
     imul rax, rax, ST_SIZE
-    cmp qword [static_tbl + rax + ST_P], 0
+    add rax, r15
+    cmp qword [rax + ST_P], 0
     je .put
-    mov edi, [static_tbl + rax + ST_CRC]
+    mov edi, [rax + ST_CRC]
 .put:
-    lea rsi, [css_ver + r13*8]
-    mov edx, 8
-    call put_hex
+    lea rsi, [css_ver + r13*8]  ; (a reader racing this sees 8 hex
+    mov edx, 8                  ; digits either way: page_static
+    call put_hex                ; ignores the value of ?v=)
     inc r13
     jmp .ver
 .verdone:
@@ -2463,6 +2496,7 @@ load_static:
     mov rax, -1
 .ret:
     add rsp, 64
+    pop r15
     pop r14
     pop r13
     pop r12
@@ -3056,7 +3090,7 @@ a_head2c: db '/feed.xml"/>', 10, '<id>tag:blogd:feed</id><updated>'
 a_head2c_len equ $-a_head2c
 a_head3: db '</updated>', 10, '<author><name>'
 a_head3_len equ $-a_head3
-a_head3b: db '</name></author><generator>blogd 0.12</generator>', 10
+a_head3b: db '</name></author><generator>blogd 0.13</generator>', 10
 a_head3b_len equ $-a_head3b
 a_icon: db '<icon>'
 a_icon_len equ $-a_icon
@@ -3097,7 +3131,7 @@ s_200: db 'HTTP/1.1 200 OK', 13, 10
 s_200_len equ $-s_200
 s_304: db 'HTTP/1.1 304 Not Modified', 13, 10
 s_304_len equ $-s_304
-s_server: db 'Server: blogd/0.12', 13, 10
+s_server: db 'Server: blogd/0.13', 13, 10
 s_server_len equ $-s_server
 s_ka: db 'Connection: keep-alive', 13, 10
 s_ka_len equ $-s_ka
@@ -3248,5 +3282,6 @@ section .bss
 hits_p:     resq 1              ; -> the counter qword (mapped file or local)
 hits_local: resq 1
 css_ver:    resb 8*NTHEMES      ; per theme: crc32c of its stylesheet as hex (?v=)
+static_cur: resq 1              ; the live static table (static_tbl, or a reload's copy)
 
 section .note.GNU-stack noalloc noexec nowrite progbits

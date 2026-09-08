@@ -1,0 +1,4 @@
+GET /static/main.css?v=deadbeef HTTP/1.1
+Host: t.example
+Accept-Encoding: gzip;q=0, br
+

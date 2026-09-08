@@ -20,7 +20,14 @@ User=blogd
 Group=blogd
 WorkingDirectory=/var/lib/blogd
 ExecStart=/var/lib/blogd/blogd 8080
+# SIGHUP re-reads templates/ and static/ without dropping a connection
+ExecReload=/bin/kill -HUP $MAINPID
+# SIGTERM (the default KillSignal) finishes the responses in flight and
+# exits 0; anything still open after ~10 s is closed by blogd itself
+TimeoutStopSec=20
 Environment=BLOGD_IMGCONV=/usr/local/bin/blogd-imgconv
+# Combined Log Format on stdout, i.e. the journal (unset: no access log)
+Environment=BLOGD_ACCESS_LOG=-
 Restart=on-failure
 RestartSec=1
 

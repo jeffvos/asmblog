@@ -866,12 +866,13 @@ inline_render:
 .bang_lit_pop2:                 ; well-formed but not an allowed host:
     pop rax                     ; the whole ![alt](url) stays visible text
     pop rcx
-    mov rdi, r12
-    mov rsi, r13
+    mov rbp, rax                ; ')' pos: emit_esc clobbers rax (the
+    mov rdi, r12                ; fuzz harness caught the old version
+    mov rsi, r13                ; resuming the scan inside the output)
     lea rdx, [rax+1]
     sub rdx, r13
     call emit_esc
-    lea r13, [rax+1]
+    lea r13, [rbp+1]
     mov r15, r13
     jmp .scan
 .bang_lit_pop:

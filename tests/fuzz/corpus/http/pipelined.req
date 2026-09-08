@@ -1,0 +1,7 @@
+GET /robots.txt HTTP/1.1
+Host: t.example
+
+GET /sitemap.xml HTTP/1.1
+Host: t.example
+X-Forwarded-Proto: https
+

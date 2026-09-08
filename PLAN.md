@@ -17,6 +17,7 @@ HTTP); custom append-only binary store; posts authored in a Markdown subset.
 | `tmpl` | template loading and scatter-gather rendering |
 | `auth` | sessions, CSRF, login rate limiting, libsodium shim |
 | `media` | image uploads: spool, multipart, the conversion helper process, renditions on disk, `/media/` serving |
+| `signal`/`reload`/`log` | SIGTERM/SIGINT drain, SIGHUP template + asset reload, the access log |
 | `util` | mmap arena allocator, ptr+len strings, HTML escaper, dates |
 
 ## Threading
@@ -136,10 +137,50 @@ two-line dashboard row under 40rem. Each theme feeds it through `--a-*`
 tokens in both colour schemes, and `tools/contrast.py` checks every token
 pair at AA, so a theme cannot ship an unreadable control panel.
 
+## Lifecycle
+
+Signals are installed on the initial thread before the workers are
+cloned (`signal.asm`). SIGTERM and SIGINT write to an eventfd that sits
+in every worker's epoll set: each worker closes its listener, drops the
+connections that are between requests, finishes the responses in
+flight without keep-alive and exits when its active list is empty (or
+after two sweep ticks, 5-10 s); the last one out calls `exit_group(0)`.
+SIGHUP flags a reload and kicks the crypto service, which re-reads
+`templates/` and `static/` into fresh arenas (`reload.asm`) and
+publishes each set with single pointer stores — a template is one block
+(segment count + segments), the static table one pointer — so a worker
+mid-render keeps the set it started with; old arenas are never unmapped
+(a megabyte per reload). A failed load keeps the old set and says so on
+stderr. The store generation moves after a reload so validators and the
+render cache roll over. SIGPIPE is ignored. The access log
+(`BLOGD_ACCESS_LOG`: `-` = stdout, else a file opened O_APPEND before
+seccomp) writes one Combined Log Format line per answered request from
+a stack buffer in a single `write()`, with the request line, referer and
+user agent sanitised; the client is the first `X-Forwarded-For` hop when
+it looks like an address, else the peer.
+
 ## Testing
 
-pytest integration suite over real HTTP (auth, CSRF, pagination, search,
-crash recovery); AFL++ fuzz harnesses for HTTP + markdown parsers; Valgrind.
+- `make test`: the theme contrast floor, then the pytest suite in
+  `tests/py` over real HTTP — every server on a free port in a
+  throwaway directory, stopped by pid: protocol framing and limits,
+  content and validators, the admin panel (sessions, CSRF, editing,
+  settings, i18n), the markdown renderer, media (skipped without a
+  converter), the CLI, crash recovery (torn and corrupt tails, a
+  SIGKILL storm during saves, a leftover `store.tmp`), the lifecycle
+  (graceful stop with connections in every state, SIGHUP under load,
+  the access log), and the fuzz corpus through the harnesses.
+- `make fuzz`: the corpus and every saved AFL crash through the
+  harnesses, then the black-box mutation run against a live server.
+- `make afl MODE=http|md`: AFL++ over `tests/fuzz/harness.c`, which
+  links the parsers (every object but `main`, `net`, `crypto`; stubs
+  for those) into a C driver with the input against PROT_NONE guard
+  pages and response invariants that abort on violation. The target is
+  assembly, so coverage comes from AFL++'s binary-only FRIDA (or QEMU)
+  mode. The http harness logs in with a stubbed password and swaps
+  placeholder tokens for a live session and CSRF token, so the admin
+  routes are reachable; its store descriptor points at /dev/null so a
+  campaign never grows a file.
 
 ## Milestones
 
@@ -156,3 +197,6 @@ crash recovery); AFL++ fuzz harnesses for HTTP + markdown parsers; Valgrind.
 8. **Own the pictures** — uploads streamed to disk, conversion helper,
    WebP + PNG at two sizes, media records, `<picture>` + CSS lightbox,
    media library.
+9. **Prove it** — pytest suite over HTTP, AFL++ harnesses for the
+   parsers, crash-recovery tests, graceful SIGTERM, SIGHUP reload,
+   access log.

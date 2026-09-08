@@ -1,0 +1,5 @@
+GET /static/main.css HTTP/1.1
+Host: t.example
+Accept-Encoding: gzip
+If-None-Match: "00000000"
+

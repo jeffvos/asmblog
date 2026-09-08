@@ -1,0 +1,5 @@
+GET /post/why-assembly HTTP/1.1
+Host: t.example
+X-Forwarded-Proto: https
+Accept-Encoding: gzip, br
+

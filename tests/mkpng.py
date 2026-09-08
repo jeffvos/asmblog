@@ -7,7 +7,7 @@ A smooth colour gradient with a diagonal stripe, so a resized copy is
 still recognisably the same picture. Rows use the PNG "Up" filter, so
 the plain picture compresses to a few KB (an upload that fits the
 request buffer); "noisy" adds per-pixel noise that does not compress,
-for an upload that has to stream to disk. Used by the smoke suite and
+for an upload that has to stream to disk. Used by the test suite and
 the Docker build test, which must not depend on Pillow.
 """
 import struct

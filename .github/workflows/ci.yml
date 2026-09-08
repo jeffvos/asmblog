@@ -25,7 +25,7 @@ jobs:
       - name: toolchain
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y --no-install-recommends nasm binutils libsodium-dev gzip brotli curl python3 libvips-tools
+          sudo apt-get install -y --no-install-recommends nasm binutils libsodium-dev gzip brotli curl python3 python3-pytest python3-requests libvips-tools
 
       - name: tailwind standalone cli
         run: |
@@ -38,11 +38,11 @@ jobs:
       - name: build
         run: make
 
-      - name: smoke suite (contrast floor, store selftest, HTTP, content, admin, i18n, media)
+      - name: test suite (contrast floor, pytest over HTTP, fuzz corpus replay)
         run: make test
 
-      - name: fuzz (short)
-        run: ./tests/fuzz.sh 800
+      - name: black-box fuzz (short)
+        run: ./tests/fuzz/blackbox.sh 800
 
       - uses: actions/upload-artifact@v4
         with:

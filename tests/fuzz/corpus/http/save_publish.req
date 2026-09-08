@@ -1,0 +1,7 @@
+POST /admin/save HTTP/1.1
+Host: t.example
+Cookie: sid=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 616
+
+csrf=CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC&id=0&title=Fuzz+Post&slug=&tags=fuzz%2C+asm&md=Hello+%2A%2Aworld%2A%2A+from+%5Bhere%5D%28%2Fabout%29%0A%0A%23%23+Hello+World%21%0A%0A%60%60%60rust%0Afn+main%28%29+%7B%7D%0A%60%60%60%0A%0A%21%5BA+photo%5D%28https%3A%2F%2Flive.staticflickr.com%2F1%2F2_b.jpg%29%0A%0AInline+%21%5Blocal%5D%28%2Fstatic%2Fog.png%29+and+%21%5Bevil%5D%28https%3A%2F%2Fevil.example%2Fx.png%29+and+%21%5Bpr%5D%28%2F%2Fevil.example%2Fx%29.%0A%0A%21%5BSunset%5D%28%2Fmedia%2F1%29%0A%0AText+%21%5Btiny%5D%28%2Fmedia%2F3%29+and+%21%5Bgone%5D%28%2Fmedia%2F77%29.&action=publish

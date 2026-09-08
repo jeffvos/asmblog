@@ -1,11 +1,19 @@
 ; tmpl.asm — bounded writer, HTML escaping, {{marker}} templates.
 ;
-; Templates are plain HTML files loaded once at startup and split into
-; segments at {{name}} markers; names resolve against a fixed registry
-; at load time (an unknown marker is a fatal startup error). Rendering
-; is a walk over segments: emit literal, emit value. Values are HTML-
-; escaped unless the marker is in RAW_MASK (values we generated
-; ourselves as HTML: content, tags, html).
+; Templates are plain HTML files loaded at startup — and again on
+; SIGHUP (reload.asm) — and split into segments at {{name}} markers;
+; names resolve against a fixed registry at load time (an unknown
+; marker fails the load: fatal at boot, "kept the old set" on reload).
+; Rendering is a walk over segments: emit literal, emit value. Values
+; are HTML-escaped unless the marker is in RAW_MASK (values we
+; generated ourselves as HTML: content, tags, html).
+;
+; Each parsed template is one block — a segment count, then the
+; segments — reached through a single pointer in tmpl_segs, so a
+; reload publishes a template with one aligned store: a worker
+; rendering at that moment finishes with the block it started from.
+; A load fills a staging table and copies it over only when every
+; file parsed, so a broken template never leaves a half-new set.
 ;
 ; The writer is a 24-byte {cur, end, overflow} block. Overflow never
 ; faults: emits become no-ops and the flag tells the handler to 500.
@@ -265,8 +273,9 @@ tmpl_render:
     mov eax, [set_locale]       ; pick this locale's template set
     imul rax, rax, NTMPL
     add rsi, rax
-    mov r14, [tmpl_segs + rsi*8]
-    mov r15, [tmpl_nseg + rsi*8]
+    mov r14, [tmpl_segs + rsi*8] ; the block: [0] nseg, segs from +16
+    mov r15, [r14]
+    add r14, 16
     xor ebx, ebx
 .seg:
     cmp rbx, r15
@@ -308,7 +317,9 @@ tmpl_render:
     pop r12
     ret
 
-; tmpl_load_all() -> 0 / -1. Loads and parses every template file.
+; tmpl_load_all() -> 0 / -1. Loads and parses every template file into
+; a fresh arena and publishes the set. On a reload the previous arena
+; stays mapped (a worker may be rendering from it); see reload.asm.
 tmpl_load_all:
     push r12
     push r13
@@ -331,6 +342,15 @@ tmpl_load_all:
     inc r12
     jmp .next
 .ok:
+    xor ecx, ecx                ; publish: one pointer store per template
+.pub:
+    cmp rcx, NTMPL*NLOCALES
+    jae .done
+    mov rax, [tmpl_stage + rcx*8]
+    mov [tmpl_segs + rcx*8], rax
+    inc rcx
+    jmp .pub
+.done:
     xor eax, eax
     pop r13
     pop r12
@@ -341,7 +361,7 @@ tmpl_load_all:
     pop r12
     ret
 
-; tmpl_load_one(path_cstr, tmpl_id) -> 0 / -1
+; tmpl_load_one(path_cstr, tmpl_id) -> 0 / -1 (into tmpl_stage)
 tmpl_load_one:
     push r12
     push r13
@@ -390,13 +410,13 @@ tmpl_load_one:
     mov rdi, r12
     mov eax, SYS_close
     syscall
-    ; segments array
+    ; the block: [0] segment count, segments (24 bytes each) from +16
     mov rdi, [tmpl_arena]
-    mov esi, MAX_SEGS*24
+    mov esi, MAX_SEGS*24 + 16
     call arena_alloc
     test rax, rax
     jz .fail
-    mov r12, rax                ; segs (fd no longer needed)
+    mov r12, rax                ; block (fd no longer needed)
     xor ebx, ebx                ; nseg
     xor ecx, ecx                ; i
     xor edx, edx                ; lit_start
@@ -434,7 +454,7 @@ tmpl_load_one:
     pop rdx
     pop rcx
     lea rdi, [rbx+rbx*2]
-    lea rdi, [r12+rdi*8]
+    lea rdi, [r12+rdi*8+16]
     lea r8, [r15+rdx]
     mov [rdi], r8               ; lit ptr
     mov r8, rcx
@@ -450,7 +470,7 @@ tmpl_load_one:
     jmp .scan
 .tail_seg:
     lea rdi, [rbx+rbx*2]
-    lea rdi, [r12+rdi*8]
+    lea rdi, [r12+rdi*8+16]
     lea r8, [r15+rdx]
     mov [rdi], r8
     mov r8, r13
@@ -458,8 +478,8 @@ tmpl_load_one:
     mov [rdi+8], r8
     mov qword [rdi+16], -1
     inc rbx
-    mov [tmpl_segs + r14*8], r12
-    mov [tmpl_nseg + r14*8], rbx
+    mov [r12], rbx
+    mov [tmpl_stage + r14*8], r12
     xor eax, eax
     jmp .ret
 .fail_pop3:
@@ -662,7 +682,7 @@ tmpl_files:                     ; {path, slot, pad} triplets
 section .bss
 
 tmpl_arena: resq 1
-tmpl_segs:  resq NTMPL*NLOCALES
-tmpl_nseg:  resq NTMPL*NLOCALES
+tmpl_segs:  resq NTMPL*NLOCALES    ; live blocks, read by the workers
+tmpl_stage: resq NTMPL*NLOCALES    ; filled by a load, published on success
 
 section .note.GNU-stack noalloc noexec nowrite progbits

@@ -1,0 +1,4 @@
+GET / HTTP/1.1
+Host: t.example
+If-None-Match: W/"18d3-1234"
+

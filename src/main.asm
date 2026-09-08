@@ -5,8 +5,13 @@
 ;           are the reverse proxy's job)
 ;   threads default = CPU count (clamped 1..16)
 ;
-; The main thread becomes worker 0; the rest are clone()d. Workers each
-; open their own SO_REUSEPORT listener, so there is nothing to join.
+; Every worker is clone()d; the initial thread parks as the Argon2id
+; crypto service (and handles a SIGHUP reload). Workers each open their
+; own SO_REUSEPORT listener, so there is nothing to join. SIGTERM/SIGINT
+; drain the workers and exit 0 (signal.asm, net.asm).
+;
+; Environment: BLOGD_BIND_ALL, BLOGD_IDLE_SECS, BLOGD_ACCESS_LOG ("-" =
+; stdout, else a file; log.asm), BLOGD_NO_SECCOMP, BLOGD_IMGCONV.
 
 BITS 64
 %include "src/sys.inc"
@@ -31,6 +36,8 @@ extern media_init
 extern crypto_service
 extern seccomp_install
 extern workers_ready
+extern sig_init
+extern alog_init
 
 global _start
 global listen_addr
@@ -118,6 +125,9 @@ _start:
     call crypto_init            ; libsodium, initial thread only
     test rax, rax
     js .sodiumfail
+    call sig_init               ; SIGTERM/SIGINT drain, SIGHUP reload,
+    test rax, rax               ; SIGPIPE ignored — before the clones
+    js .sigfail
 
     ; struct sockaddr_in { u16 family; u16 port(be); u32 addr(be); u8 pad[8]; }
     mov word [listen_addr], AF_INET
@@ -149,8 +159,11 @@ _start:
     js .idle_done
     mov [idle_secs], rax
 .idle_done:
+    call alog_init              ; access log (BLOGD_ACCESS_LOG), pre-seccomp
+    test rax, rax
+    js .alogfail
 
-    ; "blogd 0.12 listening on http://127.0.0.1:P (threads: N)\n"
+    ; "blogd 0.13 listening on http://127.0.0.1:P (threads: N)\n"
     mov rdi, banner_buf
     mov rsi, [bind_msg]
     mov rdx, [bind_msg_len]
@@ -256,6 +269,24 @@ _start:
     mov edi, 1
     mov eax, SYS_exit_group
     syscall
+.sigfail:
+    mov edi, STDERR
+    mov rsi, msg_sig
+    mov edx, msg_sig_len
+    mov eax, SYS_write
+    syscall
+    mov edi, 1
+    mov eax, SYS_exit_group
+    syscall
+.alogfail:
+    mov edi, STDERR
+    mov rsi, msg_alog
+    mov edx, msg_alog_len
+    mov eax, SYS_write
+    syscall
+    mov edi, 1
+    mov eax, SYS_exit_group
+    syscall
 
 ; getenv_present(name_cstr) -> 1 if NAME= appears in envp, else 0
 getenv_present:
@@ -327,9 +358,9 @@ getenv_value:
 
 section .data
 
-msg_listen: db 'blogd 0.12 listening on http://127.0.0.1:'
+msg_listen: db 'blogd 0.13 listening on http://127.0.0.1:'
 msg_listen_len equ $-msg_listen
-msg_listen_all: db 'blogd 0.12 listening on http://0.0.0.0:'
+msg_listen_all: db 'blogd 0.13 listening on http://0.0.0.0:'
 msg_listen_all_len equ $-msg_listen_all
 env_bindall: db 'BLOGD_BIND_ALL', 0
 msg_thr: db ' (threads: '
@@ -344,6 +375,10 @@ msg_css: db 'blogd: static/main.css missing (run: make css)', 10
 msg_css_len equ $-msg_css
 msg_sodium: db 'blogd: libsodium init failed', 10
 msg_sodium_len equ $-msg_sodium
+msg_sig: db 'blogd: cannot install signal handlers', 10
+msg_sig_len equ $-msg_sig
+msg_alog: db 'blogd: cannot open the access log (BLOGD_ACCESS_LOG)', 10
+msg_alog_len equ $-msg_alog
 msg_seccomp: db 'blogd: seccomp install failed (try BLOGD_NO_SECCOMP=1)', 10
 msg_seccomp_len equ $-msg_seccomp
 env_nosec: db 'BLOGD_NO_SECCOMP', 0

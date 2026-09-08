@@ -25,8 +25,9 @@ See [PLAN.md](PLAN.md) for the full architecture.
 ```
 make            # nasm + ld -> build/blogd, tailwind -> one stylesheet per theme
 make run        # serve on http://127.0.0.1:8080
-make test       # contrast floor + smoke suite (store selftest, HTTP, content, admin, images)
-make fuzz       # mutation-fuzz the HTTP and markdown parsers
+make test       # contrast floor + the pytest suite over real HTTP (see Testing)
+make fuzz       # fuzz corpus through the parser harnesses + black-box mutation run
+make afl MODE=http|md   # coverage-guided fuzzing of a parser with AFL++
 make load       # step through concurrency levels, report latency/CPU/RSS knees
 ./build/blogd init       # first-run setup (title, posts/page, admin password)
 ./build/blogd seed       # demo posts for development
@@ -34,8 +35,14 @@ make load       # step through concurrency levels, report latency/CPU/RSS knees
 ./build/blogd 9000 8     # custom port + thread count
 ```
 
-`make test` is hermetic: every server it starts gets a free port and is
-stopped by its own PID, so it can run beside a live blogd.
+`make test` is hermetic: every server it starts gets a free port in a
+throwaway directory and is stopped by its own PID, so it can run beside
+a live blogd. It needs `pytest` and `requests`; `tests/pytest.sh` uses
+the system ones or creates a virtualenv under `build/`.
+
+blogd stops cleanly on SIGTERM/SIGINT (responses in flight finish, exit
+status 0), re-reads `templates/` and `static/` on SIGHUP, and writes an
+access log when `BLOGD_ACCESS_LOG` is set — see [Operating it](#operating-it).
 
 Deployment configs (TLS reverse proxy + hardened systemd unit) live in
 [deploy/](deploy/). blogd installs its own seccomp syscall allowlist at
@@ -76,6 +83,7 @@ Caddy/nginx in front of the container. Environment:
 | `BLOGD_THREADS` | `2` | worker threads |
 | `BLOGD_PORT` | `8080` | listen port inside the container |
 | `BLOGD_IDLE_SECS` | `20` | close connections quiet for this long (`0` = never) |
+| `BLOGD_ACCESS_LOG` | *(unset)* | `-` logs every request to stdout (`docker logs`), a path appends to that file; unset = no access log |
 | `BLOGD_IMGCONV` | `/usr/local/bin/blogd-imgconv` | the image converter script (see [Images](#images)) |
 | `BLOGD_IMGTOOL` | *(auto)* | force a converter backend: `vips`, `magick` or `pillow` |
 
@@ -399,6 +407,100 @@ release and checksum (`TAILWIND_VERSION`/`TAILWIND_SHA256` in the
 [Makefile](Makefile), [ci.yml](.github/workflows/ci.yml) and the
 [Dockerfile](Dockerfile)); bump them together.
 
+### Operating it
+
+- **Stopping.** SIGTERM (what `systemctl stop` and `docker stop` send)
+  and SIGINT (Ctrl-C) drain rather than kill: every worker closes its
+  listener at once, drops the connections that sit idle between
+  requests, finishes the responses already in flight (a slow reader
+  keeps being served), closes anything still open after 5-10 s, and
+  the process exits with status 0. The image helper exits with it.
+- **Reloading.** SIGHUP (`systemctl reload blogd`, or `kill -HUP`)
+  re-reads `templates/` and `static/` — every theme's stylesheet and
+  icons included — and switches to the new set without dropping a
+  connection or a request: each template and the static table are
+  published with a single pointer store, so a page being rendered
+  finishes with the set it started from. The ETag generation moves
+  with it, so caches revalidate. A template that fails to parse (an
+  unknown `{{marker}}`) or a missing `main.css` keeps the old set, and
+  stderr says which. Posts and settings live in the store and never
+  need a reload.
+- **Access log.** `BLOGD_ACCESS_LOG=-` writes one line per answered
+  request to stdout (the journal under systemd, `docker logs` in a
+  container); a path appends to that file instead (opened once at
+  startup, so rotate with `copytruncate` or a SIGTERM/restart). The
+  format is the Combined Log Format every analyser reads:
+
+  ```
+  203.0.113.9 - - [08/Sep/2026:17:19:00 +0000] "GET /post/why-assembly HTTP/1.1" 200 4863 "https://ref.example/" "Mozilla/5.0"
+  ```
+
+  The client is the first hop of `X-Forwarded-For` when the request
+  carries one that looks like an address (both shipped proxy configs
+  send it), else the peer. Bytes count the whole response, headers
+  included. The request line, referer and user agent are copied with
+  control characters and quotes replaced by `_`, so a request cannot
+  forge a line; rejected requests (400/411/413/431) log the bytes that
+  arrived. Unset, the log costs the request path one compare.
+
+### Testing
+
+`make test` runs the theme contrast floor (`tools/contrast.py`) and then
+the pytest suite in `tests/py/`, which talks to real servers over HTTP:
+
+- protocol framing and limits (keep-alive, pipelining, HEAD, `Expect`,
+  400/411/413/431, the idle sweep), content and validators, the admin
+  panel end to end (sessions, backoff, CSRF, publish/edit/draft/delete,
+  every theme and locale, settings, password change), the markdown
+  renderer, self-hosted images (skipped without a converter), the CLI
+  (`init`, `seed`, `selftest`, `compact`);
+- **crash recovery**: a torn record and a garbage tail are truncated
+  away, a corrupted record stops the load there, a SIGKILL storm during
+  saves loses nothing that was answered 303, a leftover `store.tmp` is
+  harmless, the visitor counter survives a restart;
+- **lifecycle**: graceful stop with idle, half-sent and in-flight
+  connections, SIGHUP under load with every response a complete page,
+  the access log to stdout and to a file, a closed log pipe;
+- the fuzz corpus through the parser harnesses (below).
+
+### Fuzzing
+
+The parsers are hand-written assembly, so there is nothing for a
+compiler to instrument. `tests/fuzz/harness.c` links every object of the
+server except the entry point, the sockets and libsodium (`stubs.asm`
+stands in for those) into two small C drivers, `build/fuzz_http` and
+`build/fuzz_md` (`make harness`). Each places the input against
+PROT_NONE guard pages, so an out-of-bounds read or write is a crash
+rather than a quiet read of neighbouring memory, and checks every
+response against the invariants the network layer relies on (a status
+line, a header block that ends, `Content-Length` that matches, nothing
+outside the buffer) — a violation aborts. The http harness logs in with
+a stubbed password and substitutes a live session id and CSRF token for
+placeholder tokens in the input, so the admin routes are reachable; its
+store descriptor is pointed at `/dev/null` after loading, so a campaign
+never grows a file.
+
+- `make fuzz` replays `tests/fuzz/corpus/` (and any crash AFL++ has
+  saved under `build/afl-out/`) through both harnesses, then runs the
+  black-box mutation script against a live server. `make test` includes
+  the replay, so a crash found once stays a regression test.
+- `make afl MODE=http` (or `md`) runs AFL++ in its binary-only FRIDA
+  mode (`afl-fuzz -O`; QEMU mode works the same way) with the
+  dictionaries in `tests/fuzz/`; `FUZZ_TIME=600` bounds a run. Expect a
+  few hundred executions per second per core and the edge count to
+  climb from the first seconds; run several instances for more.
+  Findings land in `build/afl-out/<mode>/default/crashes/`.
+- The harnesses are ordinary executables, so where Valgrind is
+  installed `valgrind ./build/fuzz_md tests/fuzz/corpus/md/blocks.md`
+  (or `fuzz_http build/fuzz-site <request file>`) runs the same code
+  under memcheck; the guard pages already turn the out-of-bounds class
+  into crashes without it.
+
+The first replay of the corpus found a real bug: after an image whose
+host the renderer rejects, a clobbered register made the inline scan
+resume inside the output buffer, silently dropping the rest of the
+line. The fix and a regression test shipped with the harness.
+
 ### Load testing
 
 `tools/loadtest.py` (`make load`, or `make load LOAD_ARGS="--levels 16,64,256 --duration 10"`)
@@ -470,6 +572,11 @@ run of saves never exhausts it.
       mapped-file serving with immutable caching, `<picture>` + `srcset`
       markup and a CSS-only themed lightbox, a media library in the
       admin panel
+- [x] Milestone 9 — prove it: a pytest suite over real HTTP replacing
+      the shell smoke tests, AFL++ harnesses with guard pages and
+      response invariants for the HTTP and markdown parsers (and the
+      renderer bug they found), crash-recovery tests for the store,
+      graceful SIGTERM, SIGHUP template/asset reload, an access log
 
 ## Code conventions
 

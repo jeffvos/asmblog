@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
-# fuzz.sh — robustness fuzzer for the HTTP and markdown parsers.
+# blackbox.sh — black-box robustness fuzzer for a live server.
 #
-# No AFL++ here, so this is a black-box mutation fuzzer: it fires
+# A black-box mutation fuzzer: it fires
 # thousands of malformed/adversarial requests at a live server and at
 # the markdown renderer (via /admin/preview), then asserts the process
 # is still alive and still serving. A parser bug (out-of-bounds read,
 # bad jump, arena overflow) shows up as a dead server or a 000 curl.
 #
-# Usage: tests/fuzz.sh [iterations] [port]
+# Usage: tests/fuzz/blackbox.sh [iterations] [port]
+#
+# The coverage-guided path is tests/fuzz/afl.sh (AFL++ over the harnesses
+# in harness.c); this script stays as the cheap end-to-end check that the
+# whole server, sockets included, survives garbage.
 set -uo pipefail
 trap '' PIPE            # the server closes malformed conns mid-write
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 ROOT="$(pwd)"
 ITERS="${1:-3000}"
 PORT="${2:-$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')}"

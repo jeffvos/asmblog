@@ -1,0 +1,4 @@
+GET /feed.xml HTTP/1.1
+Host: t.example
+If-Modified-Since: Thu, 01 Jan 1970 00:00:00 GMT
+

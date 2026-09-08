@@ -1,0 +1,9 @@
+GET /manifest.webmanifest HTTP/1.1
+Host: t.example
+
+GET /hits.svg HTTP/1.1
+Host: t.example
+
+GET /favicon.ico?v=theme-sucre HTTP/1.1
+Host: t.example
+

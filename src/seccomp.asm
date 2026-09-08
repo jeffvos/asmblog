@@ -10,8 +10,9 @@
 ; terminates the process rather than being quietly allowed.
 ;
 ; A missing entry would kill the server on the first offending syscall,
-; so the allowlist is validated by running the full admin end-to-end
-; suite with the sandbox active (tests/smoke.sh).
+; so the allowlist is validated by running the full end-to-end suite
+; with the sandbox active (make test: tests/py, including a SIGHUP
+; reload and the access log, which run under the filter too).
 
 BITS 64
 %include "src/sys.inc"

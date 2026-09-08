@@ -1,0 +1,4 @@
+GET /media/1.webp HTTP/1.1
+Host: t.example
+If-None-Match: "1.webp"
+

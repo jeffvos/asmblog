@@ -1798,7 +1798,7 @@ mp_fname: db 'filename="'
 
 f_200: db 'HTTP/1.1 200 OK', 13, 10
 f_200_len equ $-f_200
-f_server: db 'Server: blogd/0.12', 13, 10
+f_server: db 'Server: blogd/0.13', 13, 10
 f_server_len equ $-f_server
 f_ka: db 'Connection: keep-alive', 13, 10
 f_ka_len equ $-f_ka

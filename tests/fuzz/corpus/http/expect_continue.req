@@ -1,0 +1,6 @@
+POST /admin/login HTTP/1.1
+Host: t.example
+Expect: 100-continue
+Content-Length: 17
+
+password=hunter22

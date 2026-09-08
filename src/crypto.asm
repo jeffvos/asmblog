@@ -25,6 +25,8 @@ extern crypto_pwhash_str_verify
 extern wr_lock
 extern wr_unlock
 extern set_hash
+extern reload_all
+extern reload_req
 
 global crypto_init
 global crypto_hash_password
@@ -32,6 +34,7 @@ global crypto_verify_password
 global crypto_service
 global crypto_verify_remote
 global crypto_hash_remote
+global crypto_kick
 
 ; Argon2id, libsodium INTERACTIVE cost: opslimit 2, memlimit 64 MiB
 %define OPSLIMIT 2
@@ -81,21 +84,32 @@ crypto_verify_password:
 
 ; ---- main-thread crypto service + worker-side mailbox ------------------
 ; State protocol on mb_state: 0 idle, 1 request posted, 2 result ready.
-; Requesters serialize on mb_mutex; the service and the active
-; requester rendezvous via futex on mb_state.
+; Requesters serialize on mb_mutex. The service sleeps on svc_seq, a
+; counter that anyone with work for it bumps and wakes (crypto_kick):
+; a requester after posting, the SIGHUP handler after flagging a
+; reload (signal.asm). The service reads the counter before it looks
+; for work and sleeps only while the counter is unchanged, so a kick
+; between the look and the sleep is never lost. The requester still
+; waits on mb_state for its result.
 
 ; crypto_service() — never returns. Run on the initial thread.
 crypto_service:
 .loop:
-    mov eax, [mb_state]
-    cmp eax, 1
+    mov r12d, [svc_seq]         ; before looking for work (see above)
+    cmp dword [mb_state], 1
     je .work
-    mov rdi, mb_state
+    cmp byte [reload_req], 0
+    jne .reload
+    mov rdi, svc_seq
     mov esi, FUTEX_WAIT_PRIVATE
-    mov edx, eax
+    mov edx, r12d
     xor r10d, r10d
     mov eax, SYS_futex
     syscall
+    jmp .loop
+.reload:
+    mov byte [reload_req], 0
+    call reload_all
     jmp .loop
 .work:
     mov eax, [mb_op]
@@ -138,11 +152,7 @@ mb_request:
     mov [mb_pw_l], r14
     mov [mb_out_p], r15
     mov dword [mb_state], 1
-    mov rdi, mb_state
-    mov esi, FUTEX_WAKE_PRIVATE
-    mov edx, 0x7fffffff
-    mov eax, SYS_futex
-    syscall
+    call crypto_kick
 .wait:
     mov eax, [mb_state]
     cmp eax, 2
@@ -166,6 +176,17 @@ mb_request:
     pop r12
     ret
 
+; crypto_kick() — wake the service: something is waiting for it. Safe
+; from any thread and from a signal handler (one locked add, one futex).
+crypto_kick:
+    lock inc dword [svc_seq]
+    mov rdi, svc_seq
+    mov esi, FUTEX_WAKE_PRIVATE
+    mov edx, 1
+    mov eax, SYS_futex
+    syscall
+    ret
+
 ; crypto_verify_remote(pw, l) -> 0 match / nonzero (safe from any worker)
 crypto_verify_remote:
     mov rdx, rsi
@@ -185,6 +206,7 @@ crypto_hash_remote:
 section .bss
 mb_mutex:  resd 1
 mb_state:  resd 1
+svc_seq:   resd 1
 mb_op:     resd 1
 mb_pw_p:   resq 1
 mb_pw_l:   resq 1

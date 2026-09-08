@@ -1,0 +1,1 @@
+[x](javascript:alert(1)) <script>alert(1)</script> "'&<> ![img](javascript:x) [a](data:text/html,x)

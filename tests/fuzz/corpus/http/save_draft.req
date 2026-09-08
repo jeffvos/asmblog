@@ -1,0 +1,7 @@
+POST /admin/save HTTP/1.1
+Host: t.example
+Cookie: sid=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 152
+
+csrf=CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC&id=2&title=Edited&slug=why-assembly&tags=asm&md=%23+Hi%0A%0A-+a%0A-+b&action=draft

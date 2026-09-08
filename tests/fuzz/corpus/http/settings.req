@@ -1,0 +1,7 @@
+POST /admin/settings HTTP/1.1
+Host: t.example
+Cookie: sid=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 173
+
+csrf=CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC&title=Fuzz+Blog&ppp=3&banner=CUSTOM&theme=bogota&locale=es&url=https%3A%2F%2Ffuzz.example%2F&imgmax=800

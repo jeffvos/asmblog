@@ -6,8 +6,9 @@
 ; accept lock and no cross-thread state at all in this file: connection
 ; contexts live and die within one worker.
 ;
-; epoll data field: 0 = the listener, 1 = the idle-sweep timer,
-; otherwise a ctx pointer. Level-triggered: writes run to EAGAIN; a
+; epoll data field: 0 = the listener, 1 = the idle-sweep timer, 2 = the
+; stop eventfd (signal.asm), otherwise a ctx pointer. Level-triggered:
+; writes run to EAGAIN; a
 ; read that comes back short has drained the socket, so parsing starts
 ; right away instead of paying for one more read() that says EAGAIN.
 ; Anything left over (or arriving later) re-triggers the loop.
@@ -18,6 +19,14 @@
 ; idle_secs (BLOGD_IDLE_SECS, default 20) — a half-sent request head, a
 ; keep-alive nobody reuses, a peer that stopped reading. Without it a
 ; client could pin a 650 KB context for ever by never finishing.
+;
+; Stopping (SIGTERM/SIGINT): the eventfd becomes readable in every
+; worker at once. A worker then closes its listener, drops the
+; connections that sit between requests, answers what is already in
+; flight without keep-alive, and exits once its active list is empty
+; or two sweep ticks (5-10 s) have passed; the last worker out calls
+; exit_group(0). Every answered request is offered to the access log
+; (log.asm) right after its response is staged.
 
 BITS 64
 %include "src/sys.inc"
@@ -34,6 +43,8 @@ extern idle_secs
 extern media_spool_allowed
 extern media_spool_open
 extern media_spool_discard
+extern alog_request
+extern stop_efd
 
 global worker_main
 global workers_ready
@@ -45,7 +56,11 @@ global workers_ready
 %define WS_ACTIVE 32            ; live ctx list head (CTX_LPREV/LNEXT)
 %define WS_TFD    40            ; idle-sweep timerfd
 %define WS_NOW    48            ; seconds, refreshed per epoll wakeup
-%define WS_EVBUF  64            ; 64 epoll_events x 12 bytes
+%define WS_EVBUF  64            ; 64 epoll_events x 12 bytes (to 832)
+%define WS_STOP   840           ; byte: draining for shutdown
+%define WS_STOPTICK 848         ; sweep ticks seen since the stop
+%define WS_ADDR   856           ; sockaddr_in scratch for accept4
+%define WS_ADDRLEN 872
 %define WS_TOTAL  4096
 %define MAX_EVENTS 64
 %define IDLE_TICK 5             ; sweep period, seconds
@@ -167,10 +182,24 @@ worker_main:
     test rax, rax
     js .f_epctl
 
-    ; signal setup complete: main waits for all workers before it
-    ; installs the seccomp filter (whose allowlist excludes the
-    ; socket/bind/listen/epoll_create1/timerfd syscalls used only up
-    ; to here).
+    ; the stop eventfd, shared by every worker, registered with data = 2
+    sub rsp, 16
+    mov dword [rsp], EPOLLIN
+    mov qword [rsp+4], 2
+    mov rdi, [r12+WS_EP]
+    mov esi, EPOLL_CTL_ADD
+    mov rdx, [stop_efd]
+    mov r10, rsp
+    mov eax, SYS_epoll_ctl
+    syscall
+    add rsp, 16
+    test rax, rax
+    js .f_epctl
+
+    ; setup complete: main waits for all workers before it installs the
+    ; seccomp filter (whose allowlist excludes the socket/bind/listen/
+    ; epoll_create1/timerfd syscalls used only up to here).
+    lock inc qword [workers_live]
     lock inc qword [workers_ready]
 
 .loop:
@@ -190,16 +219,18 @@ worker_main:
     xor ebx, ebx                ; index
 .evloop:
     cmp rbx, r13
-    jae .loop
+    jae .batch_done
     lea r15, [rbx+rbx*2]
     shl r15, 2                  ; rbx * 12 (epoll_event is packed)
     lea r14, [r12+WS_EVBUF]
     mov edx, [r14+r15]          ; event bits
-    mov rsi, [r14+r15+4]        ; data: 0 = listener, 1 = timer, else ctx
+    mov rsi, [r14+r15+4]        ; data: 0 listener, 1 timer, 2 stop, else ctx
     test rsi, rsi
     jz .accept
     cmp rsi, 1
     je .tick
+    cmp rsi, 2
+    je .stop
     mov rdi, r12
     call conn_event
     jmp .next
@@ -207,10 +238,21 @@ worker_main:
     mov rdi, r12
     call conn_sweep
     jmp .next
+.stop:
+    mov rdi, r12
+    call worker_stop
+    jmp .next
+.batch_done:
+    cmp byte [r12+WS_STOP], 0   ; draining, and nothing left to answer?
+    je .loop
+    cmp qword [r12+WS_ACTIVE], 0
+    jne .loop
+    jmp worker_exit
 .accept:
+    mov qword [r12+WS_ADDRLEN], 16
     mov rdi, [r12+WS_LFD]
-    xor esi, esi
-    xor edx, edx
+    lea rsi, [r12+WS_ADDR]
+    lea rdx, [r12+WS_ADDRLEN]
     mov r10d, SOCK_NONBLOCK | SOCK_CLOEXEC
     mov eax, SYS_accept4
     syscall
@@ -222,6 +264,8 @@ worker_main:
     test rax, rax
     jz .reject
     mov [rax+CTX_FD], r15d
+    mov ecx, [r12+WS_ADDR+4]    ; sin_addr, for the access log
+    mov [rax+CTX_PEER], ecx
     mov qword [rax+CTX_IN_USED], 0
     mov qword [rax+CTX_OUT_LEN], 0
     mov qword [rax+CTX_OUT_SENT], 0
@@ -333,6 +377,65 @@ worker_main:
     mov eax, SYS_exit_group
     syscall
 
+; worker_stop(ws) — the stop eventfd fired: leave the eventfd (it stays
+; readable), close the listener, drop every connection that is between
+; requests. Whatever is mid-request or mid-response finishes without
+; keep-alive (conn_flush); conn_sweep ends the grace period.
+worker_stop:
+    push r12
+    push r13
+    mov r12, rdi
+    cmp byte [r12+WS_STOP], 0
+    jne .done
+    mov byte [r12+WS_STOP], 1
+    mov rdi, [r12+WS_EP]
+    mov esi, EPOLL_CTL_DEL
+    mov rdx, [stop_efd]
+    xor r10d, r10d
+    mov eax, SYS_epoll_ctl
+    syscall
+    mov rdi, [r12+WS_LFD]       ; no more accepts (leaves the epoll set)
+    mov eax, SYS_close
+    syscall
+    mov qword [r12+WS_LFD], -1
+    mov r13, [r12+WS_ACTIVE]
+.walk:
+    test r13, r13
+    jz .done
+    mov rax, [r13+CTX_LNEXT]    ; read before a close unlinks it
+    cmp qword [r13+CTX_OUT_LEN], 0
+    jne .keep                   ; a response is going out
+    cmp qword [r13+CTX_IN_USED], 0
+    jne .keep                   ; a request is arriving
+    cmp dword [r13+CTX_SPOOL_FD], 0
+    jge .keep                   ; an upload is streaming to disk
+    push rax
+    mov rdi, r12
+    mov rsi, r13
+    call conn_close
+    pop rax
+.keep:
+    mov r13, rax
+    jmp .walk
+.done:
+    pop r13
+    pop r12
+    ret
+
+; worker_exit — this worker is drained; the last one out ends the
+; process cleanly (the initial thread is parked in crypto_service and
+; the image helper exits when its socket does).
+worker_exit:
+    lock dec qword [workers_live]
+    jz .last
+    xor edi, edi
+    mov eax, SYS_exit
+    syscall
+.last:
+    xor edi, edi
+    mov eax, SYS_exit_group
+    syscall
+
 ; conn_get(ws) -> ctx from the freelist, or a fresh mmap; 0 on failure.
 conn_get:
     mov rax, [rdi+WS_FREE]
@@ -432,6 +535,24 @@ conn_sweep:
     xor eax, eax                ; SYS_read
     syscall
     add rsp, 8
+    cmp byte [r12+WS_STOP], 0
+    je .normal
+    inc qword [r12+WS_STOPTICK] ; stopping: the second tick after the
+    cmp qword [r12+WS_STOPTICK], 2  ; signal ends the grace period
+    jb .normal
+    mov r13, [r12+WS_ACTIVE]
+.cut:
+    test r13, r13
+    jz .done
+    mov rax, [r13+CTX_LNEXT]
+    push rax
+    mov rdi, r12
+    mov rsi, r13
+    call conn_close
+    pop rax
+    mov r13, rax
+    jmp .cut
+.normal:
     mov r14, [idle_secs]
     test r14, r14
     jz .done
@@ -567,6 +688,9 @@ conn_read:
     mov rsi, r14
     mov rdx, r15
     call http_handle            ; builds the response, sets keep
+    mov rdi, r13
+    mov rsi, r14
+    call alog_request           ; (a no-op unless BLOGD_ACCESS_LOG is set)
     add r14, r15                ; consume head + body
     mov rdx, [r13+CTX_IN_USED]
     sub rdx, r14
@@ -661,6 +785,9 @@ conn_read:
     mov byte [r13+CTX_KEEP], 0  ; every rejection closes the connection
     mov rdi, r13
     call build_page
+    mov rdi, r13
+    xor esi, esi                ; unparsed: the line as it arrived
+    call alog_request
     mov rdi, r12
     mov rsi, r13
     call conn_flush
@@ -724,6 +851,9 @@ spool_pump:
     xor edx, edx                ; body length 0: it is in the spool
     call http_handle
     mov rdi, r13
+    mov rsi, [r13+CTX_IN_USED]
+    call alog_request
+    mov rdi, r13
     call media_spool_discard
     mov qword [r13+CTX_IN_USED], 0
     mov rdi, r12
@@ -737,6 +867,9 @@ spool_pump:
     mov rdi, r13
     mov esi, 5
     call build_page
+    mov rdi, r13
+    xor esi, esi
+    call alog_request
     mov rdi, r12
     mov rsi, r13
     call conn_flush
@@ -867,8 +1000,11 @@ conn_flush:
     mov qword [r13+CTX_OUT_LEN], 0
     mov qword [r13+CTX_OUT_SENT], 0
     mov qword [r13+CTX_OUT_START], 0
+    cmp byte [r12+WS_STOP], 0   ; draining for a stop: no keep-alive
+    jne .bye
     cmp byte [r13+CTX_KEEP], 0
     jne .keep
+.bye:
     mov rdi, r12
     mov rsi, r13
     call conn_close
@@ -942,5 +1078,6 @@ wf_timer_len equ $-wf_timer
 
 section .bss
 workers_ready: resq 1
+workers_live:  resq 1           ; workers not yet exited (worker_exit)
 
 section .note.GNU-stack noalloc noexec nowrite progbits

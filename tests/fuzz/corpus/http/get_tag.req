@@ -1,0 +1,4 @@
+GET /tag/retro HTTP/1.1
+Host: t.example
+Connection: close
+

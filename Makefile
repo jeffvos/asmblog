@@ -17,7 +17,7 @@ LDLIBS    := -lsodium
 SRC := src/main.asm src/net.asm src/http.asm src/threads.asm src/util.asm \
        src/store.asm src/crypto.asm src/cli.asm src/tmpl.asm src/pages.asm \
        src/auth.asm src/md.asm src/admin.asm src/seccomp.asm src/i18n.asm \
-       src/pcache.asm src/media.asm
+       src/pcache.asm src/media.asm src/signal.asm src/reload.asm src/log.asm
 OBJ := $(patsubst src/%.asm,build/%.o,$(SRC))
 
 all: build/blogd static/main.css
@@ -79,12 +79,46 @@ build/blogd: $(OBJ)
 run: all
 	./build/blogd
 
-test: all
+# `make test`: the theme contrast floor, then the pytest suite over real
+# HTTP (tests/py: protocol, content, admin, markdown, media, the store
+# CLI, crash recovery, lifecycle, the access log, and the fuzz corpus
+# through the harnesses). tests/pytest.sh finds or creates a pytest.
+test: all harness
 	python3 tools/contrast.py
-	./tests/smoke.sh
+	./tests/pytest.sh
 
-fuzz: all
-	./tests/fuzz.sh
+# ---- fuzz harnesses: the parsers linked into C drivers (tests/fuzz/) ----
+# build/fuzz_http and build/fuzz_md link every server object except main.o,
+# net.o and crypto.o; stubs.asm stands in for those. conn.h is the C view
+# of the layout constants in conn.inc / store.inc.
+CC ?= cc
+FUZZ_OBJ := $(filter-out build/main.o build/net.o build/crypto.o,$(OBJ))
+HARNESS_CFLAGS := -O1 -g -Wall -Wextra -no-pie -fno-pie -Ibuild -z noexecstack
+
+build/conn.h: src/conn.inc src/store.inc | build
+	sed -n 's/^%define \([A-Z_0-9]*\) *\([^;]*[^; ]\) *\(;.*\)\{0,1\}$$/#define \1 (\2)/p' $^ > $@
+
+build/fuzz_stubs.o: tests/fuzz/stubs.asm src/sys.inc | build
+	$(NASM) $(NASMFLAGS) $< -o $@
+
+build/fuzz_http: tests/fuzz/harness.c build/conn.h build/fuzz_stubs.o $(FUZZ_OBJ)
+	$(CC) $(HARNESS_CFLAGS) -o $@ $< build/fuzz_stubs.o $(FUZZ_OBJ)
+
+build/fuzz_md: tests/fuzz/harness.c build/conn.h build/fuzz_stubs.o $(FUZZ_OBJ)
+	$(CC) $(HARNESS_CFLAGS) -DFUZZ_MD -o $@ $< build/fuzz_stubs.o $(FUZZ_OBJ)
+
+harness: build/fuzz_http build/fuzz_md
+
+# `make fuzz`: the seed corpus (and any saved crashes) through the
+# harnesses, then the black-box mutation run against a live server.
+# `make afl MODE=http|md` runs AFL++ (FRIDA mode) over a harness.
+fuzz: all harness
+	./tests/fuzz/replay.sh
+	./tests/fuzz/blackbox.sh
+
+MODE ?= http
+afl: all harness
+	./tests/fuzz/afl.sh $(MODE)
 
 load: all
 	python3 tools/loadtest.py $(LOAD_ARGS)
@@ -99,4 +133,4 @@ image:
 clean:
 	rm -rf build static/main.css static/main.css.gz static/main.css.br static/*-main.css static/*-main.css.gz static/*-main.css.br
 
-.PHONY: all css icons deps run test fuzz load loadserver image clean
+.PHONY: all css icons deps run test harness fuzz afl load loadserver image clean

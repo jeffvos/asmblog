@@ -30,6 +30,7 @@
 ;   +128 lprev/lnext qword   the worker's active-connection list (idle sweep)
 ;   +144 last        qword   last activity, seconds (the worker's clock)
 ;   +152 tgt_p/l     qword   request target (path?query) for the page cache
+;   +216 peer        dword   peer IPv4 (network order), for the access log
 ;   +192 inbuf       (request head <= 8 KiB + body <= 100 KB)
 ;   +131264 outbuf
 
@@ -68,6 +69,7 @@
 %define CTX_FILE_P    192
 %define CTX_FILE_L    200
 %define CTX_FILE_SENT 208
+%define CTX_PEER      216   ; dword: peer IPv4, network order (access log)
 %define CTX_IN        256
 %define CTX_INBUF_SZ  131072
 %define CTX_OUT       131328

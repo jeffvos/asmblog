@@ -1,0 +1,6 @@
+POST /admin/save HTTP/1.1
+Host: t.example
+Cookie: sid=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+Content-Length: 31
+
+csrf=deadbeef&id=1&title=x&md=y
