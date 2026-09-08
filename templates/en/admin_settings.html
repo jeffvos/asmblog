@@ -1,37 +1,51 @@
-<div class="card max-w-md mx-auto">
+<div class="card admin max-w-md mx-auto">
   <h1 class="article-title text-xl mt-0 mb-2">settings</h1>
-  <p class="error text-xs mb-2">{{err}}</p>
+  {{err}}
   <form method="post" action="/admin/settings">
     <input type="hidden" name="csrf" value="{{csrf}}">
-    <label class="text-xs block" for="f-title">site title</label>
-    <input id="f-title" name="title" value="{{esite}}" class="field w-full mb-2">
-    <label class="text-xs block" for="f-ppp">posts per page (1-50)</label>
-    <input id="f-ppp" name="ppp" value="{{eppp}}" class="field w-24 mb-2">
-    <label class="text-xs block" for="f-banner">scrolling banner message</label>
-    <input id="f-banner" name="banner" value="{{ebanner}}" maxlength="200" class="field w-full mb-2">
-    <label class="text-xs block" for="f-url">site url (for canonical links, the feed and the sitemap; blank = use the Host header)</label>
-    <input id="f-url" name="url" value="{{eurl}}" maxlength="255" placeholder="https://blog.example.com" class="field w-full mb-2">
-    <fieldset class="mb-3">
-      <legend class="text-xs mb-1">theme</legend>
-      <label class="block text-sm mb-1"><input type="radio" name="theme" value="retro" {{selretro}}> Retro &mdash; 1990s web, polished</label>
-      <label class="block text-sm mb-1"><input type="radio" name="theme" value="sucre" {{selsucre}}> Sucre &mdash; whitewashed colonial</label>
-      <label class="block text-sm mb-1"><input type="radio" name="theme" value="medellin" {{selmedellin}}> Medell&iacute;n &mdash; flower-fair street poster</label>
-      <label class="block text-sm mb-1"><input type="radio" name="theme" value="bogota" {{selbogota}}> Bogot&aacute; &mdash; brick and gold, editorial</label>
-      <label class="block text-sm mb-1"><input type="radio" name="theme" value="lapaz" {{sellapaz}}> La Paz &mdash; neo-Andean cholet, dark</label>
-      <label class="block text-sm mb-1"><input type="radio" name="theme" value="cochabamba" {{selcochabamba}}> Cochabamba &mdash; market chalkboards and kraft</label>
-      <label class="block text-sm mb-1"><input type="radio" name="theme" value="santacruz" {{selsantacruz}}> Santa Cruz &mdash; tropical lowland, mission woodwork</label>
-      <label class="block text-sm"><input type="radio" name="theme" value="pittsburgh" {{selpittsburgh}}> Pittsburgh &mdash; Steel City, black and gold</label>
+    <fieldset>
+      <legend class="lgd">site</legend>
+      <label class="lbl" for="f-title">site title</label>
+      <input id="f-title" name="title" value="{{esite}}" maxlength="120" class="field w-full mb-2">
+      <label class="lbl" for="f-ppp">posts per page</label>
+      <small class="hint" id="h-ppp">1 to 50</small>
+      <input id="f-ppp" name="ppp" value="{{eppp}}" type="number" inputmode="numeric" min="1" max="50" aria-describedby="h-ppp" class="field w-24 mb-2">
+      <label class="lbl" for="f-banner">scrolling banner message</label>
+      <input id="f-banner" name="banner" value="{{ebanner}}" maxlength="200" class="field w-full mb-2">
+      <label class="lbl" for="f-url">site url</label>
+      <small class="hint" id="h-url">for canonical links, the feed and the sitemap; blank = use the Host header</small>
+      <input id="f-url" type="url" name="url" value="{{eurl}}" maxlength="255" placeholder="https://blog.example.com" aria-describedby="h-url" class="field w-full mb-2">
     </fieldset>
-    <fieldset class="mb-3">
-      <legend class="text-xs mb-1">language</legend>
-      <label class="block text-sm mb-1"><input type="radio" name="locale" value="en" {{selen}}> English (US)</label>
-      <label class="block text-sm"><input type="radio" name="locale" value="es" {{seles}}> Español (Bolivia)</label>
+    <fieldset>
+      <legend class="lgd">appearance</legend>
+      <fieldset>
+        <legend class="lbl">theme</legend>
+        <label class="opt"><input type="radio" name="theme" value="retro" {{selretro}}> <span>Retro &mdash; 1990s web, polished</span></label>
+        <label class="opt"><input type="radio" name="theme" value="sucre" {{selsucre}}> <span>Sucre &mdash; whitewashed colonial</span></label>
+        <label class="opt"><input type="radio" name="theme" value="medellin" {{selmedellin}}> <span>Medell&iacute;n &mdash; flower-fair street poster</span></label>
+        <label class="opt"><input type="radio" name="theme" value="bogota" {{selbogota}}> <span>Bogot&aacute; &mdash; brick and gold, editorial</span></label>
+        <label class="opt"><input type="radio" name="theme" value="lapaz" {{sellapaz}}> <span>La Paz &mdash; neo-Andean cholet, dark</span></label>
+        <label class="opt"><input type="radio" name="theme" value="cochabamba" {{selcochabamba}}> <span>Cochabamba &mdash; market chalkboards and kraft</span></label>
+        <label class="opt"><input type="radio" name="theme" value="santacruz" {{selsantacruz}}> <span>Santa Cruz &mdash; tropical lowland, mission woodwork</span></label>
+        <label class="opt"><input type="radio" name="theme" value="pittsburgh" {{selpittsburgh}}> <span>Pittsburgh &mdash; Steel City, black and gold</span></label>
+      </fieldset>
+      <fieldset>
+        <legend class="lbl">language</legend>
+        <label class="opt"><input type="radio" name="locale" value="en" {{selen}}> <span>English (US)</span></label>
+        <label class="opt"><input type="radio" name="locale" value="es" {{seles}}> <span>Español (Bolivia)</span></label>
+      </fieldset>
     </fieldset>
-    <label class="text-xs block">new password (blank = keep current)</label>
-    <input type="password" name="password" class="field w-full mb-2">
-    <label class="text-xs block">confirm new password</label>
-    <input type="password" name="password2" class="field w-full mb-3">
-    <button class="btn" type="submit">Save Settings</button>
-    <a class="backlink text-sm ml-3" href="/admin">cancel</a>
+    <fieldset>
+      <legend class="lgd">account</legend>
+      <label class="lbl" for="f-pw">new password</label>
+      <small class="hint" id="h-pw">at least 8 characters; blank = keep the current one</small>
+      <input id="f-pw" type="password" name="password" autocomplete="new-password" aria-describedby="h-pw" class="field w-full mb-2">
+      <label class="lbl" for="f-pw2">confirm new password</label>
+      <input id="f-pw2" type="password" name="password2" autocomplete="new-password" class="field w-full mb-3">
+    </fieldset>
+    <div class="actions">
+      <button class="btn btn-primary" type="submit">Save Settings</button>
+      <a class="backlink text-sm" href="/admin">cancel</a>
+    </div>
   </form>
 </div>

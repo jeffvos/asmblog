@@ -1,18 +1,19 @@
-<div class="card">
+{{notice}}
+<div class="card admin">
   <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
     <h1 class="article-title text-xl m-0">control panel</h1>
-    <div class="flex flex-wrap items-center gap-2">
-      <a class="btn" href="/admin/new">+ New Post</a>
+    <div class="actions">
+      <a class="btn btn-primary" href="/admin/new">+ New Post</a>
       <a class="btn" href="/admin/settings">Settings</a>
       <form method="post" action="/admin/logout" class="inline m-0">
         <input type="hidden" name="csrf" value="{{csrf}}">
-        <button class="btn" type="submit">Log out</button>
+        <button class="btn btn-quiet" type="submit">Log out</button>
       </form>
     </div>
   </div>
   <table class="table w-full text-sm border-collapse">
     <thead>
-    <tr class="text-left text-xs meta">
+    <tr class="text-left meta">
       <th scope="col" class="pb-1">title</th><th scope="col" class="pb-1">date</th><th scope="col" class="pb-1">status</th><th scope="col"><span class="sr-only">actions</span></th>
     </tr>
     </thead>

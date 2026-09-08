@@ -566,6 +566,7 @@ n_seles:    db 'seles'
 n_cssv:     db 'cssv'
 n_eurl:     db 'eurl'
 n_thcolor:  db 'themecolor'
+n_notice:   db 'notice'
 
 align 8
 marker_names:                   ; {ptr, len, pad} triplets, indexed by id
@@ -606,6 +607,7 @@ marker_names:                   ; {ptr, len, pad} triplets, indexed by id
     dq n_cssv, 4, 0
     dq n_eurl, 4, 0
     dq n_thcolor, 10, 0
+    dq n_notice, 6, 0
 
 ; one template set per locale; slot = locale*NTMPL + template id
 f_shell:    db 'templates/en/shell.html', 0

@@ -39,7 +39,8 @@
 %define V_CSSV     34           ; stylesheet version (crc32c of main.css)
 %define V_EURL     35           ; site url in the settings form
 %define V_THCOLOR  36           ; <meta name="theme-color"> for the theme
-%define NVALS      37
+%define V_NOTICE   37           ; dashboard flash after a save/delete (raw)
+%define NVALS      38
 
 ; locales: templates/<dir>/ sets, selected site-wide by [set_locale]
 %define LOC_EN     0
@@ -47,7 +48,9 @@
 %define NLOCALES   2
 
 ; markers whose values are emitted raw (already-safe HTML we generated)
-%define RAW_MASK   ((1<<V_CONTENT)|(1<<V_TAGS)|(1<<V_HTML)|(1<<V_ROWS)|(1<<V_META))
+; V_ERR and V_NOTICE carry i18n.asm's own <p class="error">/<div class="notice">
+; wrappers, so an empty message renders nothing at all
+%define RAW_MASK   ((1<<V_CONTENT)|(1<<V_TAGS)|(1<<V_HTML)|(1<<V_ROWS)|(1<<V_META)|(1<<V_ERR)|(1<<V_NOTICE))
 
 %define T_SHELL    0
 %define T_CARD     1

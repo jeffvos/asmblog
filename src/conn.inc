@@ -25,6 +25,8 @@
 ;   +123 inm         byte    If-None-Match matched etag → 304 eligible
 ;   +124 vary        byte    emit Vary: Accept-Encoding (negotiated asset)
 ;   +125 cont        byte    "100 Continue" already sent for this request
+;   +126 pchit       byte    body came from the page cache: finish_page
+;                            must not store it back (pcache.asm)
 ;   +128 lprev/lnext qword   the worker's active-connection list (idle sweep)
 ;   +144 last        qword   last activity, seconds (the worker's clock)
 ;   +152 tgt_p/l     qword   request target (path?query) for the page cache
@@ -53,6 +55,7 @@
 %define CTX_INM       123
 %define CTX_VARY      124
 %define CTX_CONT      125
+%define CTX_PCHIT     126
 %define CTX_LPREV     128
 %define CTX_LNEXT     136
 %define CTX_LAST      144
@@ -93,5 +96,5 @@
 
 %define CTX_TOTAL     659456    ; 131264 + 524288, rounded up to pages
 
-%define MAX_REQS_PER_CONN 200
+%define MAX_REQS_PER_CONN 1000
 %define MD_MAX 32768            ; markdown source cap per post

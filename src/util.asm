@@ -19,6 +19,7 @@ global fmt_date
 global fmt_datetime
 global fmt_httpdate
 global emit_date_hdr
+global emit_date_hdr_at
 global put_hex
 global civil
 global parse_dec
@@ -492,16 +493,25 @@ fmt_httpdate:
     pop r12
     ret
 
-; emit_date_hdr(buf) -> rax = end. Writes "Date: <now>\r\n" (37 bytes).
+; emit_date_hdr(buf) -> rax = end. Writes "Date: <now>\r\n" (37 bytes),
+; reading the clock itself. Response builders that have the connection
+; at hand use emit_date_hdr_at with the worker's per-wakeup stamp
+; (CTX_LAST, net.asm) instead, which saves one time() per response.
 emit_date_hdr:
+    mov rdx, rdi
+    xor edi, edi
+    mov eax, SYS_time
+    syscall
+    mov rsi, rax
+    mov rdi, rdx
+    ; fall through
+; emit_date_hdr_at(buf, unix_secs) -> rax = end.
+emit_date_hdr_at:
     push r12
     mov r12, rdi
     mov dword [r12], 'Date'
     mov word [r12+4], ': '
-    xor edi, edi
-    mov eax, SYS_time
-    syscall
-    mov rdi, rax
+    mov rdi, rsi
     lea rsi, [r12+6]
     call fmt_httpdate
     mov word [rax], 0x0A0D

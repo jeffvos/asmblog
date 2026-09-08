@@ -22,9 +22,20 @@ HTTP); custom append-only binary store; posts authored in a Markdown subset.
 
 N workers (default = cores) via `clone(CLONE_VM|CLONE_THREAD|...)`, each with
 its own mmap'd stack + guard page. Each worker owns a listening socket with
-`SO_REUSEPORT` and an independent nonblocking epoll loop — no accept lock, no
+`SO_REUSEPORT` (`TCP_NODELAY` set there and inherited by every accepted
+socket) and an independent nonblocking epoll loop — no accept lock, no
 queue. Store guarded by a futex-based rwlock; public site takes only the read
-side.
+side. The lock is one 32-bit word: writer bit, waiters bit, reader count.
+A waiter sets the waiters bit (cmpxchg) before `FUTEX_WAIT`, and an unlock
+calls `FUTEX_WAKE` only when the value it replaced carried that bit, so the
+uncontended path is one locked instruction each way and no syscall.
+
+The epoll loop is level-triggered. A read that comes back short means the
+socket is drained, so the worker parses straight away rather than paying
+for one more `read()` returning EAGAIN; pipelined requests already in the
+buffer are answered back to back. One `time()` per wakeup stamps every
+connection touched (idle sweep and the `Date` header alike); a keep-alive
+connection serves up to 1000 requests before it is closed.
 
 ## Memory
 
@@ -44,7 +55,12 @@ markdown at save time (zero parse cost at serve time); the plain-text
 excerpt is derived once per load/save the same way. Compaction runs at
 startup once dead records dominate, or via `blogd compact`. Settings record: site
 title, posts_per_page (default 5, clamp 1-50, admin-editable), session TTL,
-Argon2id hash. Search: case-insensitive SSE2 memmem over title+content.
+Argon2id hash. Every list page (home, tag, search) makes one filter pass
+over the date-sorted index, collecting the indices of matching posts into a
+stack array; the requested page is a slice of that array. Search matches
+title+markdown with a case-insensitive substring scan: the first needle
+byte is hunted 16 bytes at a time with SSE2 (both case forms), and only a
+candidate position pays for the byte-wise compare of the rest.
 
 ## HTTP surface
 
@@ -52,11 +68,23 @@ Public: `/`, `/page/N`, `/post/{slug}`, `/tag/{tag}` (paginated), `/search?q=`,
 `/feed.xml` (RSS), `/static/*` (pre-gzipped at build time).
 Admin: login/logout, dashboard (drafts + published), new/edit/save
 (draft|publish), preview (render without save), delete, settings
-(posts-per-page, site title, password change).
+(posts-per-page, site title, password change). A save, delete or settings
+change redirects to `/admin?saved=1` (`draft`, `deleted`, `settings`) and
+the dashboard renders the matching localised notice; error and notice
+strings carry their own `<p class="error">`/`<div class="notice">`
+wrappers so an empty message renders nothing. Preview puts the rendered
+draft above a re-rendered editor with the submitted fields intact, so
+there is a way back without a script.
 Parser accepts only well-formed HTTP/1.1 GET/POST/HEAD with Content-Length
 bodies; keep-alive supported; malformed 400, oversized 413/431, chunked
 411. Idle connections are swept by a per-worker timerfd. Repeat requests
-for an unchanged page are served from a small ETag-keyed render cache.
+for an unchanged page are served from a render cache shared by all workers:
+64 direct-mapped slots keyed by the page's weak ETag plus host, scheme and
+request target (bodies up to 64 KB). Lookups are lock-free — each slot
+carries a seqlock counter that a reader checks after copying the body, so a
+racing store simply turns the hit into a miss — and only a store (once per
+miss) takes the cache's writer lock. A page served from the cache is flagged
+on the connection so `finish_page` does not store it back.
 
 ## Security
 
@@ -82,6 +110,15 @@ link/visited colors, tiled SVG background, 88x31 badge, webring footer, CSS
 marquee (respects prefers-reduced-motion), real visitor counter (atomic
 increment, odometer digits). Semantic HTML, responsive, dark mode, accessible
 contrast.
+
+Themes are structurally distinct (shape, type, texture, a landmark skyline
+drawn as an inline SVG mask; see the conventions comment at the top of
+`assets/input.css`). The admin panel shares one theme-agnostic layer at the
+end of that file: button hierarchy (primary / secondary / danger / quiet),
+focus rings, a monospace editor, fieldset grouping, status badges and a
+two-line dashboard row under 40rem. Each theme feeds it through `--a-*`
+tokens in both colour schemes, and `tools/contrast.py` checks every token
+pair at AA, so a theme cannot ship an unreadable control panel.
 
 ## Testing
 

@@ -21,12 +21,14 @@ extern mem_eq
 extern u64_to_dec
 extern parse_dec
 extern put_hex
-extern emit_date_hdr
+extern emit_date_hdr_at
 extern crc32c_raw
 extern store_gen
 extern store_mtime
 extern set_locale
 extern theme_class
+extern css_ver
+extern set_theme
 extern page_list
 extern page_post
 extern page_feed
@@ -356,6 +358,10 @@ http_handle:
     call mem_eq
     test eax, eax
     jz .r_sitemap
+    test rbp, rbp               ; /favicon.ico?v=<theme> is immutable,
+    jz .fav_go                  ; like every other versioned asset
+    mov byte [r12+CTX_CACHE], CACHE_IMMUTABLE
+.fav_go:
     mov rdi, r12
     lea rsi, [str_favicon+1]
     mov edx, 11
@@ -1602,7 +1608,8 @@ finish_301:
     mov edx, hdr_server_len
     call mem_copy
     mov rdi, rax
-    call emit_date_hdr
+    mov rsi, [r12+CTX_LAST]     ; the worker's clock: no time() here
+    call emit_date_hdr_at
     mov rdi, rax
     mov rsi, sec_headers
     mov edx, sec_headers_len
@@ -1661,39 +1668,99 @@ ci_prefix:
     xor eax, eax
     ret
 
-; ci_find(hay, hlen, needle, nlen) -> 1/0 — naive case-insensitive
-; substring; both sides are lowercased with |0x20 (ASCII letters).
+; ci_find(hay, hlen, needle, nlen) -> 1/0 — case-insensitive substring.
+; Two bytes are "equal" when they differ at most in bit 5, i.e.
+; (h ^ n) & 0xDF == 0, the same fold as the former (h|0x20)==(n|0x20)
+; (ASCII letters, plus the few punctuation pairs that share it).
+; The first needle byte is hunted 16 hay bytes at a time with SSE2,
+; both case forms at once; only a hit there pays for the byte-by-byte
+; compare of the rest. Under 16 bytes of hay left, a byte loop.
+
+; CI_REST fail — r11 -> hay at a candidate start; needle[1..nlen) must
+; fold-equal from there. Falls into .yes on success, jumps to fail else.
+%macro CI_REST 1
+    mov ebx, 1
+%%next:
+    cmp rbx, rcx
+    jae .yes
+    movzx ebp, byte [r11+rbx]
+    xor bpl, [rdx+rbx]
+    test bpl, 0xDF
+    jnz %1
+    inc rbx
+    jmp %%next
+%endmacro
+
 ci_find:
-    cmp rsi, rcx
-    jb .no
     test rcx, rcx
-    jz .yes
+    jz .yes0                    ; the empty needle matches anything
+    cmp rsi, rcx
+    jb .no0
+    push rbx
+    push rbp
     mov r8, rsi
     sub r8, rcx                 ; last valid start
-    xor r9d, r9d
-.outer:
+    movzx eax, byte [rdx]
+    or eax, 0x20                ; the first needle byte, folded ...
+    mov r9d, eax
+    xor r9d, 0x20               ; ... and its other case form
+    movd xmm0, eax
+    movd xmm1, r9d
+    punpcklbw xmm0, xmm0
+    punpcklbw xmm1, xmm1
+    punpcklwd xmm0, xmm0
+    punpcklwd xmm1, xmm1
+    pshufd xmm0, xmm0, 0        ; both broadcast to all 16 lanes
+    pshufd xmm1, xmm1, 0
+    xor r9d, r9d                ; r9 = scan position
+.vec:
+    lea rax, [r9+16]
+    cmp rax, rsi
+    ja .tail                    ; fewer than 16 hay bytes left
+    movdqu xmm2, [rdi+r9]
+    movdqa xmm3, xmm2
+    pcmpeqb xmm2, xmm0
+    pcmpeqb xmm3, xmm1
+    por xmm2, xmm3
+    pmovmskb eax, xmm2          ; bit i: hay[r9+i] is a candidate start
+.bits:
+    test eax, eax
+    jz .vnext
+    bsf r10d, eax
+    lea r11, [r9+r10]
+    cmp r11, r8
+    ja .no                      ; past the last valid start (as is every higher bit)
+    add r11, rdi
+    CI_REST .vfail
+.vfail:
+    lea ebx, [rax-1]
+    and eax, ebx                ; drop the lowest set bit, try the next
+    jmp .bits
+.vnext:
+    add r9, 16
+    jmp .vec
+.tail:
     cmp r9, r8
     ja .no
-    xor r10d, r10d
-.inner:
-    cmp r10, rcx
-    jae .yes
-    lea r11, [r9+r10]
-    mov al, [rdi+r11]
-    or al, 0x20
-    mov r11b, [rdx+r10]
-    or r11b, 0x20
-    cmp al, r11b
-    jne .next
-    inc r10
-    jmp .inner
-.next:
+    movd eax, xmm0
+    xor al, [rdi+r9]
+    test al, 0xDF
+    jnz .tnext
+    lea r11, [rdi+r9]
+    CI_REST .tnext
+.tnext:
     inc r9
-    jmp .outer
+    jmp .tail
 .yes:
+    pop rbp
+    pop rbx
+.yes0:
     mov eax, 1
     ret
 .no:
+    pop rbp
+    pop rbx
+.no0:
     xor eax, eax
     ret
 
@@ -1706,13 +1773,14 @@ build_page:
     push r15
     push rbx
     push rbp
-    sub rsp, 32                 ; [0] suffix ptr [8] suffix len
+    sub rsp, 64                 ; [0] suffix ptr [8] suffix len
     mov r12, rdi                ; [16] theme ptr [24] theme len
-    mov r13, rsi
+    mov r13, rsi                ; [32] css token ptr [40] css token len
     mov qword [r12+CTX_OUT_START], 0
     mov qword [rsp], 0
     mov qword [rsp+8], 0
     mov qword [rsp+24], 0
+    mov qword [rsp+40], 0
     mov r15, [tbl_body + r13*8]
     mov rbx, [tbl_body_len + r13*8]
     cmp r13, 2
@@ -1720,6 +1788,11 @@ build_page:
     call theme_class
     mov [rsp+16], rax
     mov [rsp+24], rdx
+    mov eax, [set_theme]        ; the same versioned stylesheet URL the
+    shl rax, 3                  ; shell emits ({{cssv}}, shell_vals)
+    add rax, css_ver
+    mov [rsp+32], rax
+    mov qword [rsp+40], 8
     mov r15, b404a_en
     mov rbx, b404a_en_len
     mov qword [rsp], b404b_en
@@ -1734,6 +1807,11 @@ build_page:
     mov rbp, rbx                ; total body length
     add rbp, [rsp+8]
     add rbp, [rsp+24]
+    add rbp, [rsp+40]
+    cmp qword [rsp+40], 0
+    je .no_mid
+    add rbp, b404m_len
+.no_mid:
     lea r14, [r12+CTX_OUT]
     mov rdi, r14
     mov rsi, [tbl_status + r13*8]
@@ -1744,7 +1822,8 @@ build_page:
     mov edx, hdr_server_len
     call mem_copy
     mov rdi, rax
-    call emit_date_hdr
+    mov rsi, [r12+CTX_LAST]     ; the worker's clock: no time() here
+    call emit_date_hdr_at
     mov rdi, rax
     mov rsi, sec_headers
     mov edx, sec_headers_len
@@ -1790,6 +1869,17 @@ build_page:
     mov rsi, r15
     mov rdx, rbx
     call mem_copy
+    cmp qword [rsp+40], 0       ; 404: prefix | ?v= token | mid | theme | suffix
+    je .no_css
+    mov rdi, rax
+    mov rsi, [rsp+32]
+    mov rdx, [rsp+40]
+    call mem_copy
+    mov rdi, rax
+    mov rsi, b404m
+    mov edx, b404m_len
+    call mem_copy
+.no_css:
     mov rdi, rax
     mov rsi, [rsp+16]
     mov rdx, [rsp+24]
@@ -1805,7 +1895,7 @@ build_page:
     mov [r12+CTX_OUT_LEN], rcx
 .fin:
     mov qword [r12+CTX_OUT_SENT], 0
-    add rsp, 32
+    add rsp, 64
     pop rbp
     pop rbx
     pop r15
@@ -1877,7 +1967,7 @@ hdr_301_tail: db 13, 10, 'Cache-Control: public, max-age=86400', 13, 10
               db 'Content-Length: 0', 13, 10, 13, 10
 hdr_301_tail_len equ $-hdr_301_tail
 
-hdr_server: db 'Server: blogd/0.10', 13, 10
+hdr_server: db 'Server: blogd/0.11', 13, 10
 hdr_server_len equ $-hdr_server
 
 ; Emitted on every response by all the builders. Everything is
@@ -1908,13 +1998,16 @@ hdr_clen: db 'Content-Length: '
 hdr_clen_len equ $-hdr_clen
 crlf2: db 13, 10, 13, 10
 
-; 404: prefix | theme class | suffix, per locale
+; 404: prefix | stylesheet version token | b404m | theme class | suffix,
+; per locale (the stylesheet URL matches the shell's {{cssv}} link)
 b404a_en:
  db '<!doctype html><html lang="en"><head><meta charset="utf-8">'
  db '<meta name="viewport" content="width=device-width,initial-scale=1">'
  db '<title>404 &mdash; Not Found</title><meta name="robots" content="noindex">'
- db '<link rel="stylesheet" href="/static/main.css"></head><body class="min-h-screen '
+ db '<link rel="stylesheet" href="/static/main.css?v='
 b404a_en_len equ $-b404a_en
+b404m: db '"></head><body class="min-h-screen '
+b404m_len equ $-b404m
 b404b_en:
  db '"><div class="mx-auto max-w-3xl px-3 py-6"><div class="card">'
  db '<h1 class="article-title text-xl mt-0 mb-2">404 &mdash; Not Found</h1>'
@@ -1925,7 +2018,7 @@ b404a_es:
  db '<!doctype html><html lang="es-BO"><head><meta charset="utf-8">'
  db '<meta name="viewport" content="width=device-width,initial-scale=1">'
  db '<title>404 &mdash; No encontrado</title><meta name="robots" content="noindex">'
- db '<link rel="stylesheet" href="/static/main.css"></head><body class="min-h-screen '
+ db '<link rel="stylesheet" href="/static/main.css?v='
 b404a_es_len equ $-b404a_es
 b404b_es:
  db '"><div class="mx-auto max-w-3xl px-3 py-6"><div class="card">'

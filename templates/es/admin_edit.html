@@ -1,20 +1,25 @@
-<div class="card">
+{{html}}
+<div class="card admin">
   <h1 class="article-title text-xl mt-0 mb-2">editor</h1>
-  <p class="error text-xs mb-2">{{err}}</p>
+  {{err}}
   <form method="post" action="/admin/save">
     <input type="hidden" name="csrf" value="{{csrf}}">
     <input type="hidden" name="id" value="{{id}}">
-    <label class="text-xs block" for="f-title">título</label>
-    <input id="f-title" name="title" value="{{etitle}}" class="field w-full mb-2">
-    <label class="text-xs block" for="f-slug">slug (dejar en blanco para derivarlo del título)</label>
-    <input id="f-slug" name="slug" value="{{eslug}}" class="field w-full mb-2">
-    <label class="text-xs block" for="f-tags">etiquetas (separadas por comas: a-z 0-9 guiones)</label>
-    <input id="f-tags" name="tags" value="{{etags}}" class="field w-full mb-2">
-    <label class="text-xs block" for="f-md">markdown</label>
+    <label class="lbl" for="f-title">título</label>
+    <input id="f-title" name="title" value="{{etitle}}" maxlength="256" class="field w-full mb-2" autofocus>
+    <label class="lbl" for="f-slug">slug</label>
+    <small class="hint" id="h-slug">dejar en blanco para derivarlo del título</small>
+    <input id="f-slug" name="slug" value="{{eslug}}" maxlength="128" aria-describedby="h-slug" class="field w-full mb-2">
+    <label class="lbl" for="f-tags">etiquetas</label>
+    <small class="hint" id="h-tags">separadas por comas: a-z, 0-9, guiones</small>
+    <input id="f-tags" name="tags" value="{{etags}}" maxlength="256" aria-describedby="h-tags" class="field w-full mb-2">
+    <label class="lbl" for="f-md">markdown</label>
     <textarea id="f-md" name="md" rows="18" class="field w-full mb-3 font-mono text-sm">{{emd}}</textarea>
-    <button class="btn" type="submit" name="action" value="publish">Publicar</button>
-    <button class="btn" type="submit" name="action" value="draft">Guardar borrador</button>
-    <button class="btn" type="submit" name="action" value="preview" formaction="/admin/preview">Vista previa</button>
-    <a class="backlink text-sm ml-3" href="/admin">cancelar</a>
+    <div class="actions">
+      <button class="btn btn-primary" type="submit" name="action" value="publish">Publicar</button>
+      <button class="btn" type="submit" name="action" value="draft">Guardar borrador</button>
+      <button class="btn btn-quiet" type="submit" name="action" value="preview" formaction="/admin/preview">Vista previa</button>
+      <a class="backlink text-sm" href="/admin">cancelar</a>
+    </div>
   </form>
 </div>

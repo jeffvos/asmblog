@@ -53,6 +53,8 @@
 %define SOL_SOCKET      1
 %define SO_REUSEADDR    2
 %define SO_REUSEPORT    15
+%define IPPROTO_TCP     6
+%define TCP_NODELAY     1
 %define MSG_NOSIGNAL    0x4000      ; suppress SIGPIPE on send to closed peer
 
 %define PROT_NONE       0
@@ -63,6 +65,7 @@
 %define MAP_ANONYMOUS   0x20
 %define MAP_STACK       0x20000
 %define MADV_DONTNEED   4
+%define MADV_FREE       8
 
 %define CLOCK_MONOTONIC 1
 %define TFD_NONBLOCK    0x800

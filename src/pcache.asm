@@ -11,13 +11,28 @@
 ; A hit copies the rendered body into the connection's body region and
 ; hands it to finish_page, exactly as a handler would; the store read
 ; lock, template rendering and markdown/tag assembly are skipped. A miss
-; costs one crc32c over the key and one lock/compare.
+; costs one crc32c over the key and one key compare, no lock.
 ;
-; The table is small (PC_NSLOT direct-mapped slots, bodies up to
-; PC_BODYMAX) and shared by all workers under a futex lock; copies are
-; a few KB, so contention is negligible. Only responses that a shared
-; cache may hold are stored: the public cache modes, no extra headers
-; (nothing content-negotiated), and never anything marked no-store.
+; The table is PC_NSLOT direct-mapped slots (bodies up to PC_BODYMAX),
+; shared by all workers. Lookups take no lock: each slot carries a
+; sequence number that a store bumps to odd before touching the slot
+; and back to even after (a seqlock). A reader notes the sequence,
+; compares the key, copies the body and metadata out, then checks that
+; the sequence is still the same even value; anything else means a
+; store raced it and the copy is a miss (the page is rendered normally
+; and stored again). Stores are rare (one per miss), serialised by
+; pc_lock, so the hot path costs one crc32c and a memcmp/memcpy, with
+; no atomic instruction and no futex syscall. x86 keeps loads ordered
+; against loads and stores against stores, which is all the seqlock
+; needs; a torn body or length can only ever be seen by a reader that
+; then fails the sequence check (lengths are still clamped to the slot
+; size before copying, so a torn length cannot overrun anything).
+;
+; A shared table was kept over per-worker copies so that every worker
+; benefits from one render and memory stays at one table's worth.
+; Only responses that a shared cache may hold are stored: the public
+; cache modes, no extra headers (nothing content-negotiated), and never
+; anything marked no-store.
 
 BITS 64
 %include "src/sys.inc"
@@ -33,7 +48,7 @@ extern finish_page
 global pcache_lookup
 global pcache_store
 
-%define PC_NSLOT   16
+%define PC_NSLOT   64
 %define PC_KEYMAX  512
 %define PC_BODYMAX 65536
 
@@ -44,6 +59,7 @@ global pcache_store
 %define PS_CTL    24
 %define PS_LM     32            ; Last-Modified the page was rendered with
 %define PS_CACHE  40            ; byte: CACHE_* mode
+%define PS_SEQ    44            ; dword seqlock: odd while a store is in progress
 %define PS_KEY    48
 %define PS_BODY   (PS_KEY + PC_KEYMAX)
 %define PS_SIZE   (PS_BODY + PC_BODYMAX)
@@ -99,24 +115,27 @@ pc_slot:
 ; pcache_lookup(ctx) -> 1 if the response was served from the cache
 ; (finish_page has been called), 0 on a miss. Call after dyn_etag and
 ; only when the client does not already hold the page (CTX_INM = 0).
+; Lock-free: see the seqlock note at the top of the file.
 pcache_lookup:
     push r12
     push r13
     push r14
+    push r15
     push rbx
     sub rsp, PC_KEYMAX
     mov r12, rdi
     mov rsi, rsp
     call pc_key
     test rax, rax
-    jz .miss_nolock
+    jz .miss
     mov r13, rax
     mov rdi, rsp
     mov rsi, rax
     call pc_slot
     mov r14, rax
-    mov rdi, pc_lock
-    call wr_lock
+    mov r15d, [r14+PS_SEQ]      ; sequence before reading the slot
+    test r15d, 1
+    jnz .miss                   ; a store is in progress
     cmp [r14+PS_KEYL], r13
     jne .miss
     mov rdi, rsp
@@ -125,39 +144,36 @@ pcache_lookup:
     call mem_eq
     test eax, eax
     jz .miss
-    ; hit: the body goes where a handler would have rendered it
+    ; the body goes where a handler would have rendered it
     mov rbx, [r14+PS_BODYL]
+    cmp rbx, PC_BODYMAX         ; a torn length still stays in the slot
+    ja .miss
     lea rdi, [r12+CTX_OUT+CTX_BODY_OFF]
     lea rsi, [r14+PS_BODY]
     mov rdx, rbx
     call mem_copy
-    mov rax, [r14+PS_LM]
-    mov [r12+CTX_LM], rax
-    mov al, [r14+PS_CACHE]
-    mov [r12+CTX_CACHE], al
+    mov r13, [r14+PS_LM]        ; metadata staged in registers: nothing
+    movzx r10d, byte [r14+PS_CACHE] ; touches the ctx until the check
     mov rdx, [r14+PS_CT]
     mov rcx, [r14+PS_CTL]
-    mov [rsp], rdx              ; the key is no longer needed
-    mov [rsp+8], rcx
-    mov rdi, pc_lock
-    call wr_unlock
+    cmp r15d, [r14+PS_SEQ]      ; unchanged throughout: the copy is whole
+    jne .miss
+    mov [r12+CTX_LM], r13
+    mov [r12+CTX_CACHE], r10b
+    mov byte [r12+CTX_PCHIT], 1 ; finish_page: served from cache, no store
     mov rdi, r12
     mov rsi, rbx
-    mov rdx, [rsp]
-    mov rcx, [rsp+8]
     xor r8d, r8d
     xor r9d, r9d
     call finish_page
     mov eax, 1
     jmp .ret
 .miss:
-    mov rdi, pc_lock
-    call wr_unlock
-.miss_nolock:
     xor eax, eax
 .ret:
     add rsp, PC_KEYMAX
     pop rbx
+    pop r15
     pop r14
     pop r13
     pop r12
@@ -166,7 +182,10 @@ pcache_lookup:
 ; pcache_store(ctx, body_len, ctype_p, ctype_l, extra_l) — called by
 ; finish_page with the body rendered at CTX_OUT+CTX_BODY_OFF. Keeps the
 ; page when it is publicly cacheable, has no extra headers and fits.
+; A page that came out of the cache (CTX_PCHIT) is not written back.
 pcache_store:
+    cmp byte [rdi+CTX_PCHIT], 0
+    jne .hit
     test r8, r8
     jnz .skip
     cmp rsi, PC_BODYMAX
@@ -201,8 +220,8 @@ pcache_store:
     mov rbp, rax                ; slot
     mov rdi, pc_lock
     call wr_lock
-    cmp [rbp+PS_KEYL], rbx      ; already holding this page (a hit that
-    jne .write                  ; just went through finish_page)?
+    cmp [rbp+PS_KEYL], rbx      ; another worker stored this very page
+    jne .write                  ; meanwhile? leave it (and its readers)
     mov rdi, rsp
     lea rsi, [rbp+PS_KEY]
     mov rdx, rbx
@@ -210,7 +229,8 @@ pcache_store:
     test eax, eax
     jnz .unlock
 .write:
-    mov qword [rbp+PS_KEYL], 0  ; never a half-written entry with a key
+    lock inc dword [rbp+PS_SEQ] ; odd: readers back off
+    mov qword [rbp+PS_KEYL], 0
     lea rdi, [rbp+PS_KEY]
     mov rsi, rsp
     mov rdx, rbx
@@ -227,6 +247,7 @@ pcache_store:
     mov al, [r12+CTX_CACHE]
     mov [rbp+PS_CACHE], al
     mov [rbp+PS_KEYL], rbx
+    lock inc dword [rbp+PS_SEQ] ; even again: the slot is whole
 .unlock:
     mov rdi, pc_lock
     call wr_unlock
@@ -239,6 +260,9 @@ pcache_store:
     pop r13
     pop r12
 .skip:
+    ret
+.hit:
+    mov byte [rdi+CTX_PCHIT], 0 ; consumed: the next request starts clean
     ret
 
 section .bss

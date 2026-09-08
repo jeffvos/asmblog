@@ -3,11 +3,19 @@
 
 Every theme keeps its palette in custom properties on its `.theme-<x>`
 scope (and redefines some of them under a prefers-color-scheme media
-query). This script resolves those variables for both colour schemes
-and checks the pairs that carry small text -- bylines, excerpts,
-footers, navigation -- against WCAG AA (4.5:1). It also refuses any
-`.meta`/`.byline`/`.footer`/`.navlink` rule that sets a font-size
-below the shared floor.
+query). This script resolves those variables -- following var()
+references -- for both colour schemes and checks:
+
+  * the pairs that carry small public text (bylines, excerpts, footers,
+    navigation) against WCAG AA (4.5:1);
+  * the admin tokens (--a-*) every theme must define, against the
+    admin card (--a-panel): error/delete text, the draft badge, links,
+    help text and the secondary button's text at 4.5:1; button text on
+    the button fills and field text on the field background at 4.5:1;
+    the focus ring and the field border against the card at 3:1
+    (the non-text minimum);
+  * any `.meta`/`.byline`/`.footer`/`.navlink` rule that sets a
+    font-size below the shared floor.
 
 Runs from `make test`; exit status 1 on any failure.
 """
@@ -16,7 +24,11 @@ import sys
 
 CSS = "assets/input.css"
 MIN_RATIO = 4.5
+MIN_UI_RATIO = 3.0             # non-text contrast (WCAG 1.4.11)
 MIN_META_REM = 0.8125          # 13px at the browser default
+
+THEMES = ["retro", "sucre", "medellin", "bogota", "lapaz",
+          "cochabamba", "santacruz", "pittsburgh"]
 
 # (theme, foreground var, background var, base var for translucent bg)
 PAIRS = [
@@ -36,6 +48,21 @@ PAIRS = [
     ("pittsburgh", "--pg-soft",  "--pg-plate", None),
 ]
 
+# admin tokens: small text on the admin card
+ADMIN_TEXT = ["--a-danger", "--a-draft", "--a-link", "--a-hint", "--a-accent"]
+# admin tokens: text on a fill (foreground, background)
+ADMIN_FILL = [("--a-accent-ink", "--a-accent"),
+              ("--a-danger-ink", "--a-danger"),
+              ("--a-field-ink",  "--a-field-bg")]
+# admin tokens: non-text against the card
+ADMIN_UI = ["--a-focus", "--a-field-line"]
+# the card(s) the admin tokens are checked against; Pittsburgh's plate
+# is a gradient between two greys, so both ends count
+ADMIN_PANELS = {t: ["--a-panel"] for t in THEMES}
+ADMIN_PANELS["pittsburgh"] = ["--pg-plate", "--pg-plate2"]
+# what a translucent card composites over
+PAGE_BASE = {"santacruz": "--sc-sand"}
+
 
 def parse_color(s):
     s = s.strip()
@@ -54,6 +81,17 @@ def parse_color(s):
         a = float(parts[3]) if len(parts) > 3 else 1.0
         return rgb + (a,)
     raise ValueError("unparsed colour: %r" % s)
+
+
+def resolve(vars_, name, depth=0):
+    """The colour a custom property resolves to, following var() links."""
+    if depth > 16:
+        raise ValueError("var() cycle at %s" % name)
+    v = vars_[name]
+    m = re.fullmatch(r"var\((--[a-z0-9-]+)\)", v.strip())
+    if m:
+        return resolve(vars_, m.group(1), depth + 1)
+    return parse_color(v)
 
 
 def composite(fg, bg):
@@ -138,22 +176,63 @@ def main():
                     sizes.append((tsel, rem))
 
     failures = 0
+
+    def report(ok, theme, scheme, fg, bg, r, floor):
+        print("%s %-10s %-5s %-14s on %-12s %5.2f:1 (min %.1f)" % (
+            "ok  " if ok else "FAIL", theme, scheme, fg, bg, r, floor))
+        return 0 if ok else 1
+
+    def solid(vars_, theme, name, under=()):
+        """The var as an opaque colour: a translucent value composites
+        over the first of `under` that exists (then the page base)."""
+        c = resolve(vars_, name)
+        if c[3] < 1.0:
+            for u in list(under) + [PAGE_BASE.get(theme)]:
+                if u and u in vars_ and u != name:
+                    return composite(c, solid(vars_, theme, u))
+            raise ValueError("translucent %s with nothing beneath it" % name)
+        return c
+
+    # public text pairs
     for theme, fg, bg, base in PAIRS:
         for scheme in ("light", "dark"):
             vars_ = dict(default.get(theme, {}))
             vars_.update(schemed.get((theme, scheme), {}))
             try:
-                fgc = parse_color(vars_[fg])
-                bgc = parse_color(vars_[bg])
+                fgc = resolve(vars_, fg)
+                bgc = resolve(vars_, bg)
                 if bgc[3] < 1.0:
-                    bgc = composite(bgc, parse_color(vars_[base]))
+                    bgc = composite(bgc, resolve(vars_, base))
             except KeyError as e:
                 print("skip %-10s %-5s %s: missing %s" % (theme, scheme, fg, e))
                 continue
             r = ratio(fgc, bgc)
-            ok = r >= MIN_RATIO
-            failures += not ok
-            print("%s %-10s %-5s %-12s on %-12s %5.2f:1" % ("ok  " if ok else "FAIL", theme, scheme, fg, bg, r))
+            failures += report(r >= MIN_RATIO, theme, scheme, fg, bg, r, MIN_RATIO)
+
+    # admin tokens: every theme, both schemes, no skipping
+    for theme in THEMES:
+        for scheme in ("light", "dark"):
+            vars_ = dict(default.get(theme, {}))
+            vars_.update(schemed.get((theme, scheme), {}))
+            checks = []         # (fg, bg, floor)
+            for panel in ADMIN_PANELS[theme]:
+                for fg in ADMIN_TEXT:
+                    checks.append((fg, panel, MIN_RATIO))
+                for fg in ADMIN_UI:
+                    checks.append((fg, panel, MIN_UI_RATIO))
+            for fg, bg in ADMIN_FILL:
+                checks.append((fg, bg, MIN_RATIO))
+            for fg, bg, floor in checks:
+                try:
+                    fgc = solid(vars_, theme, fg, under=("--a-panel",))
+                    bgc = solid(vars_, theme, bg, under=("--a-panel",))
+                except (KeyError, ValueError) as e:
+                    print("FAIL %-10s %-5s %-14s on %-12s missing/unresolved: %s" % (theme, scheme, fg, bg, e))
+                    failures += 1
+                    continue
+                r = ratio(fgc, bgc)
+                failures += report(r >= floor, theme, scheme, fg, bg, r, floor)
+
     for sel, rem in sizes:
         ok = rem >= MIN_META_REM - 1e-9
         failures += not ok

@@ -320,6 +320,48 @@ admin_route:
     jne .method405
     cmp qword [rsp+A_SESS], -1
     je .to_login
+    ; a save/delete redirects here with ?saved=1 (&c.): render the notice.
+    ; http.asm hands us the bare path; the query is still on the target.
+    mov rsi, [r12+CTX_TGT_P]
+    mov rcx, [r12+CTX_TGT_L]
+.qscan:
+    test rcx, rcx
+    jz .noflag
+    cmp byte [rsi], '?'
+    je .qhit
+    inc rsi
+    dec rcx
+    jmp .qscan
+.qhit:
+    inc rsi
+    dec rcx                     ; rsi/rcx = the query string
+    xor ebx, ebx
+.qflag:
+    cmp ebx, Q_FLAGS_N
+    jae .noflag
+    lea rax, [rbx+rbx*2]
+    lea r13, [q_flags + rax*8]  ; {ptr, len, string id}
+    cmp rcx, [r13+8]
+    jne .qnext
+    push rsi
+    push rcx
+    mov rdi, rsi
+    mov rsi, [r13]
+    mov rdx, rcx
+    call mem_eq
+    pop rcx
+    pop rsi
+    test eax, eax
+    jz .qnext
+    mov edi, [r13+16]
+    call i18n_get
+    mov [rsp+A_VALS+V_NOTICE*16], rax
+    mov [rsp+A_VALS+V_NOTICE*16+8], rdx
+    jmp .noflag
+.qnext:
+    inc ebx
+    jmp .qflag
+.noflag:
     mov rdi, store_lock
     call rd_lock
     lea rdi, [rsp+A_RW]
@@ -603,7 +645,7 @@ admin_route:
     call store_delete_post
     test rax, rax
     jnz .notfound
-    jmp .to_admin
+    jmp .to_deleted
 
 ; ---- save ---------------------------------------------------------------
 .do_save:
@@ -741,7 +783,9 @@ admin_route:
     call store_append_post
     test rax, rax
     js .sv_efail
-    jmp .to_admin
+    test qword [rsp+A_SPEC+S_FLAGS], FLAG_PUBLISHED
+    jz .to_draft
+    jmp .to_saved
 .sv_etitle:
     mov edi, S_E_TITLE
     call i18n_get
@@ -918,7 +962,7 @@ admin_route:
     call store_save_settings
     test rax, rax
     jnz .st_err
-    jmp .to_admin
+    jmp .to_settings
 .st_epw:
     mov edi, S_E_PW
     call i18n_get
@@ -961,6 +1005,9 @@ admin_route:
     jmp .done
 
 ; ---- preview -------------------------------------------------------------
+; The rendered draft is placed above a re-rendered editor whose fields
+; hold the submitted values ({{html}} in admin_edit.html), so there is
+; a way back to editing without a script and without losing the text.
 .do_preview:
     call parse_body
     test rax, rax
@@ -968,6 +1015,10 @@ admin_route:
     call csrf_check
     test eax, eax
     jz .badreq
+    mov rdi, [rsp+A_FLD+FI_ID*16]
+    mov rsi, [rsp+A_FLD+FI_ID*16+8]
+    call parse_dec
+    mov [rsp+A_ID], rax         ; 0 = new post
     cmp qword [rsp+A_FLD+FI_MD*16+8], MD_MAX
     ja .sv_emd
     lea rdi, [rsp+A_RW]
@@ -975,9 +1026,40 @@ admin_route:
     lea rdx, [r12+CTX_OUT+CTX_MDHTML_END]
     call w_init
     lea rdi, [rsp+A_RW]
+    mov rsi, pv_open            ; <section class="card admin preview"><p class="meta">
+    mov edx, pv_open_len
+    call emit
+    mov edi, S_PREVDATE
+    call i18n_get
+    lea rdi, [rsp+A_RW]
+    mov rsi, rax
+    call emit
+    lea rdi, [rsp+A_RW]
+    mov rsi, pv_h2              ; </p><h2 ...>
+    mov edx, pv_h2_len
+    call emit
+    mov rsi, [rsp+A_FLD+FI_TITLE*16]
+    mov rdx, [rsp+A_FLD+FI_TITLE*16+8]
+    test rdx, rdx
+    jnz .pv_title
+    mov edi, S_T_PREVIEW
+    call i18n_get
+    mov rsi, rax
+.pv_title:
+    lea rdi, [rsp+A_RW]
+    call emit_esc
+    lea rdi, [rsp+A_RW]
+    mov rsi, pv_body            ; </h2><div class="content ...">
+    mov edx, pv_body_len
+    call emit
+    lea rdi, [rsp+A_RW]
     mov rsi, [rsp+A_FLD+FI_MD*16]
     mov rdx, [rsp+A_FLD+FI_MD*16+8]
     call md_render
+    lea rdi, [rsp+A_RW]
+    mov rsi, pv_close           ; </div></section>
+    mov edx, pv_close_len
+    call emit
     lea rdi, [rsp+A_RW]
     call w_ovf
     test eax, eax
@@ -987,26 +1069,9 @@ admin_route:
     mov rcx, [rsp+A_RW]
     sub rcx, rax
     mov [rsp+A_VALS+V_HTML*16+8], rcx
-    mov rax, [rsp+A_FLD+FI_TITLE*16]
-    mov rcx, [rsp+A_FLD+FI_TITLE*16+8]
-    test rcx, rcx
-    jnz .pv_title
-    mov edi, S_T_PREVIEW
-    call i18n_get
-    mov rcx, rdx
-.pv_title:
-    mov [rsp+A_VALS+V_TITLE*16], rax
-    mov [rsp+A_VALS+V_TITLE*16+8], rcx
-    mov edi, S_PREVDATE
-    call i18n_get
-    mov [rsp+A_VALS+V_DATE*16], rax
-    mov [rsp+A_VALS+V_DATE*16+8], rdx
-    mov rdi, r12
-    lea rsi, [rsp+A_VALS]
-    mov edx, T_POST
+    xor eax, eax                ; no error: the editor, fields repopulated
     xor ecx, ecx
-    call admin_render
-    jmp .done
+    jmp .save_err
 
 ; ---- shared exits ---------------------------------------------------------
 .to_login:
@@ -1017,10 +1082,27 @@ admin_route:
     xor r8d, r8d
     call finish_redirect
     jmp .done
+.to_saved:
+    mov rsi, a_loc_saved
+    mov edx, a_loc_saved_len
+    jmp .redir
+.to_draft:
+    mov rsi, a_loc_draft
+    mov edx, a_loc_draft_len
+    jmp .redir
+.to_deleted:
+    mov rsi, a_loc_deleted
+    mov edx, a_loc_deleted_len
+    jmp .redir
+.to_settings:
+    mov rsi, a_loc_settings
+    mov edx, a_loc_settings_len
+    jmp .redir
 .to_admin:
-    mov rdi, r12
     mov rsi, a_loc_admin
     mov edx, a_loc_admin_len
+.redir:
+    mov rdi, r12
     xor ecx, ecx
     xor r8d, r8d
     call finish_redirect
@@ -1542,6 +1624,27 @@ a_checked_len equ $-a_checked
 
 a_loc_admin: db '/admin'
 a_loc_admin_len equ $-a_loc_admin
+a_loc_saved: db '/admin?saved=1'
+a_loc_saved_len equ $-a_loc_saved
+a_loc_draft: db '/admin?draft=1'
+a_loc_draft_len equ $-a_loc_draft
+a_loc_deleted: db '/admin?deleted=1'
+a_loc_deleted_len equ $-a_loc_deleted
+a_loc_settings: db '/admin?settings=1'
+a_loc_settings_len equ $-a_loc_settings
+
+; dashboard flags: the query a redirect carries -> the notice to render
+q_saved:    db 'saved=1'
+q_draft:    db 'draft=1'
+q_deleted:  db 'deleted=1'
+q_settings: db 'settings=1'
+align 8
+q_flags:                        ; {ptr, len, S_* id}
+    dq q_saved, 7, S_N_SAVED
+    dq q_draft, 7, S_N_DRAFT
+    dq q_deleted, 9, S_N_DELETED
+    dq q_settings, 10, S_N_SETTINGS
+Q_FLAGS_N equ 4
 a_loc_login: db '/admin/login'
 a_loc_login_len equ $-a_loc_login
 a_loc_root: db '/'
@@ -1554,7 +1657,7 @@ a_ck2_len equ $-a_ck2
 a_ckclear: db 'sid=0; Path=/; Max-Age=0'
 a_ckclear_len equ $-a_ckclear
 
-a_303: db 'HTTP/1.1 303 See Other', 13, 10, 'Server: blogd/0.10', 13, 10
+a_303: db 'HTTP/1.1 303 See Other', 13, 10, 'Server: blogd/0.11', 13, 10
 a_303_len equ $-a_303
 a_ka: db 'Connection: keep-alive', 13, 10
 a_ka_len equ $-a_ka
@@ -1612,7 +1715,7 @@ r_tr2: db '">'
 r_tr2_len equ $-r_tr2
 r_tr3: db '</a></td><td class="meta">'
 r_tr3_len equ $-r_tr3
-r_tr4: db '</td><td>'
+r_tr4: db '</td><td class="state">'
 r_tr4_len equ $-r_tr4
 r_tr5: db '</td><td><a class="dellink" href="/admin/delete/'
 r_tr5_len equ $-r_tr5
@@ -1620,5 +1723,15 @@ r_tr6a: db '">'
 r_tr6a_len equ $-r_tr6a
 r_tr6b: db '</a></td></tr>'
 r_tr6b_len equ $-r_tr6b
+
+; preview: the rendered draft, wrapped as a card above the editor
+pv_open: db '<section class="card admin preview"><p class="meta">'
+pv_open_len equ $-pv_open
+pv_h2: db '</p><h2 class="article-title text-xl mt-0 mb-2">'
+pv_h2_len equ $-pv_h2
+pv_body: db '</h2><div class="content text-[15px]">'
+pv_body_len equ $-pv_body
+pv_close: db '</div></section>'
+pv_close_len equ $-pv_close
 
 section .note.GNU-stack noalloc noexec nowrite progbits

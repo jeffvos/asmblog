@@ -161,6 +161,13 @@ month_es:
     dq ms9, ms9_len, ms10, ms10_len, ms11, ms11_len, ms12, ms12_len
 
 ; ---- string pairs: en first, then es ---------------------------------
+; error messages carry their own paragraph so the templates render nothing
+; when there is no error (V_ERR is a raw slot); braces group the parts
+%define ERR_O '<p class="error" role="alert">'
+%define ERR_C '</p>'
+%define NOTE_O '<div class="notice" role="status">'
+%define NOTE_C '</div>'
+
 %macro STR 3                    ; label, en, es
 %1_en: db %2
 %1_en_len equ $-%1_en
@@ -183,34 +190,40 @@ STR empty,      '<div class="notice">nothing here yet. check back soon!</div>', 
                 '<div class="notice">todavía no hay nada por aquí. ¡vuelve pronto!</div>'
 STR newer,      '&larr; newer',    '&larr; más recientes'
 STR older,      'older &rarr;',    'más antiguas &rarr;'
-STR pub,        'published',       'publicada'
-STR draft,      '<span class="draft">draft</span>', '<span class="draft">borrador</span>'
+STR pub,        '<span class="status pub">published</span>', '<span class="status pub">publicada</span>'
+STR draft,      '<span class="status draft">draft</span>', '<span class="status draft">borrador</span>'
 STR dellink,    'delete',          'eliminar'
-STR e_wrong,    'wrong password.', 'contraseña incorrecta.'
-STR e_wait,     'too many attempts - wait a moment and try again.', \
-                'demasiados intentos: espera un momento y vuelve a intentarlo.'
-STR e_nopw,     'no admin password set. run: blogd init', \
-                'no hay contraseña de administrador. ejecuta: blogd init'
-STR e_title,    'title is required (1-256 characters).', \
-                'el título es obligatorio (1-256 caracteres).'
-STR e_slug,     'slug must be 1-128 chars of a-z, 0-9, dashes.', \
-                'el slug debe tener 1-128 caracteres: a-z, 0-9, guiones.'
-STR e_slugdup,  'that slug is already used by another post.', \
-                'ese slug ya lo usa otra entrada.'
-STR e_tags,     'tags too long (max 256 chars).', \
-                'etiquetas demasiado largas (máx. 256 caracteres).'
-STR e_md,       'markdown too large (max 32 KB).', \
-                'markdown demasiado grande (máx. 32 KB).'
-STR e_save,     'store write failed.', 'error al escribir en el almacén.'
-STR e_set,      'check the fields: title 1-120 chars, posts per page 1-50.', \
-                'revisa los campos: título 1-120 caracteres, entradas por página 1-50.'
-STR e_pw,       'passwords must match and be at least 8 characters.', \
-                'las contraseñas deben coincidir y tener al menos 8 caracteres.'
+STR e_wrong, {ERR_O, 'wrong password.', ERR_C}, \
+                {ERR_O, 'contraseña incorrecta.', ERR_C}
+STR e_wait, {ERR_O, 'too many attempts - wait a moment and try again.', ERR_C}, \
+                {ERR_O, 'demasiados intentos: espera un momento y vuelve a intentarlo.', ERR_C}
+STR e_nopw, {ERR_O, 'no admin password set. run: blogd init', ERR_C}, \
+                {ERR_O, 'no hay contraseña de administrador. ejecuta: blogd init', ERR_C}
+STR e_title, {ERR_O, 'title is required (1-256 characters).', ERR_C}, \
+                {ERR_O, 'el título es obligatorio (1-256 caracteres).', ERR_C}
+STR e_slug, {ERR_O, 'slug must be 1-128 chars of a-z, 0-9, dashes.', ERR_C}, \
+                {ERR_O, 'el slug debe tener 1-128 caracteres: a-z, 0-9, guiones.', ERR_C}
+STR e_slugdup, {ERR_O, 'that slug is already used by another post.', ERR_C}, \
+                {ERR_O, 'ese slug ya lo usa otra entrada.', ERR_C}
+STR e_tags, {ERR_O, 'tags too long (max 256 chars).', ERR_C}, \
+                {ERR_O, 'etiquetas demasiado largas (máx. 256 caracteres).', ERR_C}
+STR e_md, {ERR_O, 'markdown too large (max 32 KB).', ERR_C}, \
+                {ERR_O, 'markdown demasiado grande (máx. 32 KB).', ERR_C}
+STR e_save, {ERR_O, 'store write failed.', ERR_C}, \
+                {ERR_O, 'error al escribir en el almacén.', ERR_C}
+STR e_set, {ERR_O, 'check the fields: title 1-120 chars, posts per page 1-50.', ERR_C}, \
+                {ERR_O, 'revisa los campos: título 1-120 caracteres, entradas por página 1-50.', ERR_C}
+STR e_pw, {ERR_O, 'passwords must match and be at least 8 characters.', ERR_C}, \
+                {ERR_O, 'las contraseñas deben coincidir y tener al menos 8 caracteres.', ERR_C}
 STR d_home,     'Latest posts from ', 'Últimas entradas de '
 STR d_tag,      'Posts tagged #',   'Entradas con la etiqueta #'
 STR d_on,       ' on ',             ' en '
 STR t_page,     ' · page ',         ' · página '
 STR t_searchq,  'search: ',         'búsqueda: '
+STR n_saved,    {NOTE_O, 'post published.', NOTE_C}, {NOTE_O, 'entrada publicada.', NOTE_C}
+STR n_draft,    {NOTE_O, 'draft saved.', NOTE_C}, {NOTE_O, 'borrador guardado.', NOTE_C}
+STR n_deleted,  {NOTE_O, 'post deleted.', NOTE_C}, {NOTE_O, 'entrada eliminada.', NOTE_C}
+STR n_settings, {NOTE_O, 'settings saved.', NOTE_C}, {NOTE_O, 'configuración guardada.', NOTE_C}
 
 %macro ROW 1
     dq %1_en, %1_en_len, %1_es, %1_es_len
@@ -251,5 +264,9 @@ i18n_tbl:                       ; indexed by S_* id (order must match i18n.inc)
     ROW d_on
     ROW t_page
     ROW t_searchq
+    ROW n_saved
+    ROW n_draft
+    ROW n_deleted
+    ROW n_settings
 
 section .note.GNU-stack noalloc noexec nowrite progbits

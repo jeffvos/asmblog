@@ -147,7 +147,7 @@ _start:
     mov [idle_secs], rax
 .idle_done:
 
-    ; "blogd 0.10 listening on http://127.0.0.1:P (threads: N)\n"
+    ; "blogd 0.11 listening on http://127.0.0.1:P (threads: N)\n"
     mov rdi, banner_buf
     mov rsi, [bind_msg]
     mov rdx, [bind_msg_len]
@@ -324,9 +324,9 @@ getenv_value:
 
 section .data
 
-msg_listen: db 'blogd 0.10 listening on http://127.0.0.1:'
+msg_listen: db 'blogd 0.11 listening on http://127.0.0.1:'
 msg_listen_len equ $-msg_listen
-msg_listen_all: db 'blogd 0.10 listening on http://0.0.0.0:'
+msg_listen_all: db 'blogd 0.11 listening on http://0.0.0.0:'
 msg_listen_all_len equ $-msg_listen_all
 env_bindall: db 'BLOGD_BIND_ALL', 0
 msg_thr: db ' (threads: '

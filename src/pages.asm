@@ -33,7 +33,7 @@ extern store_mtime
 extern crc32c
 extern put_hex
 extern fmt_httpdate
-extern emit_date_hdr
+extern emit_date_hdr_at
 extern inm_check
 extern mem_find
 extern w_init
@@ -73,6 +73,7 @@ global finish_page
 global finish_304
 global shell_vals
 global theme_class
+global css_ver
 global theme_from_value
 
 ; ---- page_list frame (offsets derive from NVALS so the registry can
@@ -89,7 +90,6 @@ global theme_from_value
 %define L_TOTAL   (L_VALS + NVALS*16)
 %define L_PPP     (L_TOTAL + 8)
 %define L_START   (L_TOTAL + 16)
-%define L_MIDX    (L_TOTAL + 24)
 %define L_EMIT    (L_TOTAL + 32)
 %define L_NPAGES  (L_TOTAL + 40)
 %define L_URL     (L_TOTAL + 48) ; 160
@@ -100,7 +100,8 @@ global theme_from_value
 %define L_NUM     (L_HEAD + 256) ; 32
 %define L_EXC     (L_NUM + 32)   ; 192 (excerpt cap 180)
 %define L_TITLE   (L_EXC + 192)  ; 256 (composed page title)
-%define L_FRAME   ((L_TITLE + 256 + 15) & -16)
+%define L_MATCH   (L_TITLE + 256) ; MAX_POSTS words: indices of matching posts
+%define L_FRAME   ((L_MATCH + MAX_POSTS*2 + 15) & -16)
 
 ; EMITS literal[, writer-reg] — emit a .data literal (label + _len)
 %macro EMITS 1-2 r12
@@ -152,7 +153,10 @@ page_list:
 .pppok:
     mov [rsp+L_PPP], rax
 
-    ; pass 1: count matches
+    ; the one filter pass: collect the index of every matching post
+    ; (posts_arr is newest first, so the list is too); the page is
+    ; then a slice of that list rather than a second scan, and a
+    ; search query is matched once per post instead of twice
     xor ebx, ebx
     xor r13d, r13d
 .count:
@@ -167,6 +171,7 @@ page_list:
     call match_post
     test eax, eax
     jz .cnext
+    mov [rsp+L_MATCH+rbx*2], r13w
     inc rbx
 .cnext:
     inc r13
@@ -244,30 +249,18 @@ page_list:
     call tmpl_render
 .no_head:
 
-    ; pass 2: render the page's slice
-    xor r13d, r13d
-    mov qword [rsp+L_MIDX], 0
+    ; render the page's slice of the match list
+    mov r13, [rsp+L_START]
     mov qword [rsp+L_EMIT], 0
 .loop:
-    cmp r13, [posts_cnt]
+    cmp r13, [rsp+L_TOTAL]
     jae .after
     mov rax, [rsp+L_EMIT]
     cmp rax, [rsp+L_PPP]
     jae .after
-    mov rax, [posts_arr]
-    mov r14, [rax+r13*8]
-    mov rdi, r14
-    mov rsi, [rsp+L_TAGP]
-    mov rdx, [rsp+L_TAGL]
-    mov rcx, [rsp+L_QP]
-    mov r8, [rsp+L_QL]
-    call match_post
-    test eax, eax
-    jz .next
-    mov rax, [rsp+L_MIDX]
-    inc qword [rsp+L_MIDX]
-    cmp rax, [rsp+L_START]
-    jb .next
+    movzx eax, word [rsp+L_MATCH+r13*2]
+    mov rcx, [posts_arr]
+    mov r14, [rcx+rax*8]
     ; title
     mov rax, [r14+P_TITLE_P]
     mov [rsp+L_VALS+V_TITLE*16], rax
@@ -2667,7 +2660,8 @@ finish_page:
     mov edx, s_server_len
     call mem_copy
     mov rdi, rax
-    call emit_date_hdr
+    mov rsi, [r12+CTX_LAST]     ; the worker's clock: no time() here
+    call emit_date_hdr_at
     mov rdi, rax
     mov rsi, sec_headers
     mov edx, sec_headers_len
@@ -2773,7 +2767,8 @@ finish_304:
     mov edx, s_server_len
     call mem_copy
     mov rdi, rax
-    call emit_date_hdr
+    mov rsi, [r12+CTX_LAST]     ; the worker's clock: no time() here
+    call emit_date_hdr_at
     cmp byte [r12+CTX_KEEP], 0
     je .cl
     mov rsi, s_ka
@@ -3008,7 +3003,7 @@ a_head2c: db '/feed.xml"/>', 10, '<id>tag:blogd:feed</id><updated>'
 a_head2c_len equ $-a_head2c
 a_head3: db '</updated>', 10, '<author><name>'
 a_head3_len equ $-a_head3
-a_head3b: db '</name></author><generator>blogd 0.10</generator>', 10
+a_head3b: db '</name></author><generator>blogd 0.11</generator>', 10
 a_head3b_len equ $-a_head3b
 a_icon: db '<icon>'
 a_icon_len equ $-a_icon
@@ -3049,7 +3044,7 @@ s_200: db 'HTTP/1.1 200 OK', 13, 10
 s_200_len equ $-s_200
 s_304: db 'HTTP/1.1 304 Not Modified', 13, 10
 s_304_len equ $-s_304
-s_server: db 'Server: blogd/0.10', 13, 10
+s_server: db 'Server: blogd/0.11', 13, 10
 s_server_len equ $-s_server
 s_ka: db 'Connection: keep-alive', 13, 10
 s_ka_len equ $-s_ka

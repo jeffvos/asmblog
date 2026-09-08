@@ -4,9 +4,19 @@
 ; mmap'd stack with a PROT_NONE guard page at the low end, so stack
 ; overflow faults instead of silently corrupting a neighbour.
 ;
-; The rwlock is a single 32-bit word: 0 free, >0 reader count, -1 writer.
-; Readers and writers sleep on the same futex. It is deliberately naive
-; (thundering herd on wake); the store in milestone 3 is its first user.
+; The rwlock is a single 32-bit word (callers reserve one dword):
+;   bit 31 (RW_WRITER)  a writer holds it
+;   bit 30 (RW_WAIT)    at least one thread has gone, or is going, to
+;                       sleep on the futex since the last wake
+;   bits 0-29           reader count
+; Every waiter sets RW_WAIT (with cmpxchg, so it sleeps only if the word
+; still holds what it saw) before FUTEX_WAIT; an unlock issues FUTEX_WAKE
+; only when the value it replaced carried RW_WAIT. The uncontended path
+; is therefore one locked instruction each way and no syscall at all.
+; Wakes are still all-or-nothing (thundering herd, everyone re-races)
+; and there is no writer preference: readers keep taking the lock while
+; a writer sleeps, exactly as before. The store is the main user; the
+; page cache and the session table share the implementation.
 
 BITS 64
 %include "src/sys.inc"
@@ -106,10 +116,37 @@ thread_spawn:
 
 ; ---- futex rwlock ----------------------------------------------------
 
+%define RW_WRITER 0x80000000
+%define RW_WAIT   0x40000000
+
 ; rwlock_init(lock)
 rwlock_init:
     mov dword [rdi], 0
     ret
+
+; RW_SLEEP retry — eax = the contended value just observed, rdi = lock.
+; Publish RW_WAIT on exactly that value, sleep while the word still
+; holds it, then jump back to the caller's retry loop.
+%macro RW_SLEEP 1               ; %1 = retry label
+    mov ecx, eax
+    or ecx, RW_WAIT
+    lock cmpxchg [rdi], ecx     ; someone changed it meanwhile: re-read
+    jnz %1
+    mov esi, FUTEX_WAIT_PRIVATE
+    mov edx, ecx                ; sleep only if the word is still ecx
+    xor r10d, r10d
+    mov eax, SYS_futex
+    syscall                     ; rdi survives the syscall
+    jmp %1
+%endmacro
+
+; RW_WAKE — FUTEX_WAKE everyone sleeping on the word at rdi.
+%macro RW_WAKE 0
+    mov esi, FUTEX_WAKE_PRIVATE
+    mov edx, 0x7fffffff         ; wake everyone; they re-race
+    mov eax, SYS_futex
+    syscall
+%endmacro
 
 ; rd_lock(lock)
 rd_lock:
@@ -118,53 +155,52 @@ rd_lock:
     test eax, eax
     js .wait                    ; writer holds it
     lea ecx, [eax+1]
+    cmp eax, RW_WAIT            ; no readers and a leftover wait bit: at
+    jne .cas                    ; this point no one can be asleep on it
+    mov ecx, 1                  ; (see rd_unlock), so start clean
+.cas:
     lock cmpxchg [rdi], ecx
     jnz .retry
     ret
 .wait:
-    mov esi, FUTEX_WAIT_PRIVATE
-    mov edx, eax                ; sleep only if value still what we saw
-    xor r10d, r10d
-    mov eax, SYS_futex
-    syscall
-    jmp .retry
+    RW_SLEEP .retry
 
 ; rd_unlock(lock)
+; The last reader leaves the word at RW_WAIT (not 0) when a writer is
+; asleep, and wakes it; the writer's cmpxchg accepts either value.
+; Nobody ever sleeps on a word that is exactly RW_WAIT (readers sleep
+; on RW_WRITER, writers on a non-zero count), so a stale RW_WAIT can be
+; cleared by whoever acquires next without losing a wakeup.
 rd_unlock:
     mov eax, -1
-    lock xadd [rdi], eax        ; eax = previous count
-    cmp eax, 1
+    lock xadd [rdi], eax        ; eax = previous value
+    cmp eax, RW_WAIT | 1        ; last reader out with a sleeping writer
     jne .done
-    mov esi, FUTEX_WAKE_PRIVATE ; last reader out: a writer may be waiting
-    mov edx, 1
-    mov eax, SYS_futex
-    syscall
+    RW_WAKE
 .done:
     ret
 
 ; wr_lock(lock)
 wr_lock:
 .retry:
-    xor eax, eax
-    mov ecx, -1
+    mov eax, [rdi]
+    test eax, ~RW_WAIT & 0xffffffff ; any reader or writer at all?
+    jnz .wait
+    mov ecx, RW_WRITER          ; from 0 or a stale RW_WAIT: take it clean
     lock cmpxchg [rdi], ecx
-    jz .done
-    mov esi, FUTEX_WAIT_PRIVATE
-    mov edx, eax                ; the contended value we observed
-    xor r10d, r10d
-    mov eax, SYS_futex
-    syscall
-    jmp .retry
-.done:
+    jnz .retry
     ret
+.wait:
+    RW_SLEEP .retry
 
 ; wr_unlock(lock)
 wr_unlock:
-    mov dword [rdi], 0
-    mov esi, FUTEX_WAKE_PRIVATE
-    mov edx, 0x7fffffff         ; wake everyone; they re-race
-    mov eax, SYS_futex
-    syscall
+    xor eax, eax
+    xchg [rdi], eax             ; implicitly locked; eax = previous value
+    test eax, RW_WAIT
+    jz .done
+    RW_WAKE
+.done:
     ret
 
 section .note.GNU-stack noalloc noexec nowrite progbits

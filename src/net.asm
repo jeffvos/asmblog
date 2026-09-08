@@ -7,8 +7,10 @@
 ; contexts live and die within one worker.
 ;
 ; epoll data field: 0 = the listener, 1 = the idle-sweep timer,
-; otherwise a ctx pointer. Level-triggered; reads and writes always run
-; to EAGAIN.
+; otherwise a ctx pointer. Level-triggered: writes run to EAGAIN; a
+; read that comes back short has drained the socket, so parsing starts
+; right away instead of paying for one more read() that says EAGAIN.
+; Anything left over (or arriving later) re-triggers the loop.
 ;
 ; Idle connections: every context carries the time of its last event
 ; and sits on the worker's active list. A periodic timerfd wakes the
@@ -83,6 +85,13 @@ worker_main:
     mov edx, SO_REUSEPORT
     mov r10, one_dw
     mov r8d, 4
+    mov eax, SYS_setsockopt
+    syscall
+    mov rdi, [r12+WS_LFD]       ; TCP_NODELAY: accepted sockets inherit
+    mov esi, IPPROTO_TCP        ; it, so every response goes out in
+    mov edx, TCP_NODELAY        ; one go instead of waiting on Nagle
+    mov r10, one_dw             ; (before seccomp: setsockopt is not
+    mov r8d, 4                  ; in the allowlist)
     mov eax, SYS_setsockopt
     syscall
     mov rdi, [r12+WS_LFD]
@@ -218,6 +227,7 @@ worker_main:
     mov byte [rax+CTX_ARMED], 0
     mov byte [rax+CTX_GZIP], 0
     mov byte [rax+CTX_CONT], 0
+    mov byte [rax+CTX_PCHIT], 0
     mov dword [rax+CTX_NREQ], 0
     mov rcx, [r12+WS_NOW]       ; onto the active list, stamped now
     mov [rax+CTX_LAST], rcx
@@ -350,9 +360,12 @@ conn_put:
     ret
 
 ; conn_close(ws, ctx) — close(fd) drops the epoll registration too.
-; The context leaves the active list and gives its buffer pages back
+; The context leaves the active list and offers its buffer pages back
 ; to the kernel: a recycled context otherwise keeps every page it ever
 ; touched (up to the full 650 KB) resident for the life of the worker.
+; MADV_FREE rather than DONTNEED: the pages are reclaimed only under
+; memory pressure, so a context recycled straight away gets them back
+; without a fault-and-zero per page.
 conn_close:
     push rdi
     push rsi
@@ -375,7 +388,7 @@ conn_close:
     mov rdi, [rsp]              ; ctx: drop everything past the first
     add rdi, 4096               ; page (the header and freelist link)
     mov esi, CTX_TOTAL - 4096
-    mov edx, MADV_DONTNEED
+    mov edx, MADV_FREE
     mov eax, SYS_madvise
     syscall
     pop rsi
@@ -457,8 +470,9 @@ conn_event:
     call conn_close
     jmp .out
 
-; conn_read(ws, ctx) — read to EAGAIN, then answer every complete
-; request (head + declared body) sitting in the buffer.
+; conn_read(ws, ctx) — read until the socket is drained (a short read,
+; or EAGAIN after a full one), then answer every complete request
+; (head + declared body) sitting in the buffer.
 conn_read:
     push r12
     push r13
@@ -479,7 +493,9 @@ conn_read:
     je .close                   ; orderly shutdown from peer
     jl .rderr
     add [r13+CTX_IN_USED], rax
-    jmp .rd
+    cmp rax, rdx                ; short read: the socket is empty now
+    jb .parse                   ; (level-triggered epoll covers the rest)
+    jmp .rd                     ; filled what we asked for: maybe more
 .rderr:
     cmp rax, -EAGAIN
     je .parse

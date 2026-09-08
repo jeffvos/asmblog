@@ -35,3 +35,7 @@
 %define S_D_ON       30         ; " on "
 %define S_T_PAGE     31         ; " · page "
 %define S_T_SEARCHQ  32         ; "search: "
+%define S_N_SAVED    33         ; dashboard notices after a redirect
+%define S_N_DRAFT    34
+%define S_N_DELETED  35
+%define S_N_SETTINGS 36

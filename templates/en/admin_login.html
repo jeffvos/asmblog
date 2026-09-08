@@ -1,9 +1,11 @@
-<div class="card max-w-sm mx-auto">
+<div class="card admin max-w-sm mx-auto">
   <h1 class="article-title text-xl mt-0 mb-2">admin login</h1>
-  <p class="error text-xs mb-2">{{err}}</p>
+  {{err}}
   <form method="post" action="/admin/login">
-    <label class="text-xs block mb-1" for="pw">password</label>
-    <input id="pw" type="password" name="password" class="field w-full mb-3" autofocus>
-    <button class="btn" type="submit">Log in</button>
+    <label class="lbl" for="pw">password</label>
+    <input id="pw" type="password" name="password" class="field w-full mb-3" autocomplete="current-password" autofocus>
+    <div class="actions">
+      <button class="btn btn-primary" type="submit">Log in</button>
+    </div>
   </form>
 </div>
