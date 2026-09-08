@@ -144,3 +144,12 @@ def test_visitor_counter(ro_site):
     b = hits(ro_site)
     ro_site.head("/hits.svg")
     assert hits(ro_site) == b + 1          # HEAD peeks without counting
+
+
+def test_footer_badge_matches_the_server_version(ro_site):
+    """The version lives in several literals (Server header, banner, feed
+    generator, the shell templates' badge); a bump must move all of them."""
+    r = ro_site.get("/")
+    version = re.match(r"blogd/(\d+\.\d+)", r.headers["Server"]).group(1)
+    assert f">blogd {version}<" in r.text
+    assert f"<generator>blogd {version}</generator>" in ro_site.get("/feed.xml").text
