@@ -39,8 +39,12 @@ def test_upload_guards(admin, site, pics):
     assert 'enctype="multipart/form-data"' in lib and "1600 px" in lib
     with open(pics["big"], "rb") as f:
         assert site.post("/admin/media", data={"csrf": admin.csrf}, files={"file": f}).status_code == 303
-    with open(pics["huge"], "rb") as f:
-        assert site.post("/admin/media", data={"csrf": admin.csrf}, files={"file": f}).status_code == 413
+    # over 100 KB without a session: 413 as soon as the head is in, then the
+    # connection closes. A client still writing the body gets a reset before
+    # it can read the status (CI saw exactly that), so send only the head.
+    n = pics["huge"].stat().st_size
+    resp = site.raw(f"POST /admin/media HTTP/1.1\r\nHost: t\r\nContent-Length: {n}\r\n\r\n".encode(), read_all=False)
+    assert resp.startswith(b"HTTP/1.1 413")
     with open(pics["big"], "rb") as f:
         assert admin.s.post(site.url("/admin/media"), data={"csrf": "deadbeef"}, files={"file": f},
                             allow_redirects=False).status_code == 400
