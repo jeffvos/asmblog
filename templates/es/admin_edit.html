@@ -14,7 +14,8 @@
     <small class="hint" id="h-tags">separadas por comas: a-z, 0-9, guiones</small>
     <input id="f-tags" name="tags" value="{{etags}}" maxlength="256" aria-describedby="h-tags" class="field w-full mb-2">
     <label class="lbl" for="f-md">markdown</label>
-    <textarea id="f-md" name="md" rows="18" class="field w-full mb-3 font-mono text-sm">{{emd}}</textarea>
+    <small class="hint" id="h-md">inserta una imagen subida con <code>![pie](/media/N)</code>; ver <a class="backlink" href="/admin/media">imágenes</a></small>
+    <textarea id="f-md" name="md" rows="18" aria-describedby="h-md" class="field w-full mb-3 font-mono text-sm">{{emd}}</textarea>
     <div class="actions">
       <button class="btn btn-primary" type="submit" name="action" value="publish">Publicar</button>
       <button class="btn" type="submit" name="action" value="draft">Guardar borrador</button>

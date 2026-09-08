@@ -38,6 +38,7 @@ extern page_robots
 extern page_sitemap
 extern page_manifest
 extern admin_route
+extern page_media
 extern pcache_lookup
 
 global http_handle
@@ -339,7 +340,7 @@ http_handle:
     mov edx, 8
     call mem_eq
     test eax, eax
-    jz .r_fav
+    jz .r_media
     test rbp, rbp               ; ?v=<hash> requests are immutable;
     jz .st_go                   ; page_static picks the default otherwise
     mov byte [r12+CTX_CACHE], CACHE_IMMUTABLE
@@ -348,6 +349,20 @@ http_handle:
     lea rsi, [r14+8]
     lea rdx, [r15-8]
     call page_static
+    jmp .fin
+.r_media:
+    cmp r15, 12                 ; "/media/N.png" minimum
+    jb .r_robots
+    mov rdi, r14
+    mov rsi, str_mediap
+    mov edx, 7
+    call mem_eq
+    test eax, eax
+    jz .r_fav
+    mov rdi, r12
+    lea rsi, [r14+7]
+    lea rdx, [r15-7]
+    call page_media
     jmp .fin
 .r_fav:
     cmp r15, 12
@@ -1924,6 +1939,7 @@ str_health:   db '/health'
 str_feed:     db '/feed.xml'
 str_hits:     db '/hits.svg'
 str_staticp:  db '/static/'
+str_mediap:   db '/media/'
 str_favicon:  db '/favicon.ico'
 str_robots:   db '/robots.txt'
 str_sitemap:  db '/sitemap.xml'
@@ -1967,7 +1983,7 @@ hdr_301_tail: db 13, 10, 'Cache-Control: public, max-age=86400', 13, 10
               db 'Content-Length: 0', 13, 10, 13, 10
 hdr_301_tail_len equ $-hdr_301_tail
 
-hdr_server: db 'Server: blogd/0.11', 13, 10
+hdr_server: db 'Server: blogd/0.12', 13, 10
 hdr_server_len equ $-hdr_server
 
 ; Emitted on every response by all the builders. Everything is

@@ -40,7 +40,8 @@
 %define V_EURL     35           ; site url in the settings form
 %define V_THCOLOR  36           ; <meta name="theme-color"> for the theme
 %define V_NOTICE   37           ; dashboard flash after a save/delete (raw)
-%define NVALS      38
+%define V_EIMGMAX  38           ; image size setting in the settings form
+%define NVALS      39
 
 ; locales: templates/<dir>/ sets, selected site-wide by [set_locale]
 %define LOC_EN     0
@@ -61,4 +62,6 @@
 %define T_AEDIT    6
 %define T_ASET     7
 %define T_ACONF    8
-%define NTMPL      9
+%define T_AMEDIA   9            ; the media library + upload form
+%define T_AMCONF   10           ; delete-an-image confirmation
+%define NTMPL      11

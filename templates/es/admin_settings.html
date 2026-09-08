@@ -15,6 +15,9 @@
       <label class="lbl" for="f-url">url del sitio</label>
       <small class="hint" id="h-url">para enlaces canónicos, el feed y el sitemap; en blanco = usar la cabecera Host</small>
       <input id="f-url" type="url" name="url" value="{{eurl}}" maxlength="255" placeholder="https://blog.example.com" aria-describedby="h-url" class="field w-full mb-2">
+      <label class="lbl" for="f-imgmax">tamaño de imagen</label>
+      <small class="hint" id="h-imgmax">lado más largo, en píxeles, al que se redimensionan las subidas (320 a 4096); la copia en línea es la mitad</small>
+      <input id="f-imgmax" name="imgmax" value="{{eimgmax}}" type="number" inputmode="numeric" min="320" max="4096" step="1" aria-describedby="h-imgmax" class="field w-24 mb-2">
     </fieldset>
     <fieldset>
       <legend class="lgd">apariencia</legend>

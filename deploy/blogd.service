@@ -2,6 +2,8 @@
 #
 #   sudo useradd --system --home /var/lib/blogd --shell /usr/sbin/nologin blogd
 #   sudo mkdir -p /var/lib/blogd && sudo cp -r templates static /var/lib/blogd/
+#   sudo install -m 755 tools/imgconv /usr/local/bin/blogd-imgconv
+#   sudo apt install libvips-tools               # image uploads (or ImageMagick / Pillow)
 #   sudo -u blogd /var/lib/blogd/blogd init      # set the admin password
 #   sudo systemctl enable --now blogd
 #
@@ -18,6 +20,7 @@ User=blogd
 Group=blogd
 WorkingDirectory=/var/lib/blogd
 ExecStart=/var/lib/blogd/blogd 8080
+Environment=BLOGD_IMGCONV=/usr/local/bin/blogd-imgconv
 Restart=on-failure
 RestartSec=1
 
@@ -36,7 +39,8 @@ RestrictRealtime=yes
 RestrictSUIDSGID=yes
 LockPersonality=yes
 MemoryDenyWriteExecute=yes
-RestrictAddressFamilies=AF_INET AF_INET6
+# AF_UNIX: the socketpair to the image-conversion helper (media.asm)
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 # blogd installs its own seccomp allowlist; this is a coarse backstop.
 SystemCallFilter=@system-service
 SystemCallArchitectures=native

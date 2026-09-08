@@ -1,0 +1,96 @@
+#!/bin/sh
+# imgconv — blogd's image converter, run by the media helper process.
+#
+#   imgconv --check
+#       exit 0 when a backend is available (and say which on stderr)
+#   imgconv <input> <outbase> <max> <inline>
+#       write <outbase>.webp, <outbase>.png (longest edge <= max px),
+#       <outbase>-s.webp, <outbase>-s.png (longest edge <= inline px;
+#       inline = 0 skips the pair). Never upscales. Auto-rotates by the
+#       EXIF orientation and strips all metadata (no GPS in what the
+#       site serves). Exit status != 0 on any failure; blogd reports it.
+#
+# Backends, first found wins:
+#   vipsthumbnail   (libvips: apk add vips-tools / apt install libvips-tools)
+#                   streams the image, so a 20 MP photo needs tens of MB
+#   magick/convert  (ImageMagick 7 / 6)
+#   python3+Pillow  (pip install pillow)
+# BLOGD_IMGTOOL=vips|magick|pillow forces one.
+set -u
+
+have() { command -v "$1" >/dev/null 2>&1; }
+pillow_ok() { have python3 && python3 -c 'import PIL, PIL.Image; from PIL import features; assert features.check("webp")' >/dev/null 2>&1; }
+
+backend="${BLOGD_IMGTOOL:-}"
+if [ -z "$backend" ]; then
+    if have vipsthumbnail; then backend=vips
+    elif have magick || have convert; then backend=magick
+    elif pillow_ok; then backend=pillow
+    fi
+fi
+
+if [ "${1:-}" = "--check" ]; then
+    case "$backend" in
+        vips)   echo "imgconv: using vipsthumbnail ($(vips --version 2>/dev/null || echo libvips))" >&2; exit 0 ;;
+        magick) echo "imgconv: using ImageMagick" >&2; exit 0 ;;
+        pillow) echo "imgconv: using python3 + Pillow" >&2; exit 0 ;;
+        *)      echo "imgconv: no backend (vipsthumbnail, magick/convert, or python3 + Pillow)" >&2; exit 1 ;;
+    esac
+fi
+
+[ $# -eq 4 ] || { echo "usage: imgconv --check | imgconv <in> <outbase> <max> <inline>" >&2; exit 2; }
+in="$1"; out="$2"; max="$3"; inl="$4"
+case "$in" in /*) ;; *) in="$PWD/$in" ;; esac
+case "$out" in /*) ;; *) out="$PWD/$out" ;; esac
+# a converter that hangs must not pin the worker that posted the job
+T=""; have timeout && T="timeout 180"
+
+vips_one() {   # vips_one <edge> <suffix>
+    $T vipsthumbnail "$in" --size "$1x$1>" -o "$out$2.webp[Q=82,strip]" 2>&1 >/dev/null | grep -v 'deprecated' >&2
+    [ -s "$out$2.webp" ] || return 1
+    $T vipsthumbnail "$in" --size "$1x$1>" -o "$out$2.png[compression=6,strip]" 2>&1 >/dev/null | grep -v 'deprecated' >&2
+    [ -s "$out$2.png" ] || return 1
+}
+magick_one() {
+    if have magick; then M="magick"; else M="convert"; fi
+    $T $M "$in[0]" -auto-orient -strip -resize "$1x$1>" -quality 82 "$out$2.webp" || return 1
+    $T $M "$in[0]" -auto-orient -strip -resize "$1x$1>" -define png:compression-level=6 "$out$2.png" || return 1
+}
+pillow_all() {
+    $T python3 - "$in" "$out" "$max" "$inl" <<'PY'
+import sys
+from PIL import Image, ImageOps
+src, out, mx, inl = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
+im = Image.open(src)
+im = ImageOps.exif_transpose(im)          # honour the camera's orientation
+if getattr(im, "n_frames", 1) > 1:
+    im.seek(0)
+mode = "RGBA" if im.mode in ("RGBA", "LA", "P") and "transparency" in im.info or im.mode in ("RGBA", "LA") else "RGB"
+im = im.convert(mode)
+def save(edge, sfx):
+    t = im.copy()
+    t.thumbnail((edge, edge), Image.LANCZOS)   # never upscales
+    t.save(out + sfx + ".webp", "WEBP", quality=82, method=4)
+    t.save(out + sfx + ".png", "PNG", optimize=True)
+save(mx, "")
+if inl > 0:
+    save(inl, "-s")
+PY
+}
+
+case "$backend" in
+    vips)
+        vips_one "$max" "" || exit 1
+        [ "$inl" -gt 0 ] && { vips_one "$inl" "-s" || exit 1; }
+        ;;
+    magick)
+        magick_one "$max" "" || exit 1
+        [ "$inl" -gt 0 ] && { magick_one "$inl" "-s" || exit 1; }
+        ;;
+    pillow)
+        pillow_all || exit 1
+        ;;
+    *)
+        echo "imgconv: no backend" >&2; exit 1 ;;
+esac
+exit 0

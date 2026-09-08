@@ -312,6 +312,67 @@ expect_code "csrf mismatch is rejected" 400 -b "$JAR" -d "csrf=deadbeef&id=1" "$
 BIGMD="$(python3 -c 'print(("lorem ipsum dolor sit amet " * 1100)[:30000])')"
 export BIGMD    # check() runs bash -c
 check "80 large saves all succeed (arena grows)" bash -c "for i in \$(seq 80); do c=\$(curl -s -o /dev/null -w '%{http_code}' -b '$JAR' --data-urlencode csrf=$CSRF --data-urlencode id=0 --data-urlencode \"title=Bulk \$i\" --data-urlencode slug=bulk-\$i --data-urlencode tags=bulk --data-urlencode \"md=\$BIGMD\" --data-urlencode action=publish '$A/admin/save'); [ \"\$c\" = 303 ] || { echo \"save \$i -> \$c\"; exit 1; }; done; curl -s $A/post/bulk-80 | grep -q 'lorem ipsum'"
+# --- self-hosted images: upload, renditions, markup, lightbox, delete ---
+# needs a converter backend (libvips-tools / ImageMagick / Pillow); the
+# suite skips this block, loudly, when tools/imgconv finds none
+if sh tools/imgconv --check 2>/dev/null; then
+MTMP="$(mktemp -d)"
+python3 tests/mkpng.py 1200 800 > "$MTMP/big.png"          # compressible: a buffered body
+python3 tests/mkpng.py 2400 1600 7 noisy > "$MTMP/huge.png" # > 100 KB: streamed to the spool
+python3 tests/mkpng.py 300 200 > "$MTMP/tiny.png"          # below the inline size: one rendition
+check "test pictures: one buffered, one streamed"  bash -c "test \$(stat -c %s $MTMP/big.png) -lt 100000 && test \$(stat -c %s $MTMP/huge.png) -gt 100000"
+printf 'not an image' > "$MTMP/text.png"
+png_dims() { python3 -c 'import struct,sys; d=open(sys.argv[1],"rb").read(24); print("%dx%d" % struct.unpack(">II", d[16:24]))' "$1"; }
+export -f png_dims
+check "media library page renders"           bash -c "curl -s -b '$JAR' $A/admin/media | grep -q 'enctype=\"multipart/form-data\"' && curl -s -b '$JAR' $A/admin/media | grep -q '1600 px'"
+expect_code "upload without a session bounces" 303 -F "csrf=$CSRF" -F "file=@$MTMP/big.png" "$A/admin/media"
+expect_code "large upload without a session is 413" 413 -F "csrf=$CSRF" -F "file=@$MTMP/huge.png" "$A/admin/media"
+expect_code "upload with a bad csrf is 400"    400 -b "$JAR" -F "csrf=deadbeef" -F "file=@$MTMP/big.png" "$A/admin/media"
+check "non-image upload is refused"          bash -c "test \"\$(curl -s -o /dev/null -w '%{redirect_url}' -b '$JAR' -F csrf=$CSRF -F file=@$MTMP/text.png $A/admin/media)\" = '$A/admin/media?err=type'"
+check "empty file field is refused"          bash -c "test \"\$(curl -s -o /dev/null -w '%{redirect_url}' -b '$JAR' -F csrf=$CSRF -F 'file=;filename=' $A/admin/media)\" = '$A/admin/media?err=empty'"
+check "buffered upload (1200x800) succeeds"  bash -c "test \"\$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b '$JAR' -F csrf=$CSRF -F file=@$MTMP/big.png $A/admin/media)\" = '303 $A/admin/media?uploaded=1'"
+check "four renditions served, right types"  bash -c "curl -s -D - -o /dev/null $A/media/1.webp | grep -qi '^content-type: image/webp' && curl -s -D - -o /dev/null $A/media/1.png | grep -qi '^content-type: image/png' && curl -fsS -o /dev/null $A/media/1-s.webp && curl -fsS -o /dev/null $A/media/1-s.png"
+check "full rendition kept its size, inline is half" bash -c "curl -s -o $MTMP/r1.png $A/media/1.png && test \"\$(png_dims $MTMP/r1.png)\" = 1200x800 && curl -s -o $MTMP/r1s.png $A/media/1-s.png && test \"\$(png_dims $MTMP/r1s.png)\" = 800x533"
+check "webp really is webp"                  bash -c "curl -s $A/media/1.webp | head -c 12 | tail -c 4 | grep -q WEBP"
+check "renditions are immutable + strong ETag" bash -c "curl -s -D - -o /dev/null $A/media/1.webp | grep -qi 'max-age=31536000, immutable' && curl -s -D - -o /dev/null $A/media/1.webp | grep -qi '^etag: \"1.webp\"' && test \"\$(curl -s -o /dev/null -w '%{http_code}' -H 'If-None-Match: \"1.webp\"' $A/media/1.webp)\" = 304"
+check "HEAD on a rendition: length, no body"  bash -c "curl -s -I $A/media/1.png | grep -qi '^content-length: [1-9]' && test \"\$(curl -s --head -o /dev/null -w '%{size_download}' $A/media/1.png)\" = 0"
+check "rendition bytes match the file"        bash -c "cmp -s <(curl -s $A/media/1.webp) '$ATMP/data/media/1.webp' && test \"\$(curl -s $A/media/1.webp | wc -c)\" = \"\$(curl -s -I $A/media/1.webp | grep -i '^content-length' | tr -dc 0-9)\""
+check "streamed upload (2400x1600, >100 KB)"   bash -c "test \"\$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b '$JAR' -F csrf=$CSRF -F file=@$MTMP/huge.png $A/admin/media)\" = '303 $A/admin/media?uploaded=1' && curl -s -o $MTMP/r2.png $A/media/2.png && test \"\$(png_dims $MTMP/r2.png)\" = 1600x1067"
+check "spool temporaries are gone"           bash -c "! ls '$ATMP/data/media' | grep -q '^up-'"
+check "tiny upload keeps one rendition only" bash -c "curl -s -o /dev/null -b '$JAR' -F csrf=$CSRF -F file=@$MTMP/tiny.png $A/admin/media && curl -fsS -o /dev/null $A/media/3.webp && test \"\$(curl -s -o /dev/null -w '%{http_code}' $A/media/3-s.webp)\" = 404 && ! test -e '$ATMP/data/media/3-s.png'"
+check "unknown rendition names are 404"      bash -c "test \"\$(curl -s -o /dev/null -w '%{http_code}' $A/media/99.webp)\" = 404 && test \"\$(curl -s -o /dev/null -w '%{http_code}' $A/media/1.gif)\" = 404 && test \"\$(curl -s -o /dev/null -w '%{http_code}' $A/media/../store.blg)\" = 404"
+check "library lists the uploads, newest first" bash -c "L=\$(curl -s -b '$JAR' $A/admin/media); echo \"\$L\" | grep -q 'class=\"mitem\"' && echo \"\$L\" | grep -o 'media/[0-9]*-\\?s\\?\\.webp' | head -1 | grep -q 'media/3' && echo \"\$L\" | grep -qF '![big](/media/1)' && echo \"\$L\" | grep -q '1200×800'"
+MDIMG='Text before.
+
+![Sunset over the bay](/media/1)
+
+Inline ![tiny](/media/3) picture and a missing ![gone](/media/77) one.'
+curl -s -b "$JAR" -o /dev/null --data-urlencode "csrf=$CSRF" --data-urlencode id=0 --data-urlencode "title=Pictures" \
+    --data-urlencode slug=pictures --data-urlencode tags=pics --data-urlencode "md=$MDIMG" --data-urlencode action=publish "$A/admin/save"
+PP="$(curl -s -H 'Host: t.example' -H 'X-Forwarded-Proto: https' $A/post/pictures)"
+export PP
+check "figure: picture with webp source + png fallback" bash -c "echo \"\$PP\" | grep -q '<figure><a class=\"pic-open\" href=\"#lb1\"' && echo \"\$PP\" | grep -q '<source type=\"image/webp\" srcset=\"/media/1-s.webp 800w, /media/1.webp 1200w\" sizes=\"(min-width: 48rem) 44rem, 100vw\">' && echo \"\$PP\" | grep -q '<img src=\"/media/1.png\" srcset=\"/media/1-s.png 800w, /media/1.png 1200w\"'"
+check "figure: dimensions, lazy, caption"    bash -c "echo \"\$PP\" | grep -q 'width=\"1200\" height=\"800\" alt=\"Sunset over the bay\" loading=\"lazy\" decoding=\"async\"' && echo \"\$PP\" | grep -q '<figcaption>Sunset over the bay</figcaption>'"
+check "lightbox markup, ids, close links"    bash -c "echo \"\$PP\" | grep -q '<span class=\"lb\" id=\"lb1\" role=\"dialog\" aria-modal=\"true\"><a class=\"lb-bg\" href=\"#_\"' && echo \"\$PP\" | grep -q 'id=\"lb2\"' && echo \"\$PP\" | grep -q 'class=\"lb-x\" href=\"#_\"' && echo \"\$PP\" | grep -q 'srcset=\"/media/1-s.webp 800w, /media/1.webp 1200w\" sizes=\"100vw\"'"
+check "lightbox: cached inline copy under the full one" bash -c "echo \"\$PP\" | grep -q '<span class=\"lb-frame\"><span class=\"lb-pic\"><span class=\"lb-ph\"><picture><source type=\"image/webp\" srcset=\"/media/1-s.webp 800w, /media/1.webp 1200w\" sizes=\"(min-width: 48rem) 44rem, 100vw\">' && test \"\$(echo \"\$PP\" | grep -o 'class=\"lb-ph\"' | wc -l)\" = 2"
+check "single-rendition image has no sizes"  bash -c "echo \"\$PP\" | grep -q '<source type=\"image/webp\" srcset=\"/media/3.webp\"><img src=\"/media/3.png\" srcset=\"/media/3.png\" width=\"300\" height=\"200\"'"
+check "unknown media id stays visible text"  bash -c "echo \"\$PP\" | grep -qF '![gone](/media/77)' && ! echo \"\$PP\" | grep -q 'media/77.png'"
+# (the site url was set to https://smoke.example above, so absolute links use it)
+check "og:image is the first hosted image"   bash -c "echo \"\$PP\" | grep -q 'og:image\" content=\"https://smoke.example/media/1.png\"' && echo \"\$PP\" | grep -q '\"image\":\"https://smoke.example/media/1.png\"'"
+check "feed carries xml:base for relative images" bash -c "curl -s -H 'Host: t.example' $A/feed.xml | grep -q 'xml:base=\"https://smoke.example/\"' && curl -s -H 'Host: t.example' $A/feed.xml | xmlok"
+check "excerpt skips the image lines"        bash -c "curl -s $A/tag/pics | grep -q 'Text before. Inline' && ! curl -s $A/tag/pics | grep -q 'media/1'"
+check "css: lightbox rules in every theme"   bash -c "for f in static/main.css static/*-main.css; do grep -q '\\.lb:target' \$f || exit 1; grep -q '\\.lb-frame' \$f || exit 1; done"
+expect_code "image size setting saves"   303 -b "$JAR" --data-urlencode "csrf=$CSRF" \
+    --data-urlencode "title=Smoke Blog" --data-urlencode ppp=5 --data-urlencode imgmax=640 "$A/admin/settings"
+check "image size echoed + applied"          bash -c "curl -s -b '$JAR' $A/admin/settings | grep -q 'name=\"imgmax\" value=\"640\"' && curl -s -o /dev/null -b '$JAR' -F csrf=$CSRF -F file=@$MTMP/big.png $A/admin/media && curl -s -o $MTMP/r4.png $A/media/4.png && test \"\$(png_dims $MTMP/r4.png)\" = 640x427 && curl -s -o $MTMP/r4s.png $A/media/4-s.png && test \"\$(png_dims $MTMP/r4s.png)\" = 320x213"
+expect_code "image size out of range refused" 200 -b "$JAR" --data-urlencode "csrf=$CSRF" \
+    --data-urlencode "title=Smoke Blog" --data-urlencode ppp=5 --data-urlencode imgmax=10 "$A/admin/settings"
+check "delete confirm page, then delete"     bash -c "curl -s -b '$JAR' $A/admin/media/delete/4 | grep -q 'name=\"id\" value=\"4\"' && test \"\$(curl -s -o /dev/null -w '%{redirect_url}' -b '$JAR' --data-urlencode csrf=$CSRF --data-urlencode id=4 $A/admin/media/delete)\" = '$A/admin/media?deleted=1' && test \"\$(curl -s -o /dev/null -w '%{http_code}' $A/media/4.webp)\" = 404 && ! test -e '$ATMP/data/media/4.png'"
+check "oversized upload body is 413"         bash -c "test \"\$(raw_status $APORT 'b\"POST /admin/media HTTP/1.1\\r\\nHost: x\\r\\nCookie: sid=\" + open(\"$JAR\").read().split()[-1].encode() + b\"\\r\\nContent-Length: 99999999\\r\\n\\r\\n\"')\" = 413"
+touch "$ATMP/data/media/up-99.tmp" "$ATMP/data/media/77.webp" "$ATMP/data/media/77-s.png"
+else
+echo "skip - media tests: no image converter backend (install libvips-tools, ImageMagick, or python3 + Pillow)"
+fi
 expect_code "logout works"             303 -b "$JAR" --data-urlencode "csrf=$CSRF" "$A/admin/logout"
 expect_code "session is gone after logout" 303 -b "$JAR" "$A/admin"
 check "idle connection is closed by the sweep" idle_closed "$APORT" 12
@@ -325,6 +386,10 @@ PIDS+=("$APID")
 wait_up "$A/health"
 expect_code "post survives compaction"  200 "$A/post/smoke-post"
 check "settings survive compaction"        bash -c "curl -s $A/ | grep -q 'CUSTOM-BANNER-XYZ'"
+if [ -e "$ATMP/data/media/1.webp" ]; then
+check "media survive compaction + restart"  bash -c "curl -fsS -o /dev/null $A/media/1.webp && curl -fsS -o /dev/null $A/media/2-s.png && curl -s $A/post/pictures | grep -q 'srcset=\"/media/1-s.webp 800w'"
+check "startup sweep removed orphans"       bash -c "! test -e '$ATMP/data/media/up-99.tmp' && ! test -e '$ATMP/data/media/77.webp' && ! test -e '$ATMP/data/media/77-s.png' && test -e '$ATMP/data/media/1.webp'"
+fi
 stop "$APID"
 
 if [ "$fail" = 0 ]; then

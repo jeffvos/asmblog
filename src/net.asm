@@ -31,6 +31,9 @@ extern http_expects_continue
 extern build_page
 extern listen_addr
 extern idle_secs
+extern media_spool_allowed
+extern media_spool_open
+extern media_spool_discard
 
 global worker_main
 global workers_ready
@@ -229,6 +232,8 @@ worker_main:
     mov byte [rax+CTX_CONT], 0
     mov byte [rax+CTX_PCHIT], 0
     mov dword [rax+CTX_NREQ], 0
+    mov dword [rax+CTX_SPOOL_FD], -1
+    mov qword [rax+CTX_FILE_P], 0
     mov rcx, [r12+WS_NOW]       ; onto the active list, stamped now
     mov [rax+CTX_LAST], rcx
     mov qword [rax+CTX_LPREV], 0
@@ -369,6 +374,24 @@ conn_put:
 conn_close:
     push rdi
     push rsi
+    ; a mapped file body or an upload spool still attached? release it
+    mov rax, [rsi+CTX_FILE_P]
+    test rax, rax
+    jz .nofile
+    mov rdi, rax
+    mov rsi, [rsi+CTX_FILE_L]
+    mov eax, SYS_munmap
+    syscall
+    mov rsi, [rsp]
+    mov qword [rsi+CTX_FILE_P], 0
+.nofile:
+    cmp dword [rsi+CTX_SPOOL_FD], 0
+    jl .nospool
+    mov rdi, rsi
+    call media_spool_discard
+.nospool:
+    mov rdi, [rsp+8]
+    mov rsi, [rsp]
     mov rax, [rsi+CTX_LPREV]
     mov rcx, [rsi+CTX_LNEXT]
     test rax, rax
@@ -480,6 +503,12 @@ conn_read:
     push r15
     mov r12, rdi
     mov r13, rsi
+    cmp dword [r13+CTX_SPOOL_FD], 0
+    jl .rd
+    mov rdi, r12                ; a body is streaming to disk: no parsing
+    mov rsi, r13                ; until it has all arrived
+    call spool_pump
+    jmp .done
 .rd:
     mov rdx, CTX_INBUF_SZ
     sub rdx, [r13+CTX_IN_USED]
@@ -503,6 +532,11 @@ conn_read:
     je .rd
     jmp .close
 .parse:
+    cmp qword [r13+CTX_OUT_LEN], 0
+    jne .done                   ; a response is still going out: the
+                                ; outbuf is busy, so the next request
+                                ; waits (conn_event resumes us once it
+                                ; has drained)
     lea rdi, [r13+CTX_IN]
     mov rsi, [r13+CTX_IN_USED]
     cmp rsi, HTTP_HEAD_MAX      ; the head must fit in the first 8 KiB
@@ -520,12 +554,12 @@ conn_read:
     je .badreq
     cmp rax, -2
     je .lenreq
-    cmp rax, HTTP_BODY_MAX
-    ja .toolarge
     mov r15, rax                ; body length
+    cmp r15, HTTP_BODY_MAX
+    ja .big
     lea rax, [r14+r15]
     cmp rax, CTX_INBUF_SZ
-    ja .toolarge
+    ja .big
     cmp rax, [r13+CTX_IN_USED]
     ja .wait_body               ; body still arriving: wait for more
     mov byte [r13+CTX_CONT], 0
@@ -575,6 +609,41 @@ conn_read:
     mov rsi, r13
     call conn_flush
     jmp .done
+.big:
+    ; over the buffered cap: an image upload streams to disk instead
+    ; (only POST /admin/media, within MEDIA_BODY_MAX, with a session);
+    ; anything else is a 413 as before
+    mov rdi, r13
+    mov rsi, r14
+    mov rdx, r15
+    call media_spool_allowed
+    test eax, eax
+    jz .toolarge
+    mov rdi, r13
+    call media_spool_open
+    test eax, eax
+    js .spoolfail
+    mov [r13+CTX_SPOOL_LEN], r15
+    mov rdx, [r13+CTX_IN_USED]
+    sub rdx, r14                ; body bytes that arrived with the head
+    mov rax, r15
+    sub rax, rdx
+    mov [r13+CTX_SPOOL_LEFT], rax
+    mov [r13+CTX_IN_USED], r14  ; the head stays put for routing later
+    test rdx, rdx
+    jz .wait_body               ; (answers Expect: 100-continue)
+    mov edi, [r13+CTX_SPOOL_FD]
+    lea rsi, [r13+CTX_IN]
+    add rsi, r14
+    call write_all_fd
+    test rax, rax
+    jnz .spoolfail
+    jmp .wait_body
+.spoolfail:
+    mov rdi, r13
+    call media_spool_discard
+    mov esi, 5
+    jmp .reject
 .norequest:
     cmp qword [r13+CTX_IN_USED], HTTP_HEAD_MAX
     jb .done                    ; incomplete: wait for more bytes
@@ -607,7 +676,118 @@ conn_read:
     call conn_close
     jmp .done
 
+; spool_pump(ws, ctx) — read the rest of an upload body straight into
+; its spool file (through the idle outbuf, 64 KiB at a time), and once
+; the declared length is in, route the request: the head is still at
+; the front of inbuf, the handler maps the spool. Disk trouble answers
+; 500 and closes.
+spool_pump:
+    push r12
+    push r13
+    push r14
+    mov r12, rdi
+    mov r13, rsi
+.rd:
+    mov rdx, [r13+CTX_SPOOL_LEFT]
+    test rdx, rdx
+    jz .complete
+    cmp rdx, 65536
+    jbe .n_ok
+    mov edx, 65536
+.n_ok:
+    mov edi, [r13+CTX_FD]
+    lea rsi, [r13+CTX_OUT]
+    xor eax, eax                ; SYS_read
+    syscall
+    cmp rax, 0
+    je .close
+    jl .rderr
+    mov r14, rax
+    mov edi, [r13+CTX_SPOOL_FD]
+    lea rsi, [r13+CTX_OUT]
+    mov rdx, rax
+    call write_all_fd
+    test rax, rax
+    jnz .fail
+    sub [r13+CTX_SPOOL_LEFT], r14
+    jmp .rd
+.rderr:
+    cmp rax, -EAGAIN
+    je .done
+    cmp rax, -EINTR
+    je .rd
+    jmp .close
+.complete:
+    mov byte [r13+CTX_CONT], 0
+    mov rdi, r13
+    mov rsi, [r13+CTX_IN_USED]  ; = the head length
+    xor edx, edx                ; body length 0: it is in the spool
+    call http_handle
+    mov rdi, r13
+    call media_spool_discard
+    mov qword [r13+CTX_IN_USED], 0
+    mov rdi, r12
+    mov rsi, r13
+    call conn_flush
+    jmp .done
+.fail:
+    mov rdi, r13
+    call media_spool_discard
+    mov byte [r13+CTX_KEEP], 0
+    mov rdi, r13
+    mov esi, 5
+    call build_page
+    mov rdi, r12
+    mov rsi, r13
+    call conn_flush
+    jmp .done
+.close:
+    mov rdi, r12
+    mov rsi, r13
+    call conn_close
+.done:
+    pop r14
+    pop r13
+    pop r12
+    ret
+
+; write_all_fd(fd, buf, len) -> 0 / -1 (regular files: no EAGAIN)
+write_all_fd:
+    push r12
+    push r13
+    push r14
+    mov r12d, edi
+    mov r13, rsi
+    mov r14, rdx
+.w:
+    test r14, r14
+    jz .ok
+    mov edi, r12d
+    mov rsi, r13
+    mov rdx, r14
+    mov eax, SYS_write
+    syscall
+    cmp rax, 0
+    jg .adv
+    cmp rax, -EINTR
+    je .w
+    mov rax, -1
+    jmp .ret
+.adv:
+    add r13, rax
+    sub r14, rax
+    jmp .w
+.ok:
+    xor eax, eax
+.ret:
+    pop r14
+    pop r13
+    pop r12
+    ret
+
 ; conn_flush(ws, ctx) -> 0 closed | 1 fully sent, keep-alive | 2 pending
+; The response is the outbuf slice, then (media.asm) an optional mapped
+; file that is sent straight from the mapping and unmapped after.
 conn_flush:
     push r12
     push r13
@@ -616,7 +796,7 @@ conn_flush:
 .snd:
     mov rdx, [r13+CTX_OUT_LEN]
     sub rdx, [r13+CTX_OUT_SENT]
-    jz .drained
+    jz .file
     mov edi, [r13+CTX_FD]
     lea rsi, [r13+CTX_OUT]
     add rsi, [r13+CTX_OUT_START]
@@ -630,6 +810,32 @@ conn_flush:
     jle .blocked
     add [r13+CTX_OUT_SENT], rax
     jmp .snd
+.file:
+    mov rax, [r13+CTX_FILE_P]
+    test rax, rax
+    jz .drained
+    mov rdx, [r13+CTX_FILE_L]
+    sub rdx, [r13+CTX_FILE_SENT]
+    jz .file_done
+    mov edi, [r13+CTX_FD]
+    mov rsi, rax
+    add rsi, [r13+CTX_FILE_SENT]
+    mov r10d, MSG_NOSIGNAL
+    xor r8d, r8d
+    xor r9d, r9d
+    mov eax, SYS_sendto
+    syscall
+    cmp rax, 0
+    jle .blocked
+    add [r13+CTX_FILE_SENT], rax
+    jmp .file
+.file_done:
+    mov rdi, [r13+CTX_FILE_P]
+    mov rsi, [r13+CTX_FILE_L]
+    mov eax, SYS_munmap
+    syscall
+    mov qword [r13+CTX_FILE_P], 0
+    jmp .drained
 .blocked:
     cmp rax, -EAGAIN
     je .arm

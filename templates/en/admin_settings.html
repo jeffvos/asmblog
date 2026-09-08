@@ -15,6 +15,9 @@
       <label class="lbl" for="f-url">site url</label>
       <small class="hint" id="h-url">for canonical links, the feed and the sitemap; blank = use the Host header</small>
       <input id="f-url" type="url" name="url" value="{{eurl}}" maxlength="255" placeholder="https://blog.example.com" aria-describedby="h-url" class="field w-full mb-2">
+      <label class="lbl" for="f-imgmax">image size</label>
+      <small class="hint" id="h-imgmax">longest edge, in pixels, that uploads are resized to (320 to 4096); the inline copy is half that</small>
+      <input id="f-imgmax" name="imgmax" value="{{eimgmax}}" type="number" inputmode="numeric" min="320" max="4096" step="1" aria-describedby="h-imgmax" class="field w-24 mb-2">
     </fieldset>
     <fieldset>
       <legend class="lgd">appearance</legend>

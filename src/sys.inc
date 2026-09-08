@@ -12,6 +12,16 @@
 %define SYS_mprotect    10
 %define SYS_munmap      11
 %define SYS_ioctl       16
+%define SYS_pread64     17
+%define SYS_access      21
+%define SYS_dup2        33
+%define SYS_socketpair  53
+%define SYS_fork        57
+%define SYS_execve      59
+%define SYS_wait4       61
+%define SYS_unlink      87
+%define SYS_readlink    89
+%define SYS_getdents64  217
 %define SYS_socket      41
 %define SYS_sendto      44
 %define SYS_bind        49
@@ -47,6 +57,7 @@
 %define SECCOMP_RET_KILL  0x80000000    ; RET_KILL_PROCESS
 
 %define AF_INET         2
+%define AF_UNIX         1
 %define SOCK_STREAM     1
 %define SOCK_NONBLOCK   0x800
 %define SOCK_CLOEXEC    0x80000
@@ -94,6 +105,7 @@
 %define O_CREAT         0x40
 %define O_TRUNC         0x200
 %define O_DIRECTORY     0x10000
+%define O_CLOEXEC       0x80000
 %define SEEK_SET        0
 %define SEEK_END        2
 

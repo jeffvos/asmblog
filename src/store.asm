@@ -34,6 +34,14 @@ global store_open
 global store_reset
 global store_append_post
 global store_delete_post
+global store_append_media
+global store_delete_media
+global media_find
+global media_reserve_id
+global media_arr
+global media_cnt
+global next_mid
+global set_imgmax
 global store_save_settings
 global store_compact
 global store_find_by_id
@@ -242,8 +250,15 @@ store_open:
     mov esi, MAX_POSTS*8
     call arena_alloc
     mov [posts_arr], rax
+    mov rdi, [st_arena]
+    mov esi, MAX_MEDIA*8
+    call arena_alloc
+    mov [media_arr], rax
     mov qword [posts_cnt], 0
+    mov qword [media_cnt], 0
     mov qword [next_id], 1
+    mov qword [next_mid], 1
+    mov dword [set_imgmax], IMGMAX_DEF
     mov dword [set_ppp], 5
     mov dword [set_ttl], 86400
     mov byte [set_present], 0
@@ -328,12 +343,25 @@ store_live_bytes:
     inc rcx
     jmp .l
 .settings:
+    xor ecx, ecx
+.m:
+    cmp rcx, [media_cnt]
+    jae .set
+    mov rdx, [media_arr]
+    mov rdx, [rdx+rcx*8]
+    mov rsi, [rdx+M_NAME_L]
+    add rsi, R_HDR + MD_HDR + 7
+    and rsi, -8
+    add rax, rsi
+    inc rcx
+    jmp .m
+.set:
     cmp byte [set_present], 0
     je .ret
     mov rsi, [set_title_l]
     add rsi, [set_banner_l]
     add rsi, [set_url_l]
-    add rsi, R_HDR + SET_HDR + 128 + 4 + 7
+    add rsi, R_HDR + SET_HDR + 128 + 4 + 4 + 7
     and rsi, -8
     add rax, rsi
 .ret:
@@ -356,6 +384,7 @@ store_reset:
 .nofd:
     mov qword [store_fd], 0
     mov qword [posts_cnt], 0
+    mov qword [media_cnt], 0
     mov byte [set_present], 0
     ret
 
@@ -446,6 +475,7 @@ store_load:
     mov eax, SYS_lseek
     syscall
     call sort_posts
+    call sort_media
     xor eax, eax
     jmp .ret
 .fail:
@@ -528,11 +558,26 @@ apply_record:
     ja .no_url
     mov [set_url_l], rdx
     mov rdi, set_url
-    call mem_copy
+    call mem_copy               ; (r8 = end of the url in the record)
+    ; extension 2: dword imgmax after the url (older records end before)
+    lea rcx, [r12+R_HDR]
+    mov edx, [r12+R_TLEN]
+    add rcx, rdx                ; payload end again (mem_copy used rcx)
+    lea rdx, [r8+4]
+    cmp rdx, rcx
+    ja .no_url
+    mov edx, [r8]
+    cmp edx, IMGMAX_MIN
+    jb .no_url
+    cmp edx, IMGMAX_MAX
+    ja .no_url
+    mov [set_imgmax], edx
 .no_url:
     mov byte [set_present], 1
     jmp .done
 .post:
+    cmp dword [r12+R_TYPE], TYPE_MEDIA
+    je .media
     mov rdi, [r12+R_ID]
     call find_idx
     test qword [r12+R_FLAGS], FLAG_TOMBSTONE
@@ -599,6 +644,354 @@ apply_record:
     jbe .done
     mov [next_id], rax
 .done:
+    pop r13
+    pop r12
+    ret
+.media:
+    mov rdi, [r12+R_ID]
+    call media_idx
+    test qword [r12+R_FLAGS], FLAG_TOMBSTONE
+    jz .mlive
+    cmp rax, -1
+    je .mbump
+    mov rdi, rax
+    call media_remove_idx
+    jmp .mbump
+.mlive:
+    cmp rax, -1
+    jne .mreplace
+    mov rdi, [st_arena]
+    mov esi, M_SIZE
+    call arena_alloc
+    test rax, rax
+    jz .done
+    mov r13, rax
+    mov rcx, [media_cnt]
+    cmp rcx, MAX_MEDIA
+    jae .done
+    mov rdx, [media_arr]
+    mov [rdx+rcx*8], r13
+    inc qword [media_cnt]
+    jmp .mfill
+.mreplace:
+    mov rcx, [media_arr]
+    mov r13, [rcx+rax*8]
+.mfill:
+    mov rax, [r12+R_ID]
+    mov [r13+M_ID], rax
+    mov rax, [r12+R_CREATED]
+    mov [r13+M_CREATED], rax
+    lea rsi, [r12+R_HDR]        ; the 32-byte fixed block, then the name
+    lea rdi, [r13+M_W]
+    mov edx, MD_HDR
+    call mem_copy
+    lea rax, [r12+R_HDR+MD_HDR]
+    mov [r13+M_NAME_P], rax
+    mov ecx, [r12+R_SLEN]
+    mov [r13+M_NAME_L], rcx
+.mbump:
+    mov rax, [r12+R_ID]
+    inc rax
+    cmp rax, [next_mid]
+    jbe .done
+    mov [next_mid], rax
+    jmp .done
+
+; media_idx(id) -> index in media_arr or -1
+media_idx:
+    mov rcx, [media_cnt]
+    mov rdx, [media_arr]
+    xor eax, eax
+.l:
+    cmp rax, rcx
+    jae .no
+    mov rsi, [rdx+rax*8]
+    cmp [rsi+M_ID], rdi
+    je .yes
+    inc rax
+    jmp .l
+.no:
+    mov rax, -1
+.yes:
+    ret
+
+; media_remove_idx(index) — shift the tail left
+media_remove_idx:
+    mov rcx, [media_cnt]
+    mov rdx, [media_arr]
+.l:
+    lea rax, [rdi+1]
+    cmp rax, rcx
+    jae .done
+    mov rsi, [rdx+rax*8]
+    mov [rdx+rdi*8], rsi
+    inc rdi
+    jmp .l
+.done:
+    dec qword [media_cnt]
+    ret
+
+; sort_media — insertion sort, highest id (newest upload) first
+sort_media:
+    mov r8, [media_arr]
+    mov r9, [media_cnt]
+    mov rcx, 1
+.outer:
+    cmp rcx, r9
+    jae .done
+    mov rax, [r8+rcx*8]
+    mov rdx, rcx
+.inner:
+    test rdx, rdx
+    jz .place
+    mov rsi, [r8+rdx*8-8]
+    mov rdi, [rax+M_ID]
+    cmp rdi, [rsi+M_ID]
+    jbe .place
+    mov [r8+rdx*8], rsi
+    dec rdx
+    jmp .inner
+.place:
+    mov [r8+rdx*8], rax
+    inc rcx
+    jmp .outer
+.done:
+    ret
+
+; media_find(id) -> media struct ptr, or 0. Caller holds the store lock.
+media_find:
+    call media_idx
+    cmp rax, -1
+    je .no
+    mov rcx, [media_arr]
+    mov rax, [rcx+rax*8]
+    ret
+.no:
+    xor eax, eax
+    ret
+
+; write_media_record(mstruct, flags) -> 0 / -1. Caller holds wr lock.
+; A tombstone carries no payload beyond the header.
+write_media_record:
+    push r12
+    push r13
+    push r14
+    push r15
+    push rbx
+    mov r12, rdi
+    mov r13, rsi
+    xor r14d, r14d              ; payload length
+    test r13, FLAG_TOMBSTONE
+    jnz .sized
+    mov r14, [r12+M_NAME_L]
+    add r14, MD_HDR
+.sized:
+    lea r15, [r14+R_HDR+7]
+    and r15, -8
+    xor edi, edi
+    mov rsi, r15
+    mov edx, PROT_READ | PROT_WRITE
+    mov r10d, MAP_PRIVATE | MAP_ANONYMOUS
+    mov r8, -1
+    xor r9d, r9d
+    mov eax, SYS_mmap
+    syscall
+    cmp rax, -4095
+    jae .fail
+    mov rbx, rax
+    mov dword [rbx+R_MAGIC], 'REC1'
+    mov dword [rbx+R_TYPE], TYPE_MEDIA
+    mov rax, [r12+M_ID]
+    mov [rbx+R_ID], rax
+    mov [rbx+R_FLAGS], r13
+    mov rax, [r12+M_CREATED]
+    mov [rbx+R_CREATED], rax
+    mov [rbx+R_UPDATED], rax
+    test r14, r14
+    jz .crc
+    mov dword [rbx+R_TLEN], MD_HDR
+    mov rax, [r12+M_NAME_L]
+    mov [rbx+R_SLEN], eax
+    lea rdi, [rbx+R_HDR]
+    lea rsi, [r12+M_W]
+    mov edx, MD_HDR
+    call mem_copy
+    mov rdi, rax
+    mov rsi, [r12+M_NAME_P]
+    mov rdx, [r12+M_NAME_L]
+    call mem_copy
+.crc:
+    lea rdi, [rbx+R_HDR]
+    mov rsi, r14
+    call crc32c
+    mov [rbx+R_CRC], eax
+    mov rdi, [store_fd]
+    mov rsi, rbx
+    mov rdx, r15
+    call write_all
+    mov r12, rax
+    mov rdi, [store_fd]
+    mov eax, SYS_fsync
+    syscall
+    mov rdi, rbx
+    mov rsi, r15
+    mov eax, SYS_munmap
+    syscall
+    test r12, r12
+    jnz .fail
+    add [store_size], r15
+    xor eax, eax
+    jmp .ret
+.fail:
+    mov rax, -1
+.ret:
+    pop rbx
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    ret
+
+; store_append_media(mstruct) -> the new id, or -1. The caller fills
+; M_W..M_BSPNG and M_NAME_P/L (any memory); id and created are assigned
+; here, the name is copied into the arena, and the struct is inserted
+; at the front of the media list (newest first).
+store_append_media:
+    push r12
+    push r13
+    push r14
+    mov r12, rdi
+    mov rdi, store_lock
+    call wr_lock
+    call time_now
+    mov rdi, rax
+    call store_touch
+    mov [r12+M_CREATED], rax
+    mov r13, [r12+M_ID]         ; a reserved id (media_reserve_id), or 0
+    test r13, r13
+    jnz .haveid
+    mov r13, [next_mid]
+    mov [r12+M_ID], r13
+.haveid:
+    mov rdi, [st_arena]
+    mov esi, M_SIZE
+    call arena_alloc
+    test rax, rax
+    jz .fail
+    mov r14, rax
+    mov rdi, rax
+    mov rsi, r12
+    mov edx, M_SIZE
+    call mem_copy
+    mov rdx, [r12+M_NAME_L]
+    test rdx, rdx
+    jz .named
+    mov rdi, [st_arena]
+    mov rsi, rdx
+    call arena_alloc
+    test rax, rax
+    jz .fail
+    mov [r14+M_NAME_P], rax
+    mov rdi, rax
+    mov rsi, [r12+M_NAME_P]
+    mov rdx, [r12+M_NAME_L]
+    call mem_copy
+.named:
+    mov rdi, r14
+    xor esi, esi
+    call write_media_record
+    test rax, rax
+    jnz .fail
+    mov rcx, [media_cnt]
+    cmp rcx, MAX_MEDIA
+    jae .fail
+    mov rdx, [media_arr]
+.shift:                         ; open slot 0
+    test rcx, rcx
+    jz .front
+    mov rax, [rdx+rcx*8-8]
+    mov [rdx+rcx*8], rax
+    dec rcx
+    jmp .shift
+.front:
+    mov [rdx], r14
+    inc qword [media_cnt]
+    lea rax, [r13+1]
+    cmp rax, [next_mid]
+    jbe .bumped
+    mov [next_mid], rax
+.bumped:
+    mov rdi, store_lock
+    call wr_unlock
+    mov rax, r13
+    jmp .ret
+.fail:
+    mov rdi, store_lock
+    call wr_unlock
+    mov rax, -1
+.ret:
+    pop r14
+    pop r13
+    pop r12
+    ret
+
+; media_reserve_id() -> the next media id, taken now so the converter
+; can name its output files before the record exists. A reservation
+; that never becomes a record leaves a gap, nothing else.
+media_reserve_id:
+    push r12
+    mov rdi, store_lock
+    call wr_lock
+    mov r12, [next_mid]
+    inc qword [next_mid]
+    mov rdi, store_lock
+    call wr_unlock
+    mov rax, r12
+    pop r12
+    ret
+
+; store_delete_media(id) -> 0 / -1 (unknown id). Appends a tombstone
+; and drops the entry; the files are the caller's to unlink.
+store_delete_media:
+    push r12
+    push r13
+    mov r12, rdi
+    mov rdi, store_lock
+    call wr_lock
+    mov rdi, r12
+    call media_idx
+    cmp rax, -1
+    je .fail
+    mov r13, rax
+    call time_now
+    mov rdi, rax
+    call store_touch
+    sub rsp, M_SIZE
+    mov rdi, rsp
+    mov ecx, M_SIZE/8
+    push rax
+    xor eax, eax
+    rep stosq
+    pop rax
+    mov [rsp+M_ID], r12
+    mov [rsp+M_CREATED], rax
+    mov rdi, rsp
+    mov esi, FLAG_TOMBSTONE
+    call write_media_record
+    add rsp, M_SIZE
+    test rax, rax
+    jnz .fail
+    mov rdi, r13
+    call media_remove_idx
+    mov rdi, store_lock
+    call wr_unlock
+    xor eax, eax
+    jmp .ret
+.fail:
+    mov rdi, store_lock
+    call wr_unlock
+    mov rax, -1
+.ret:
     pop r13
     pop r12
     ret
@@ -1006,8 +1399,8 @@ write_settings_locked:
     sub rsp, 32
     mov [rsp+16], r8            ; banner ptr
     mov [rsp+24], r9            ; banner len
-    lea rax, [r15+r9+SET_HDR+128+4] ; payload = SET_HDR + title + banner
-    add rax, [set_url_l]            ;   + hash + url_len dword + url
+    lea rax, [r15+r9+SET_HDR+128+4+4] ; payload = SET_HDR + title + banner
+    add rax, [set_url_l]            ;   + hash + url_len dword + url + imgmax
     mov [rsp+8], rax
     lea rbp, [rax+R_HDR+7]
     and rbp, -8                 ; padded total record size
@@ -1061,6 +1454,8 @@ write_settings_locked:
     mov rsi, set_url
     mov edx, ecx
     call mem_copy
+    mov ecx, [set_imgmax]      ; extension 2: image size (longest edge)
+    mov [rax], ecx
     mov rdi, [rsp]
     lea rdi, [rdi+R_HDR]
     mov rsi, [rsp+8]           ; crc over the payload
@@ -1215,6 +1610,19 @@ store_compact:
     inc r14
     jmp .wr
 .settings:
+    xor r14d, r14d
+.wm:
+    cmp r14, [media_cnt]
+    jae .wset
+    mov rax, [media_arr]
+    mov rdi, [rax+r14*8]
+    xor esi, esi
+    call write_media_record
+    test rax, rax
+    jnz .undo
+    inc r14
+    jmp .wm
+.wset:
     cmp byte [set_present], 0
     je .swap
     mov edi, [set_ppp]
@@ -1303,6 +1711,10 @@ st_arena:    resq 1
 posts_arr:   resq 1
 posts_cnt:   resq 1
 next_id:     resq 1
+media_arr:   resq 1
+media_cnt:   resq 1
+next_mid:    resq 1
+set_imgmax:  resd 1
 set_ppp:     resd 1
 set_ttl:     resd 1
 set_title_p: resq 1

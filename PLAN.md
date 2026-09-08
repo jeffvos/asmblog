@@ -16,6 +16,7 @@ HTTP); custom append-only binary store; posts authored in a Markdown subset.
 | `md` | Markdown-subset -> HTML renderer |
 | `tmpl` | template loading and scatter-gather rendering |
 | `auth` | sessions, CSRF, login rate limiting, libsodium shim |
+| `media` | image uploads: spool, multipart, the conversion helper process, renditions on disk, `/media/` serving |
 | `util` | mmap arena allocator, ptr+len strings, HTML escaper, dates |
 
 ## Threading
@@ -55,7 +56,12 @@ markdown at save time (zero parse cost at serve time); the plain-text
 excerpt is derived once per load/save the same way. Compaction runs at
 startup once dead records dominate, or via `blogd compact`. Settings record: site
 title, posts_per_page (default 5, clamp 1-50, admin-editable), session TTL,
-Argon2id hash. Every list page (home, tag, search) makes one filter pass
+Argon2id hash, site URL, image size (320-4096 px). Media records
+(`TYPE_MEDIA`, their own id sequence) describe an uploaded image —
+dimensions of the full and inline renditions, byte sizes, original
+filename — while the bytes live as files in `data/media/` (`<id>.webp`,
+`<id>.png`, `<id>-s.webp`, `<id>-s.png`); a delete is a tombstone plus
+unlinks, and a startup sweep removes files no live record claims. Every list page (home, tag, search) makes one filter pass
 over the date-sorted index, collecting the indices of matching posts into a
 stack array; the requested page is a slice of that array. Search matches
 title+markdown with a case-insensitive substring scan: the first needle
@@ -65,10 +71,13 @@ candidate position pays for the byte-wise compare of the rest.
 ## HTTP surface
 
 Public: `/`, `/page/N`, `/post/{slug}`, `/tag/{tag}` (paginated), `/search?q=`,
-`/feed.xml` (RSS), `/static/*` (pre-gzipped at build time).
+`/feed.xml` (RSS), `/static/*` (pre-gzipped at build time), `/media/<id>[-s].(webp|png)`
+(uploaded images, served from a file mapping after the headers, strong
+ETag, immutable).
 Admin: login/logout, dashboard (drafts + published), new/edit/save
 (draft|publish), preview (render without save), delete, settings
-(posts-per-page, site title, password change). A save, delete or settings
+(posts-per-page, site title, image size, password change), media
+(library, multipart upload, delete-with-confirm). A save, delete or settings
 change redirects to `/admin?saved=1` (`draft`, `deleted`, `settings`) and
 the dashboard renders the matching localised notice; error and notice
 strings carry their own `<p class="error">`/`<div class="notice">`
@@ -77,7 +86,9 @@ draft above a re-rendered editor with the submitted fields intact, so
 there is a way back without a script.
 Parser accepts only well-formed HTTP/1.1 GET/POST/HEAD with Content-Length
 bodies; keep-alive supported; malformed 400, oversized 413/431, chunked
-411. Idle connections are swept by a per-worker timerfd. Repeat requests
+411. A body over the 100 KB buffer is accepted only for `POST /admin/media`
+with a live session and up to 32 MB: it streams into `data/media/up-<n>.tmp`
+through the idle outbuf and the handler maps that file. Idle connections are swept by a per-worker timerfd. Repeat requests
 for an unchanged page are served from a render cache shared by all workers:
 64 direct-mapped slots keyed by the page's weak ETag plus host, scheme and
 request target (bodies up to 64 KB). Lookups are lock-free — each slot
@@ -97,6 +108,11 @@ on the connection so `finish_page` does not store it back.
   escapes by default, link schemes allowlisted (http/https/mailto/relative).
 - Post-setup seccomp BPF allowlist (~20 syscalls) via seccomp(2); systemd unit
   with NoNewPrivileges, ProtectSystem=strict, data dir sole writable path.
+- Image conversion never runs inside the sandbox: a helper process forked
+  before the workers (and before the filter) takes jobs over a socketpair,
+  fork+execs `tools/imgconv` (vipsthumbnail / ImageMagick / Pillow) with
+  no inherited descriptors, and reports the exit status. The server itself
+  never gains `execve`.
 - CSP default-src 'self', X-Content-Type-Options, Referrer-Policy on every
   response. Non-executable stack/heap.
 
@@ -136,3 +152,7 @@ crash recovery); AFL++ fuzz harnesses for HTTP + markdown parsers; Valgrind.
 5. **Admin** — sessions/CSRF, CRUD, markdown parser + preview, settings.
 6. **Hardening & ship** — seccomp, rate limiting, fuzzing, load test,
    proxy + systemd deployment.
+7. **The modern web** — metadata, validators, icons, richer markdown.
+8. **Own the pictures** — uploads streamed to disk, conversion helper,
+   WebP + PNG at two sizes, media records, `<picture>` + CSS lightbox,
+   media library.

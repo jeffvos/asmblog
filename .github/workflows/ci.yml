@@ -25,7 +25,7 @@ jobs:
       - name: toolchain
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y --no-install-recommends nasm binutils libsodium-dev gzip brotli curl python3
+          sudo apt-get install -y --no-install-recommends nasm binutils libsodium-dev gzip brotli curl python3 libvips-tools
 
       - name: tailwind standalone cli
         run: |
@@ -38,7 +38,7 @@ jobs:
       - name: build
         run: make
 
-      - name: smoke suite (contrast floor, store selftest, HTTP, content, admin, i18n)
+      - name: smoke suite (contrast floor, store selftest, HTTP, content, admin, i18n, media)
         run: make test
 
       - name: fuzz (short)

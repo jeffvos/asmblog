@@ -14,7 +14,8 @@
     <small class="hint" id="h-tags">comma-separated: a-z, 0-9, dashes</small>
     <input id="f-tags" name="tags" value="{{etags}}" maxlength="256" aria-describedby="h-tags" class="field w-full mb-2">
     <label class="lbl" for="f-md">markdown</label>
-    <textarea id="f-md" name="md" rows="18" class="field w-full mb-3 font-mono text-sm">{{emd}}</textarea>
+    <small class="hint" id="h-md">insert an uploaded image with <code>![caption](/media/N)</code> — see <a class="backlink" href="/admin/media">media</a></small>
+    <textarea id="f-md" name="md" rows="18" aria-describedby="h-md" class="field w-full mb-3 font-mono text-sm">{{emd}}</textarea>
     <div class="actions">
       <button class="btn btn-primary" type="submit" name="action" value="publish">Publish</button>
       <button class="btn" type="submit" name="action" value="draft">Save Draft</button>

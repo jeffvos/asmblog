@@ -1,0 +1,24 @@
+{{notice}}
+<div class="card admin">
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+    <h1 class="article-title text-xl m-0">media</h1>
+    <div class="actions">
+      <a class="btn" href="/admin">Control panel</a>
+      <a class="btn" href="/admin/new">+ New Post</a>
+    </div>
+  </div>
+  {{err}}
+  <form method="post" action="/admin/media" enctype="multipart/form-data">
+    <input type="hidden" name="csrf" value="{{csrf}}">
+    <label class="lbl" for="f-file">upload an image</label>
+    <small class="hint" id="h-file">PNG, JPEG, GIF, WebP, TIFF or HEIC, up to 32 MB. It is resized to {{eimgmax}} px on its longest edge and stored as WebP with a PNG fallback; metadata (including location) is stripped.</small>
+    <div class="actions mb-3">
+      <input id="f-file" type="file" name="file" accept="image/*" aria-describedby="h-file" class="field flex-1 min-w-0" required>
+      <button class="btn btn-primary" type="submit">Upload</button>
+    </div>
+  </form>
+  <p class="hint">Paste an item's snippet on its own line in a post for a full-width figure with a caption, or inside a paragraph for an inline picture. Readers click either to open it full size.</p>
+  <div class="mgrid">
+{{rows}}
+  </div>
+</div>

@@ -39,3 +39,16 @@
 %define S_N_DRAFT    34
 %define S_N_DELETED  35
 %define S_N_SETTINGS 36
+%define S_T_MEDIA    37         ; "media" (the library page title)
+%define S_T_MDELETE  38
+%define S_N_UPLOADED 39
+%define S_N_MDELETED 40
+%define S_E_UPTYPE   41         ; upload errors (carry their own wrapper)
+%define S_E_UPEMPTY  42
+%define S_E_UPCONV   43
+%define S_E_UPSTORE  44
+%define S_E_UPNOCONV 45
+%define S_E_UPFULL   46
+%define S_LB_OPEN    47         ; lightbox link labels (aria)
+%define S_LB_CLOSE   48
+%define S_E_IMGMAX   49         ; settings: image size out of range

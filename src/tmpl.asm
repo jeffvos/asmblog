@@ -567,6 +567,7 @@ n_cssv:     db 'cssv'
 n_eurl:     db 'eurl'
 n_thcolor:  db 'themecolor'
 n_notice:   db 'notice'
+n_eimgmax:  db 'eimgmax'
 
 align 8
 marker_names:                   ; {ptr, len, pad} triplets, indexed by id
@@ -608,6 +609,7 @@ marker_names:                   ; {ptr, len, pad} triplets, indexed by id
     dq n_eurl, 4, 0
     dq n_thcolor, 10, 0
     dq n_notice, 6, 0
+    dq n_eimgmax, 7, 0
 
 ; one template set per locale; slot = locale*NTMPL + template id
 f_shell:    db 'templates/en/shell.html', 0
@@ -619,6 +621,8 @@ f_adash:    db 'templates/en/admin_dash.html', 0
 f_aedit:    db 'templates/en/admin_edit.html', 0
 f_aset:     db 'templates/en/admin_settings.html', 0
 f_aconf:    db 'templates/en/admin_confirm.html', 0
+f_amedia:   db 'templates/en/admin_media.html', 0
+f_amconf:   db 'templates/en/admin_mconfirm.html', 0
 g_shell:    db 'templates/es/shell.html', 0
 g_card:     db 'templates/es/card.html', 0
 g_post:     db 'templates/es/post.html', 0
@@ -628,6 +632,8 @@ g_adash:    db 'templates/es/admin_dash.html', 0
 g_aedit:    db 'templates/es/admin_edit.html', 0
 g_aset:     db 'templates/es/admin_settings.html', 0
 g_aconf:    db 'templates/es/admin_confirm.html', 0
+g_amedia:   db 'templates/es/admin_media.html', 0
+g_amconf:   db 'templates/es/admin_mconfirm.html', 0
 
 tmpl_files:                     ; {path, slot, pad} triplets
     dq f_shell, T_SHELL, 0
@@ -639,6 +645,8 @@ tmpl_files:                     ; {path, slot, pad} triplets
     dq f_aedit, T_AEDIT, 0
     dq f_aset, T_ASET, 0
     dq f_aconf, T_ACONF, 0
+    dq f_amedia, T_AMEDIA, 0
+    dq f_amconf, T_AMCONF, 0
     dq g_shell, NTMPL+T_SHELL, 0
     dq g_card, NTMPL+T_CARD, 0
     dq g_post, NTMPL+T_POST, 0
@@ -648,6 +656,8 @@ tmpl_files:                     ; {path, slot, pad} triplets
     dq g_aedit, NTMPL+T_AEDIT, 0
     dq g_aset, NTMPL+T_ASET, 0
     dq g_aconf, NTMPL+T_ACONF, 0
+    dq g_amedia, NTMPL+T_AMEDIA, 0
+    dq g_amconf, NTMPL+T_AMCONF, 0
 
 section .bss
 

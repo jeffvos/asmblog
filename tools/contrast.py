@@ -8,6 +8,8 @@ references -- for both colour schemes and checks:
 
   * the pairs that carry small public text (bylines, excerpts, footers,
     navigation) against WCAG AA (4.5:1);
+  * the lightbox close button's ink on its fill (--lb-x-ink on
+    --lb-x-bg), which theme link hover rules must not override;
   * the admin tokens (--a-*) every theme must define, against the
     admin card (--a-panel): error/delete text, the draft badge, links,
     help text and the secondary button's text at 4.5:1; button text on
@@ -56,6 +58,9 @@ ADMIN_FILL = [("--a-accent-ink", "--a-accent"),
               ("--a-field-ink",  "--a-field-bg")]
 # admin tokens: non-text against the card
 ADMIN_UI = ["--a-focus", "--a-field-line"]
+# the lightbox close button: ink on its fill, every theme, both schemes
+# (it sits inside .content and must survive the theme's a:hover)
+LB_FILL = [("--lb-x-ink", "--lb-x-bg")]
 # the card(s) the admin tokens are checked against; Pittsburgh's plate
 # is a gradient between two greys, so both ends count
 ADMIN_PANELS = {t: ["--a-panel"] for t in THEMES}
@@ -220,7 +225,7 @@ def main():
                     checks.append((fg, panel, MIN_RATIO))
                 for fg in ADMIN_UI:
                     checks.append((fg, panel, MIN_UI_RATIO))
-            for fg, bg in ADMIN_FILL:
+            for fg, bg in ADMIN_FILL + LB_FILL:
                 checks.append((fg, bg, MIN_RATIO))
             for fg, bg, floor in checks:
                 try:

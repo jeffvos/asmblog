@@ -107,6 +107,7 @@ sc_filter:
     SC_ALLOW SYS_fsync
     SC_ALLOW SYS_ftruncate
     SC_ALLOW SYS_rename
+    SC_ALLOW SYS_unlink         ; media temporaries and deleted renditions
     SC_ALLOW SYS_mkdir
     SC_ALLOW SYS_futex
     SC_ALLOW SYS_time

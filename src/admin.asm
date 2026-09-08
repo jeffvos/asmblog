@@ -78,8 +78,16 @@ extern build_page
 extern finish_page
 extern sec_headers
 extern sec_headers_len
+extern media_ready
+extern media_arr
+extern media_cnt
+extern media_find
+extern media_upload
+extern media_delete
+extern set_imgmax
 
 global admin_route
+global admin_session_ok
 global slugify
 
 ; form field indices
@@ -97,7 +105,8 @@ global slugify
 %define FI_THEME     11
 %define FI_LOCALE    12
 %define FI_URL       13
-%define FIELD_N      14
+%define FI_IMGMAX    14
+%define FIELD_N      15
 
 ; frame
 %define A_VALS    0
@@ -114,14 +123,25 @@ global slugify
 %define A_ID      (A_PATHL + 8)
 %define A_NUM     (A_ID + 8)      ; 32
 %define A_NUM2    (A_NUM + 32)    ; 32
-%define A_DATE    (A_NUM2 + 32)   ; 32 (localized long dates)
+%define A_NUM3    (A_NUM2 + 32)   ; 32 (image size)
+%define A_DATE    (A_NUM3 + 32)   ; 32 (localized long dates)
 %define A_SLUG    (A_DATE + 32)   ; 160
 %define A_CK      (A_SLUG + 160)  ; 256
 %define A_SIDBUF  (A_CK + 256)    ; 64
 %define A_CSRFBUF (A_SIDBUF + 64) ; 64
 %define A_HASH    (A_CSRFBUF + 64); 128
 %define A_SPEC    (A_HASH + 128)  ; 96
-%define A_FRAME   ((A_SPEC + 96 + 15) & -16)
+%define A_MAP     (A_SPEC + 96)   ; 16: a mapped upload spool (ptr, len)
+%define A_FRAME   ((A_MAP + 16 + 15) & -16)
+%define MEDIA_PER_PAGE 48
+
+; EM literal — emit a .data literal (label + _len) through the writer in r12
+%macro EM 1
+    mov rdi, r12
+    mov rsi, %1
+    mov edx, %1_len
+    call emit
+%endmacro
 
 section .text
 
@@ -191,12 +211,24 @@ admin_route:
     mov edx, 6
     call mem_eq
     test eax, eax
-    jz .d_logout
+    jz .d_media
     cmp qword [rsp+A_POST], 0
     jne .do_login
     xor eax, eax                ; GET: plain login page
     xor ecx, ecx
     jmp .login_page
+.d_media:                       ; "/media": the library (GET), an upload (POST)
+    mov rdi, r14
+    mov rsi, a_p_media
+    mov edx, 6
+    call mem_eq
+    test eax, eax
+    jz .d_logout
+    cmp qword [rsp+A_SESS], -1
+    je .to_login
+    cmp qword [rsp+A_POST], 0
+    jne .do_upload
+    jmp .media_page
 .d_logout:
     cmp r15, 7
     jne .d_new
@@ -287,18 +319,46 @@ admin_route:
     jmp .do_save
 .d_set:
     cmp r15, 9
-    jne .d_prev
+    jne .d_mdel
     mov rdi, r14
     mov rsi, a_p_settings
     mov edx, 9
     call mem_eq
     test eax, eax
-    jz .d_prev
+    jz .d_mdel
     cmp qword [rsp+A_SESS], -1
     je .to_login
     cmp qword [rsp+A_POST], 0
     jne .do_settings
     jmp .settings_page
+.d_mdel:                        ; "/media/delete" (POST), "/media/delete/N" (confirm)
+    cmp r15, 13
+    jb .d_prev
+    mov rdi, r14
+    mov rsi, a_p_mdelete
+    mov edx, 13
+    call mem_eq
+    test eax, eax
+    jz .d_prev
+    cmp qword [rsp+A_SESS], -1
+    je .to_login
+    cmp r15, 13
+    jne .mdel_id
+    cmp qword [rsp+A_POST], 0
+    je .media_page
+    jmp .do_mdelete
+.mdel_id:
+    cmp byte [r14+13], '/'
+    jne .notfound
+    lea rdi, [r14+14]
+    lea rsi, [r15-14]
+    call parse_dec
+    test rax, rax
+    jz .notfound
+    mov [rsp+A_ID], rax
+    cmp qword [rsp+A_POST], 0
+    jne .method405
+    jmp .mconfirm
 .d_prev:
     cmp r15, 8
     jne .notfound
@@ -322,46 +382,9 @@ admin_route:
     je .to_login
     ; a save/delete redirects here with ?saved=1 (&c.): render the notice.
     ; http.asm hands us the bare path; the query is still on the target.
-    mov rsi, [r12+CTX_TGT_P]
-    mov rcx, [r12+CTX_TGT_L]
-.qscan:
-    test rcx, rcx
-    jz .noflag
-    cmp byte [rsi], '?'
-    je .qhit
-    inc rsi
-    dec rcx
-    jmp .qscan
-.qhit:
-    inc rsi
-    dec rcx                     ; rsi/rcx = the query string
-    xor ebx, ebx
-.qflag:
-    cmp ebx, Q_FLAGS_N
-    jae .noflag
-    lea rax, [rbx+rbx*2]
-    lea r13, [q_flags + rax*8]  ; {ptr, len, string id}
-    cmp rcx, [r13+8]
-    jne .qnext
-    push rsi
-    push rcx
-    mov rdi, rsi
-    mov rsi, [r13]
-    mov rdx, rcx
-    call mem_eq
-    pop rcx
-    pop rsi
-    test eax, eax
-    jz .qnext
-    mov edi, [r13+16]
-    call i18n_get
-    mov [rsp+A_VALS+V_NOTICE*16], rax
-    mov [rsp+A_VALS+V_NOTICE*16+8], rdx
-    jmp .noflag
-.qnext:
-    inc ebx
-    jmp .qflag
-.noflag:
+    mov rdi, q_flags
+    mov esi, Q_FLAGS_N
+    call flag_notice
     mov rdi, store_lock
     call rd_lock
     lea rdi, [rsp+A_RW]
@@ -873,6 +896,7 @@ admin_route:
     mov qword [rsp+A_VALS+V_EURL*16], set_url
     mov rax, [set_url_l]
     mov [rsp+A_VALS+V_EURL*16+8], rax
+    call set_imgmax_val
     call set_theme_radio        ; pre-check the radio for the active theme
     call set_locale_radios
     mov edi, S_T_SETTINGS
@@ -923,6 +947,19 @@ admin_route:
     mov r13d, 1
 .locale_set:
     mov [set_locale], r13d      ; persisted alongside the theme
+    ; image size: the longest edge uploads are resized to (a form
+    ; without the field keeps the current value)
+    mov rsi, [rsp+A_FLD+FI_IMGMAX*16+8]
+    test rsi, rsi
+    jz .imgmax_keep
+    mov rdi, [rsp+A_FLD+FI_IMGMAX*16]
+    call parse_dec
+    cmp rax, IMGMAX_MIN
+    jb .st_eimg
+    cmp rax, IMGMAX_MAX
+    ja .st_eimg
+    mov [set_imgmax], eax       ; store_save_settings persists it
+.imgmax_keep:
     ; optional password change
     mov rax, [rsp+A_FLD+FI_PASSWORD*16+8]
     test rax, rax
@@ -968,6 +1005,11 @@ admin_route:
     call i18n_get
     mov rcx, rdx
     jmp .set_err
+.st_eimg:
+    mov edi, S_E_IMGMAX
+    call i18n_get
+    mov rcx, rdx
+    jmp .set_err
 .st_err:
     mov edi, S_E_SET
     call i18n_get
@@ -991,6 +1033,10 @@ admin_route:
     mov [rsp+A_VALS+V_EURL*16], rax
     mov rax, [rsp+A_FLD+FI_URL*16+8]
     mov [rsp+A_VALS+V_EURL*16+8], rax
+    mov rax, [rsp+A_FLD+FI_IMGMAX*16]
+    mov [rsp+A_VALS+V_EIMGMAX*16], rax
+    mov rax, [rsp+A_FLD+FI_IMGMAX*16+8]
+    mov [rsp+A_VALS+V_EIMGMAX*16+8], rax
     call set_theme_radio
     call set_locale_radios
     mov edi, S_T_SETTINGS
@@ -1072,6 +1118,164 @@ admin_route:
     xor eax, eax                ; no error: the editor, fields repopulated
     xor ecx, ecx
     jmp .save_err
+
+; ---- media library ---------------------------------------------------------
+; GET /admin/media[?p=N]: the upload form and the library, newest first,
+; MEDIA_PER_PAGE to a page. A redirect back here carries ?uploaded=1,
+; ?deleted=1 or ?err=<reason> (mq_flags) for the notice.
+.media_page:
+    mov rdi, mq_flags
+    mov esi, MQ_FLAGS_N
+    call flag_notice
+    cmp byte [media_ready], 0
+    jne .mp_conv_ok
+    mov edi, S_E_UPNOCONV       ; say so above the form
+    call i18n_get
+    mov [rsp+A_VALS+V_ERR*16], rax
+    mov [rsp+A_VALS+V_ERR*16+8], rdx
+.mp_conv_ok:
+    call set_imgmax_val
+    call query_page
+    mov [rsp+A_ID], rax         ; borrow the slot for the page number
+    mov rdi, store_lock
+    call rd_lock
+    lea rdi, [rsp+A_RW]
+    lea rsi, [r12+CTX_OUT+CTX_MDHTML_OFF]
+    lea rdx, [r12+CTX_OUT+CTX_MDHTML_END]
+    call w_init
+    mov rbx, [rsp+A_ID]
+    dec rbx
+    imul rbx, rbx, MEDIA_PER_PAGE   ; first index on this page
+    xor r13d, r13d              ; emitted
+.mrow:
+    cmp rbx, [media_cnt]
+    jae .mrows_done
+    cmp r13, MEDIA_PER_PAGE
+    jae .mrows_done
+    mov rax, [media_arr]
+    mov rsi, [rax+rbx*8]
+    lea rdi, [rsp+A_RW]
+    call media_row
+    inc rbx
+    inc r13
+    jmp .mrow
+.mrows_done:
+    lea rdi, [rsp+A_RW]
+    mov rsi, [rsp+A_ID]
+    mov rdx, [media_cnt]
+    call media_pager
+    lea rax, [r12+CTX_OUT+CTX_MDHTML_OFF]
+    mov [rsp+A_VALS+V_ROWS*16], rax
+    mov rcx, [rsp+A_RW]
+    sub rcx, rax
+    mov [rsp+A_VALS+V_ROWS*16+8], rcx
+    mov edi, S_T_MEDIA
+    call i18n_get
+    mov [rsp+A_VALS+V_TITLE*16], rax
+    mov [rsp+A_VALS+V_TITLE*16+8], rdx
+    mov rdi, r12
+    lea rsi, [rsp+A_VALS]
+    mov edx, T_AMEDIA
+    mov ecx, 1
+    call admin_render
+    jmp .done
+
+; POST /admin/media: multipart/form-data with csrf + file. A body that
+; fit the buffer is in inbuf; a large one was streamed to the spool
+; (net.asm), which is mapped here. media.asm does the rest.
+.do_upload:
+    mov qword [rsp+A_MAP], 0
+    cmp dword [r12+CTX_SPOOL_FD], 0
+    jl .up_buffered
+    xor edi, edi
+    mov rsi, [r12+CTX_SPOOL_LEN]
+    mov edx, PROT_READ
+    mov r10d, MAP_PRIVATE
+    mov r8d, [r12+CTX_SPOOL_FD]
+    xor r9d, r9d
+    mov eax, SYS_mmap
+    syscall
+    cmp rax, -4095
+    jae .up_store_err
+    mov [rsp+A_MAP], rax
+    mov rcx, [r12+CTX_SPOOL_LEN]
+    mov [rsp+A_MAP+8], rcx
+    mov r13, rax
+    mov r14, rcx
+    jmp .up_go
+.up_buffered:
+    lea r13, [r12+CTX_IN]
+    add r13, [rsp+A_HLEN]
+    mov r14, [rsp+A_BLEN]
+.up_go:
+    mov rdi, r12
+    mov rsi, r13
+    mov rdx, r14
+    mov rcx, [rsp+A_SESS]
+    call media_upload
+    mov r13, rax                ; MU_* code
+    mov rdi, [rsp+A_MAP]
+    test rdi, rdi
+    jz .up_unmapped
+    mov rsi, [rsp+A_MAP+8]
+    mov eax, SYS_munmap
+    syscall
+.up_unmapped:
+    cmp r13, 1
+    je .badreq                  ; malformed multipart or a csrf mismatch
+    cmp r13, MU_LOC_N
+    jae .badreq
+    shl r13, 4
+    mov rsi, [mu_loc + r13]
+    mov rdx, [mu_loc + r13 + 8]
+    jmp .redir
+.up_store_err:
+    mov rsi, a_loc_up_store
+    mov edx, a_loc_up_store_len
+    jmp .redir
+
+; GET /admin/media/delete/N: confirm; POST /admin/media/delete: do it
+.mconfirm:
+    mov rdi, store_lock
+    call rd_lock
+    mov rdi, [rsp+A_ID]
+    call media_find
+    test rax, rax
+    jz .ed_missing
+    mov rcx, [rax+M_NAME_P]
+    mov [rsp+A_VALS+V_ETITLE*16], rcx
+    mov rcx, [rax+M_NAME_L]
+    mov [rsp+A_VALS+V_ETITLE*16+8], rcx
+    call set_id_val
+    mov edi, S_T_MDELETE
+    call i18n_get
+    mov [rsp+A_VALS+V_TITLE*16], rax
+    mov [rsp+A_VALS+V_TITLE*16+8], rdx
+    mov rdi, r12
+    lea rsi, [rsp+A_VALS]
+    mov edx, T_AMCONF
+    mov ecx, 1
+    call admin_render
+    jmp .done
+.do_mdelete:
+    call parse_body
+    test rax, rax
+    jnz .badreq
+    call csrf_check
+    test eax, eax
+    jz .badreq
+    mov rdi, [rsp+A_FLD+FI_ID*16]
+    mov rsi, [rsp+A_FLD+FI_ID*16+8]
+    call parse_dec
+    test rax, rax
+    jz .notfound
+    mov rdi, rax
+    call media_delete
+    test rax, rax
+    jnz .notfound
+    mov rsi, a_loc_mdeleted
+    mov edx, a_loc_mdeleted_len
+    jmp .redir
 
 ; ---- shared exits ---------------------------------------------------------
 .to_login:
@@ -1163,6 +1367,126 @@ csrf_check:
     xor eax, eax
     ret
 
+; flag_notice(table, n) — when the request's query string equals one
+; of the table's flags ({ptr, len, S_* id} rows: a save redirects with
+; ?saved=1 &c.), V_NOTICE = that localised notice. Frame helper.
+flag_notice:
+    mov r8, rdi
+    mov r9, rsi
+    mov rsi, [r12+CTX_TGT_P]
+    mov rcx, [r12+CTX_TGT_L]
+.qscan:
+    test rcx, rcx
+    jz .none
+    cmp byte [rsi], '?'
+    je .qhit
+    inc rsi
+    dec rcx
+    jmp .qscan
+.qhit:
+    inc rsi
+    dec rcx                     ; rsi/rcx = the query string
+    xor r10d, r10d
+.flag:
+    cmp r10, r9
+    jae .none
+    lea rax, [r10+r10*2]
+    lea r11, [r8+rax*8]
+    cmp rcx, [r11+8]
+    jne .next
+    push rsi
+    push rcx
+    push r8
+    push r9
+    push r10
+    push r11
+    mov rdi, rsi
+    mov rsi, [r11]
+    mov rdx, rcx
+    call mem_eq
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rcx
+    pop rsi
+    test eax, eax
+    jz .next
+    mov edi, [r11+16]
+    call i18n_get
+    mov [rsp+8+A_VALS+V_NOTICE*16], rax
+    mov [rsp+8+A_VALS+V_NOTICE*16+8], rdx
+    ret
+.next:
+    inc r10
+    jmp .flag
+.none:
+    ret
+
+; query_page() -> rax = N from a p=N query parameter, else 1
+query_page:
+    mov rsi, [r12+CTX_TGT_P]
+    mov rcx, [r12+CTX_TGT_L]
+.q:
+    test rcx, rcx
+    jz .one
+    cmp byte [rsi], '?'
+    je .params
+    inc rsi
+    dec rcx
+    jmp .q
+.params:
+    inc rsi
+    dec rcx
+.param:
+    test rcx, rcx
+    jz .one
+    xor edx, edx
+.amp:
+    cmp rdx, rcx
+    jae .seg
+    cmp byte [rsi+rdx], '&'
+    je .seg
+    inc rdx
+    jmp .amp
+.seg:
+    cmp rdx, 3
+    jb .adv
+    cmp word [rsi], 'p='
+    jne .adv
+    lea rdi, [rsi+2]
+    push rsi
+    push rcx
+    lea rsi, [rdx-2]
+    call parse_dec
+    pop rcx
+    pop rsi
+    test rax, rax
+    jnz .ret
+    jmp .one
+.adv:
+    lea rax, [rdx+1]
+    cmp rax, rcx
+    ja .one
+    add rsi, rax
+    sub rcx, rax
+    jmp .param
+.one:
+    mov eax, 1
+.ret:
+    ret
+
+; set_imgmax_val — V_EIMGMAX = [set_imgmax] as decimal (A_NUM3)
+set_imgmax_val:
+    mov edi, [set_imgmax]
+    lea rsi, [rsp+8+A_NUM3]
+    call u64_to_dec
+    lea rcx, [rsp+8+A_NUM3]
+    sub rax, rcx
+    mov [rsp+8+A_VALS+V_EIMGMAX*16], rcx
+    mov [rsp+8+A_VALS+V_EIMGMAX*16+8], rax
+    ret
+
 ; set_locale_radios — pre-check the language radio for [set_locale].
 ; set_theme_radio — check the settings radio for [set_theme]; the
 ; V_SEL* slots are laid out in theme-id order.
@@ -1198,6 +1522,190 @@ set_id_val:
     ret
 
 ; ---- standalone helpers ---------------------------------------------------
+
+; admin_session_ok(ctx, head_len) -> 1 when the sid cookie in the
+; buffered head names a live session (net.asm asks before it lets a
+; large upload body stream to disk).
+admin_session_ok:
+    lea rdi, [rdi+CTX_IN]
+    call cookie_sid
+    test rax, rax
+    jz .no
+    mov rdi, rax
+    mov rsi, rdx
+    call session_find
+    cmp rax, -1
+    je .no
+    mov eax, 1
+    ret
+.no:
+    xor eax, eax
+    ret
+
+; media_row(w, m) — one library item:
+; <figure class="mitem"><picture>thumbnail</picture><figcaption>
+; <code class="snippet">![stem](/media/N)</code><span class="meta">WxH · K KB</span>
+; <a class="dellink" href="/admin/media/delete/N">delete</a></figcaption></figure>
+media_row:
+    push r12
+    push r13
+    push r14
+    push r15
+    mov r12, rdi
+    mov r13, rsi
+    mov r14, [r13+M_ID]
+    EM mr_1                     ; <figure ...><source type="image/webp" srcset="/media/
+    mov rdi, r12
+    mov rsi, r14
+    call emit_u64
+    xor r15d, r15d              ; "-s" when there is an inline rendition
+    cmp dword [r13+M_SW], 0
+    je .thumb_sfx
+    mov r15d, 2
+.thumb_sfx:
+    mov rdi, r12
+    mov rsi, mr_sfx_small
+    mov rdx, r15
+    call emit
+    EM mr_2                     ; .webp"><img src="/media/
+    mov rdi, r12
+    mov rsi, r14
+    call emit_u64
+    mov rdi, r12
+    mov rsi, mr_sfx_small
+    mov rdx, r15
+    call emit
+    EM mr_3                     ; .png" width="
+    mov esi, [r13+M_SW]
+    test esi, esi
+    jnz .tw
+    mov esi, [r13+M_W]
+.tw:
+    mov rdi, r12
+    call emit_u64
+    EM mr_4                     ; " height="
+    mov esi, [r13+M_SH]
+    test esi, esi
+    jnz .th
+    mov esi, [r13+M_H]
+.th:
+    mov rdi, r12
+    call emit_u64
+    EM mr_5                     ; " alt="" loading=... <code class="snippet">![
+    mov rdi, [r13+M_NAME_P]
+    mov rsi, [r13+M_NAME_L]
+    call name_stem              ; -> rax/rdx: the name without its extension
+    test rdx, rdx
+    jnz .stem
+    mov rax, mr_image
+    mov edx, mr_image_len
+.stem:
+    mov rdi, r12
+    mov rsi, rax
+    call emit_esc
+    EM mr_6                     ; ](/media/
+    mov rdi, r12
+    mov rsi, r14
+    call emit_u64
+    EM mr_7                     ; )</code><span class="meta">
+    mov rdi, r12
+    mov esi, [r13+M_W]
+    call emit_u64
+    EM mr_x                     ; ×
+    mov rdi, r12
+    mov esi, [r13+M_H]
+    call emit_u64
+    EM mr_8                     ;  ·
+    mov esi, [r13+M_BWEBP]      ; the full WebP, in KB (rounded up)
+    add esi, 1023
+    shr esi, 10
+    mov rdi, r12
+    call emit_u64
+    EM mr_9                     ;  KB</span><a class="dellink" href="/admin/media/delete/
+    mov rdi, r12
+    mov rsi, r14
+    call emit_u64
+    EM mr_10                    ; ">
+    mov edi, S_DEL_LINK
+    call i18n_get
+    mov rdi, r12
+    mov rsi, rax
+    call emit
+    EM mr_11                    ; </a></figcaption></figure>
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    ret
+
+; name_stem(p, l) -> rax/rdx: p up to the last '.', or all of it
+name_stem:
+    mov rax, rdi
+    mov rdx, rsi
+    mov rcx, rsi
+.back:
+    test rcx, rcx
+    jz .ret
+    dec rcx
+    cmp byte [rdi+rcx], '.'
+    jne .back
+    test rcx, rcx
+    jz .ret                     ; ".hidden": keep the whole name
+    mov rdx, rcx
+.ret:
+    ret
+
+; media_pager(w, page, total) — newer/older links for the library
+media_pager:
+    push r12
+    push r13
+    push r14
+    mov r12, rdi
+    mov r13, rsi
+    mov r14, rdx
+    add r14, MEDIA_PER_PAGE - 1
+    xor edx, edx
+    mov rax, r14
+    mov ecx, MEDIA_PER_PAGE
+    div rcx
+    mov r14, rax                ; pages
+    cmp r14, 1
+    jbe .done
+    EM mp_open
+    cmp r13, 1
+    jbe .no_newer
+    EM mp_prev
+    lea rsi, [r13-1]
+    mov rdi, r12
+    call emit_u64
+    EM mp_mid
+    mov edi, S_NEWER
+    call i18n_get
+    mov rdi, r12
+    mov rsi, rax
+    call emit
+    EM mp_close_a
+.no_newer:
+    cmp r13, r14
+    jae .no_older
+    EM mp_next
+    lea rsi, [r13+1]
+    mov rdi, r12
+    call emit_u64
+    EM mp_mid
+    mov edi, S_OLDER
+    call i18n_get
+    mov rdi, r12
+    mov rsi, rax
+    call emit
+    EM mp_close_a
+.no_older:
+    EM mp_close
+.done:
+    pop r14
+    pop r13
+    pop r12
+    ret
 
 ; admin_render(ctx, vals, tmpl_id, locked)
 ; content template -> SCRATCH, shell -> BODY, then finish_page.
@@ -1616,6 +2124,8 @@ a_p_delete:   db '/delete'
 a_p_save:     db '/save'
 a_p_settings: db '/settings'
 a_p_preview:  db '/preview'
+a_p_media:    db '/media'
+a_p_mdelete:  db '/media/delete'
 a_cookie_lc:  db 'cookie:'
 a_act_draft:  db 'draft'
 a_checked: db 'checked'
@@ -1632,6 +2142,33 @@ a_loc_deleted: db '/admin?deleted=1'
 a_loc_deleted_len equ $-a_loc_deleted
 a_loc_settings: db '/admin?settings=1'
 a_loc_settings_len equ $-a_loc_settings
+a_loc_uploaded: db '/admin/media?uploaded=1'
+a_loc_uploaded_len equ $-a_loc_uploaded
+a_loc_mdeleted: db '/admin/media?deleted=1'
+a_loc_mdeleted_len equ $-a_loc_mdeleted
+a_loc_up_type: db '/admin/media?err=type'
+a_loc_up_type_len equ $-a_loc_up_type
+a_loc_up_empty: db '/admin/media?err=empty'
+a_loc_up_empty_len equ $-a_loc_up_empty
+a_loc_up_conv: db '/admin/media?err=conv'
+a_loc_up_conv_len equ $-a_loc_up_conv
+a_loc_up_store: db '/admin/media?err=store'
+a_loc_up_store_len equ $-a_loc_up_store
+a_loc_up_noconv: db '/admin/media?err=noconv'
+a_loc_up_noconv_len equ $-a_loc_up_noconv
+a_loc_up_full: db '/admin/media?err=full'
+a_loc_up_full_len equ $-a_loc_up_full
+align 8
+mu_loc:                         ; redirect per media_upload code (MU_*)
+    dq a_loc_uploaded, a_loc_uploaded_len
+    dq 0, 0                     ; 1 = bad request, answered as such
+    dq a_loc_up_type, a_loc_up_type_len
+    dq a_loc_up_empty, a_loc_up_empty_len
+    dq a_loc_up_conv, a_loc_up_conv_len
+    dq a_loc_up_store, a_loc_up_store_len
+    dq a_loc_up_noconv, a_loc_up_noconv_len
+    dq a_loc_up_full, a_loc_up_full_len
+MU_LOC_N equ 8
 
 ; dashboard flags: the query a redirect carries -> the notice to render
 q_saved:    db 'saved=1'
@@ -1645,6 +2182,26 @@ q_flags:                        ; {ptr, len, S_* id}
     dq q_deleted, 9, S_N_DELETED
     dq q_settings, 10, S_N_SETTINGS
 Q_FLAGS_N equ 4
+; media library flags
+mq_uploaded: db 'uploaded=1'
+mq_deleted:  db 'deleted=1'
+mq_e_type:   db 'err=type'
+mq_e_empty:  db 'err=empty'
+mq_e_conv:   db 'err=conv'
+mq_e_store:  db 'err=store'
+mq_e_noconv: db 'err=noconv'
+mq_e_full:   db 'err=full'
+align 8
+mq_flags:
+    dq mq_uploaded, 10, S_N_UPLOADED
+    dq mq_deleted, 9, S_N_MDELETED
+    dq mq_e_type, 8, S_E_UPTYPE
+    dq mq_e_empty, 9, S_E_UPEMPTY
+    dq mq_e_conv, 8, S_E_UPCONV
+    dq mq_e_store, 9, S_E_UPSTORE
+    dq mq_e_noconv, 10, S_E_UPNOCONV
+    dq mq_e_full, 8, S_E_UPFULL
+MQ_FLAGS_N equ 8
 a_loc_login: db '/admin/login'
 a_loc_login_len equ $-a_loc_login
 a_loc_root: db '/'
@@ -1657,7 +2214,7 @@ a_ck2_len equ $-a_ck2
 a_ckclear: db 'sid=0; Path=/; Max-Age=0'
 a_ckclear_len equ $-a_ckclear
 
-a_303: db 'HTTP/1.1 303 See Other', 13, 10, 'Server: blogd/0.11', 13, 10
+a_303: db 'HTTP/1.1 303 See Other', 13, 10, 'Server: blogd/0.12', 13, 10
 a_303_len equ $-a_303
 a_ka: db 'Connection: keep-alive', 13, 10
 a_ka_len equ $-a_ka
@@ -1689,6 +2246,7 @@ n_fbanner:   db 'banner'
 n_ftheme:    db 'theme'
 n_flocale:   db 'locale'
 n_furl:      db 'url'
+n_fimgmax:   db 'imgmax'
 
 align 8
 fld_names:                      ; {ptr, len, pad}, indexed by FI_*
@@ -1706,6 +2264,7 @@ fld_names:                      ; {ptr, len, pad}, indexed by FI_*
     dq n_ftheme, 5, 0
     dq n_flocale, 6, 0
     dq n_furl, 3, 0
+    dq n_fimgmax, 6, 0
 
 ; dashboard row fragments (classes must be CSS components; Tailwind
 ; does not scan .asm, only the html templates)
@@ -1723,6 +2282,47 @@ r_tr6a: db '">'
 r_tr6a_len equ $-r_tr6a
 r_tr6b: db '</a></td></tr>'
 r_tr6b_len equ $-r_tr6b
+
+; media library items (classes must be CSS components: see r_tr1)
+mr_1: db '<figure class="mitem"><picture><source type="image/webp" srcset="/media/'
+mr_1_len equ $-mr_1
+mr_sfx_small: db '-s'
+mr_2: db '.webp"><img src="/media/'
+mr_2_len equ $-mr_2
+mr_3: db '.png" width="'
+mr_3_len equ $-mr_3
+mr_4: db '" height="'
+mr_4_len equ $-mr_4
+mr_5: db '" alt="" loading="lazy" decoding="async"></picture><figcaption><code class="snippet">!['
+mr_5_len equ $-mr_5
+mr_6: db '](/media/'
+mr_6_len equ $-mr_6
+mr_7: db ')</code><span class="meta">'
+mr_7_len equ $-mr_7
+mr_x: db 0xC3, 0x97              ; ×
+mr_x_len equ $-mr_x
+mr_8: db ' ', 0xC2, 0xB7, ' '     ; " · "
+mr_8_len equ $-mr_8
+mr_9: db ' KB</span><a class="dellink" href="/admin/media/delete/'
+mr_9_len equ $-mr_9
+mr_10: db '">'
+mr_10_len equ $-mr_10
+mr_11: db '</a></figcaption></figure>', 10
+mr_11_len equ $-mr_11
+mr_image: db 'image'
+mr_image_len equ $-mr_image
+mp_open: db '<div class="pager">'
+mp_open_len equ $-mp_open
+mp_prev: db '<a class="pglink" rel="prev" href="/admin/media?p='
+mp_prev_len equ $-mp_prev
+mp_next: db '<a class="pglink" rel="next" href="/admin/media?p='
+mp_next_len equ $-mp_next
+mp_mid: db '">'
+mp_mid_len equ $-mp_mid
+mp_close_a: db '</a> '
+mp_close_a_len equ $-mp_close_a
+mp_close: db '</div>'
+mp_close_len equ $-mp_close
 
 ; preview: the rendered draft, wrapped as a card above the editor
 pv_open: db '<section class="card admin preview"><p class="meta">'

@@ -1,0 +1,24 @@
+{{notice}}
+<div class="card admin">
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+    <h1 class="article-title text-xl m-0">imágenes</h1>
+    <div class="actions">
+      <a class="btn" href="/admin">Panel de control</a>
+      <a class="btn" href="/admin/new">+ Nueva entrada</a>
+    </div>
+  </div>
+  {{err}}
+  <form method="post" action="/admin/media" enctype="multipart/form-data">
+    <input type="hidden" name="csrf" value="{{csrf}}">
+    <label class="lbl" for="f-file">subir una imagen</label>
+    <small class="hint" id="h-file">PNG, JPEG, GIF, WebP, TIFF o HEIC, hasta 32 MB. Se redimensiona a {{eimgmax}} px en su lado más largo y se guarda como WebP con una copia PNG; se eliminan los metadatos (incluida la ubicación).</small>
+    <div class="actions mb-3">
+      <input id="f-file" type="file" name="file" accept="image/*" aria-describedby="h-file" class="field flex-1 min-w-0" required>
+      <button class="btn btn-primary" type="submit">Subir</button>
+    </div>
+  </form>
+  <p class="hint">Pega el fragmento de una imagen en su propia línea dentro de una entrada para una figura a todo el ancho con pie de foto, o dentro de un párrafo para una imagen en línea. Al pulsarla se abre a tamaño completo.</p>
+  <div class="mgrid">
+{{rows}}
+  </div>
+</div>

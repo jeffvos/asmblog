@@ -19,6 +19,11 @@ extern store_open
 extern store_reset
 extern store_append_post
 extern store_delete_post
+extern store_append_media
+extern store_delete_media
+extern media_find
+extern media_cnt
+extern next_mid
 extern store_save_settings
 extern store_compact
 extern store_find_by_id
@@ -565,6 +570,51 @@ selftest_main:
     cmp qword [rax+P_TITLE_L], t_titleA2_len
     CHECK je, 19
 
+    ; 25-29: media records: append, reload, delete, reload
+    SPEC_CLEAR
+    mov dword [rsp+M_W], 1600
+    mov dword [rsp+M_H], 900
+    mov dword [rsp+M_SW], 800
+    mov dword [rsp+M_SH], 450
+    mov dword [rsp+M_BWEBP], 123456
+    SPEC_SET M_NAME_P, t_mname, t_mname_len
+    mov rdi, rsp
+    call store_append_media
+    cmp rax, 1
+    CHECK je, 25
+    cmp qword [media_cnt], 1
+    CHECK je, 25
+    call store_reset
+    call store_open
+    test rax, rax
+    CHECK jz, 26
+    cmp qword [media_cnt], 1
+    CHECK je, 26
+    mov edi, 1
+    call media_find
+    test rax, rax
+    CHECK jnz, 27
+    cmp dword [rax+M_W], 1600
+    CHECK je, 27
+    cmp dword [rax+M_BWEBP], 123456
+    CHECK je, 27
+    cmp qword [rax+M_NAME_L], t_mname_len
+    CHECK je, 27
+    mov edi, 1
+    call store_delete_media
+    test rax, rax
+    CHECK jz, 28
+    cmp qword [media_cnt], 0
+    CHECK je, 28
+    call store_reset
+    call store_open
+    test rax, rax
+    CHECK jz, 29
+    cmp qword [media_cnt], 0
+    CHECK je, 29
+    cmp qword [next_mid], 2
+    CHECK je, 29
+
     ; 24: persistent hit counter survives a remap (fresh file starts at 0)
     call hits_init
     mov rax, [hits_p]
@@ -646,6 +696,7 @@ e_fail_len equ $-e_fail
 p_crypto: db 'store ok; testing Argon2id (a few seconds)...', 10
 p_crypto_len equ $-p_crypto
 p_ok: db 'selftest ok', 10
+p_ok_len equ $-p_ok
 m_c1: db 'compacted data/store.blg: '
 m_c1_len equ $-m_c1
 m_c2: db ' -> '
@@ -656,7 +707,6 @@ m_c4: db ' posts kept)', 10
 m_c4_len equ $-m_c4
 m_cfail: db 'blogd: compact failed (run from the site directory: data/store.blg)', 10
 m_cfail_len equ $-m_cfail
-p_ok_len equ $-p_ok
 p_seeded: db 'seeded 9 posts (8 published, 1 draft)', 10
 p_seeded_len equ $-p_seeded
 
@@ -802,6 +852,8 @@ t_url_len equ $-t_url
 t_badurl: db 'ftp://blog.example.test'
 t_badurl_len equ $-t_badurl
 t_fakehash: times 128 db 'x'
+t_mname: db 'sunset.jpg'
+t_mname_len equ $-t_mname
 t_pw: db 'correct horse battery'
 t_pw_len equ $-t_pw
 t_wrongpw: db 'wrong password!!'

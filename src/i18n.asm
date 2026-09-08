@@ -224,6 +224,27 @@ STR n_saved,    {NOTE_O, 'post published.', NOTE_C}, {NOTE_O, 'entrada publicada
 STR n_draft,    {NOTE_O, 'draft saved.', NOTE_C}, {NOTE_O, 'borrador guardado.', NOTE_C}
 STR n_deleted,  {NOTE_O, 'post deleted.', NOTE_C}, {NOTE_O, 'entrada eliminada.', NOTE_C}
 STR n_settings, {NOTE_O, 'settings saved.', NOTE_C}, {NOTE_O, 'configuración guardada.', NOTE_C}
+STR t_media,    'media',           'imágenes'
+STR t_mdelete,  'delete image',    'eliminar imagen'
+STR n_uploaded, {NOTE_O, 'image uploaded. paste the snippet into a post.', NOTE_C}, \
+                {NOTE_O, 'imagen subida. pega el fragmento en una entrada.', NOTE_C}
+STR n_mdeleted, {NOTE_O, 'image deleted.', NOTE_C}, {NOTE_O, 'imagen eliminada.', NOTE_C}
+STR e_uptype, {ERR_O, 'that file is not an image (PNG, JPEG, GIF, WebP, TIFF or HEIC).', ERR_C}, \
+                {ERR_O, 'ese archivo no es una imagen (PNG, JPEG, GIF, WebP, TIFF o HEIC).', ERR_C}
+STR e_upempty, {ERR_O, 'choose an image file first.', ERR_C}, \
+                {ERR_O, 'primero elige un archivo de imagen.', ERR_C}
+STR e_upconv, {ERR_O, 'the image could not be converted (see the server log).', ERR_C}, \
+                {ERR_O, 'no se pudo convertir la imagen (revisa el registro del servidor).', ERR_C}
+STR e_upstore, {ERR_O, 'store write failed.', ERR_C}, \
+                {ERR_O, 'error al escribir en el almacén.', ERR_C}
+STR e_upnoconv, {ERR_O, 'image uploads are disabled: no converter is installed (see the server log).', ERR_C}, \
+                {ERR_O, 'la subida de imágenes está desactivada: no hay conversor instalado (revisa el registro del servidor).', ERR_C}
+STR e_upfull, {ERR_O, 'the media library is full.', ERR_C}, \
+                {ERR_O, 'la biblioteca de imágenes está llena.', ERR_C}
+STR lb_open,    'view full size',  'ver a tamaño completo'
+STR lb_close,   'close',           'cerrar'
+STR e_imgmax, {ERR_O, 'image size must be 320 to 4096 pixels.', ERR_C}, \
+                {ERR_O, 'el tamaño de imagen debe estar entre 320 y 4096 píxeles.', ERR_C}
 
 %macro ROW 1
     dq %1_en, %1_en_len, %1_es, %1_es_len
@@ -268,5 +289,18 @@ i18n_tbl:                       ; indexed by S_* id (order must match i18n.inc)
     ROW n_draft
     ROW n_deleted
     ROW n_settings
+    ROW t_media
+    ROW t_mdelete
+    ROW n_uploaded
+    ROW n_mdeleted
+    ROW e_uptype
+    ROW e_upempty
+    ROW e_upconv
+    ROW e_upstore
+    ROW e_upnoconv
+    ROW e_upfull
+    ROW lb_open
+    ROW lb_close
+    ROW e_imgmax
 
 section .note.GNU-stack noalloc noexec nowrite progbits

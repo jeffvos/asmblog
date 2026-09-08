@@ -69,6 +69,8 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   --a-field-ink:  #000000;
   --a-field-line: #404040;
   --a-focus:      #000080;
+  --lb-x-ink:     #000000;   /* the viewer's close button: ink on fill */
+  --lb-x-bg:      #c0c0c0;
 }
 .theme-retro .masthead,
 .theme-retro .card,
@@ -198,6 +200,27 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   border-left: 4px solid #808080; color: #333; font-style: italic;
 }
 
+/* the lightbox as a Windows 95 window: title bar, bevels, a real [x] */
+.theme-retro .lb-frame {
+  --lb-pad: 14px; --lb-cap-h: 4.4rem;
+  background: #c0c0c0; color: #000;
+  border: 3px outset #fff; padding: 4px; padding-top: calc(1.6rem + 4px);
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.45);
+}
+.theme-retro .lb-frame::before {
+  content: "image viewer"; position: absolute; top: 4px; left: 4px; right: 4px; height: 1.6rem;
+  background: #000080; color: #fff; font: bold 0.8rem/1.6rem "Courier New", monospace;
+  padding-left: 0.45rem; box-sizing: border-box;
+}
+.theme-retro .lb-frame img { border: 3px inset #fff; background: #000; box-sizing: border-box; }
+.theme-retro .lb-x {
+  top: 7px; right: 7px; width: 1.5rem; height: 1.25rem;
+  border: 2px outset #fff;
+  font: bold 0.9rem/1 "Courier New", monospace;
+}
+.theme-retro .lb-x:active { border-style: inset; }
+.theme-retro .lb-cap { font-family: "Courier New", monospace; }
+
 /* =====================================================================
    THEME: SUCRE — whitewashed colonial (La Ciudad Blanca), modernised.
    Whitewashed plaster walls, terracotta rooflines, colonial-green
@@ -238,6 +261,8 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   --a-field-ink:  var(--su-ink);
   --a-field-line: #9a8e7a;
   --a-focus:      var(--su-roof);
+  --lb-x-ink:     var(--su-roof);   /* the viewer's close button */
+  --lb-x-bg:      var(--su-panel);
 }
 .theme-sucre .masthead {
   position: relative;
@@ -444,6 +469,8 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
     --su-faint:  #9a9081;
     --su-line:   #3d362e;
     --su-roof:   #d0644a;
+    --lb-x-ink:  #1f1b17;       /* at night the button is a terracotta */
+    --lb-x-bg:   var(--su-roof); /* tile with dark ink, not ink on the wall */
     --su-roof-d: #b04d34;
     --su-green:  #8fb89f;
     --su-ochre:  #d9a24e;
@@ -465,6 +492,20 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
   }
 }
+
+/* the lightbox: a photograph matted on a whitewashed wall, terracotta rail */
+.theme-sucre .lb-frame {
+  --lb-pad: 24px;
+  background: var(--su-panel); color: var(--su-ink);
+  border: 1px solid var(--su-line); border-top: 6px solid var(--su-roof); border-radius: 4px;
+  padding: 12px; box-shadow: 0 20px 44px rgba(0, 0, 0, 0.38);
+}
+.theme-sucre .lb-x {
+  top: -1.1rem; right: -1.1rem; width: 2.4rem; height: 2.4rem;
+  border: 1px solid var(--su-line); border-radius: 999px;
+  font-family: Georgia, "Times New Roman", serif; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.theme-sucre .lb-cap { color: var(--su-soft); font-family: Georgia, "Times New Roman", serif; font-style: italic; text-align: center; }
 
 /* =====================================================================
    THEME: MEDELLÍN — Feria de las Flores street poster.
@@ -516,6 +557,8 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   --a-field-ink:  var(--md-ink);
   --a-field-line: var(--md-ink);
   --a-focus:      var(--md-pink);
+  --lb-x-ink:     #ffffff;          /* the viewer's close button: a sticker in */
+  --lb-x-bg:      #c4185f;          /* the poster pink, deepened to hold AA */
 }
 .theme-medellin .masthead {
   position: relative;
@@ -757,6 +800,8 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
     --md-green:  #3fbf6a;
     --md-green-d:#2f9a53;
     --md-pink:   #ff5fa0;
+    --lb-x-ink:  #14161a;       /* the night pink is bright: dark ink on it */
+    --lb-x-bg:   var(--md-pink);
     --md-yellow: #ffd45e;
     --md-orange: #ff8a4a;
     --md-purple: #a06ad0;
@@ -773,6 +818,21 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   .theme-medellin .tag:hover, .theme-medellin .banner { color: #0f1a14; }
   .theme-medellin .content pre { background: #06100a; color: #eaf3ea; }
 }
+
+/* the lightbox: a poster print, ink outline, hard yellow shadow, a pink sticker to close */
+.theme-medellin .lb-frame {
+  --lb-pad: 22px;
+  background: var(--md-panel); color: var(--md-ink);
+  border: 3px solid var(--md-ink); border-radius: 16px; padding: 8px;
+  box-shadow: 8px 8px 0 var(--md-yellow);
+}
+.theme-medellin .lb-frame img { border-radius: 10px; }
+.theme-medellin .lb-x {
+  top: -1.2rem; right: -1.2rem; width: 2.6rem; height: 2.6rem;
+  border: 3px solid var(--md-ink); border-radius: 999px;
+  font-weight: 800; transform: rotate(8deg);
+}
+.theme-medellin .lb-cap { font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; text-align: center; }
 
 /* =====================================================================
    THEME: BOGOTÁ — brick and gold, editorial.
@@ -823,6 +883,8 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   --a-field-ink:  var(--bo-ink);
   --a-field-line: var(--bo-frame);
   --a-focus:      var(--bo-gold-d);
+  --lb-x-ink:     var(--bo-gold);   /* the viewer's close button */
+  --lb-x-bg:      var(--bo-plaque);
 }
 .theme-bogota .masthead {                /* a plaque set into the wall */
   background: var(--bo-plaque);
@@ -1053,6 +1115,16 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   .theme-bogota .masthead::after { opacity: 0.3; }
 }
 
+/* the lightbox: a plaque, double gold rule, small caps underneath */
+.theme-bogota .lb-frame {
+  --lb-pad: 30px;
+  background: var(--bo-plaque); color: var(--bo-ivory);
+  border: 5px double var(--bo-gold); padding: 10px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5);
+}
+.theme-bogota .lb-x { top: 2px; right: 2px; font-family: Georgia, "Times New Roman", serif; }
+.theme-bogota .lb-cap { color: var(--bo-ivory); font-family: Georgia, "Times New Roman", serif; font-variant: small-caps; letter-spacing: 0.06em; text-align: center; }
+
 /* =====================================================================
    THEME: LA PAZ — neo-Andean cholet, dark first.
    Freddy Mamani's El Alto: stepped chakana corners cut with clip-path,
@@ -1114,6 +1186,8 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   --a-field-ink:  var(--lp-ink);
   --a-field-line: #7a6a99;
   --a-focus:      var(--lp-yellow);
+  --lb-x-ink:     #17111f;   /* the viewer's close button */
+  --lb-x-bg:      var(--lp-yellow);
 }
 /* every panel: the element is the stroke, ::before is the face */
 .theme-lapaz .masthead, .theme-lapaz .card, .theme-lapaz .article, .theme-lapaz .notice {
@@ -1375,6 +1449,18 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   .theme-lapaz .masthead::after { opacity: 0.5; }
 }
 
+/* the lightbox: chamfered corners inside the teal→violet stroke, an amber tab to close */
+.theme-lapaz .lb-frame {
+  --lb-pad: 6px;
+  background: var(--lp-stroke); padding: 3px; clip-path: var(--lp-chamfer);
+}
+.theme-lapaz .lb-frame img { background: var(--lp-panel); }
+.theme-lapaz .lb-cap { background: var(--lp-panel); color: var(--lp-soft); text-align: center; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.75rem; padding-bottom: 0.45rem; }
+.theme-lapaz .lb-x {
+  top: 3px; right: 3px; width: 2.25rem; height: 2.25rem;
+  clip-path: var(--lp-chamfer); font-weight: 800;
+}
+
 /* =====================================================================
    THEME: COCHABAMBA — La Cancha market.
    Kraft paper with a fibre grain, chalkboard menus in wooden frames,
@@ -1424,6 +1510,8 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   --a-field-ink:  var(--cb-ink);
   --a-field-line: var(--cb-line);
   --a-focus:      var(--cb-red);
+  --lb-x-ink:     var(--cb-chalk);   /* the viewer's close button */
+  --lb-x-bg:      var(--cb-slate);
 }
 .theme-cochabamba .masthead {            /* the chalkboard, in its wooden frame */
   background: var(--cb-slate);
@@ -1692,6 +1780,28 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   .theme-cochabamba textarea.field { background-image: repeating-linear-gradient(transparent 0 23px, #4a423b 23px 24px); }
 }
 
+/* the lightbox: a print pinned to the board, slightly askew */
+.theme-cochabamba .lb-frame {
+  --lb-pad: 20px;
+  background: var(--cb-paper); color: var(--cb-ink);
+  padding: 10px 10px 12px; transform: rotate(-1deg);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.45);
+}
+.theme-cochabamba .lb:target .lb-frame { animation-name: lb-in-cb; }
+@keyframes lb-in-cb { from { opacity: 0; transform: rotate(-1deg) scale(0.965); } to { opacity: 1; transform: rotate(-1deg); } }
+.theme-cochabamba .lb-frame::before {
+  content: ""; position: absolute; top: -9px; left: 50%; width: 16px; height: 16px; margin-left: -8px; z-index: 2;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ff8a80, var(--cb-red) 60%, #7a1f16);
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.4);
+}
+.theme-cochabamba .lb-x {
+  top: -0.9rem; right: -0.9rem; width: 2.4rem; height: 2.4rem;
+  border-radius: 999px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+.theme-cochabamba .lb-cap { color: var(--cb-soft); text-align: center; }
+
 /* =====================================================================
    THEME: SANTA CRUZ DE LA SIERRA — tropical lowland, mission woodwork.
    Sand and heat: an open, borderless page with translucent panels,
@@ -1746,6 +1856,8 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   --a-field-ink:  var(--sc-ink);
   --a-field-line: #7f8b86;
   --a-focus:      var(--sc-mission);
+  --lb-x-ink:     #ffffff;   /* the viewer's close button */
+  --lb-x-bg:      var(--sc-green);
 }
 .theme-santacruz .masthead {
   position: relative;
@@ -1962,6 +2074,7 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
     --sc-faint:   #7f8f87;
     --sc-line:    rgba(236, 243, 238, 0.1);
     --sc-green:   #5ccf8a;
+    --lb-x-ink:   #0f2a1c;      /* the brighter green wants dark ink */
     --sc-green-d: #8fe0b0;
     --sc-leaf:    #4fbf7a;
     --sc-leaf-bg: rgba(92, 207, 138, 0.15);
@@ -1980,6 +2093,20 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   .theme-santacruz .content code { color: #9fe6bf; }
   .theme-santacruz .btn, .theme-santacruz .pglink:hover, .theme-santacruz .tag:hover, .theme-santacruz .badge-b { color: #0e1a15; }
 }
+
+/* the lightbox: a sand mat with leaf corners */
+.theme-santacruz .lb-frame {
+  --lb-pad: 18px;
+  background: var(--sc-sand); color: var(--sc-ink);
+  border: 1px solid var(--sc-line); border-radius: 18px 0 18px 0; padding: 8px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
+}
+.theme-santacruz .lb-frame img { border-radius: 12px 0 12px 0; }
+.theme-santacruz .lb-x {
+  top: -0.9rem; right: -0.9rem; width: 2.4rem; height: 2.4rem;
+  border-radius: 12px 0 12px 0;
+}
+.theme-santacruz .lb-cap { color: var(--sc-soft); text-align: center; }
 
 /* =====================================================================
    THEME: PITTSBURGH — Steel City, black and gold, dark first.
@@ -2035,6 +2162,8 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   --a-field-ink:  var(--pg-ink);
   --a-field-line: #8a9299;
   --a-focus:      var(--pg-gold);
+  --lb-x-ink:     var(--pg-gold);   /* the viewer's close button */
+  --lb-x-bg:      #17191c;
 }
 .theme-pittsburgh .masthead, .theme-pittsburgh .card,
 .theme-pittsburgh .article, .theme-pittsburgh .notice {
@@ -2295,6 +2424,20 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   .theme-pittsburgh .masthead::after { opacity: 0.42; }
 }
 
+/* the lightbox: a riveted steel plate, gold stencil caption */
+.theme-pittsburgh .lb-frame {
+  --lb-pad: 30px;
+  background: var(--pg-rivets), linear-gradient(180deg, #3a3e43, #24272b);
+  color: var(--pg-soft);
+  border: 1px solid #5a5f66; border-bottom-width: 3px; padding: 14px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.theme-pittsburgh .lb-x {
+  top: 6px; right: 6px; width: 2.25rem; height: 2.25rem;
+  border: 1px solid #5a5f66; border-radius: 2px; font-weight: 700;
+}
+.theme-pittsburgh .lb-cap { color: var(--pg-gold); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.72rem; text-align: center; }
+
 /* ===== shared bits ===== */
 /* Legibility floor: bylines, metadata and the footer never render below
    13px, whatever utility class the template applies; a theme may set a
@@ -2370,6 +2513,78 @@ body { min-height: 100vh; min-height: 100dvh; margin: 0; }
   background: #fff; padding: 6px;
   box-shadow: 0 4px 14px rgba(51,48,43,0.06);
 }
+
+/* ===== self-hosted images: figures and the CSS-only lightbox =====
+   For ![alt](/media/N) md.asm emits
+     <a class="pic-open" href="#lbN"><picture>…</picture></a>[<figcaption>]
+     <span class="lb" id="lbN" role="dialog"><a class="lb-bg" href="#_"></a>
+       <span class="lb-frame"><picture>…</picture>[<span class="lb-cap">]
+       <a class="lb-x" href="#_">×</a></span></span>
+   The overlay stays display:none until its id is the URL fragment; the
+   backdrop and the × link back to #_ (no such anchor: nothing scrolls),
+   and the browser's back button closes it too. :target is the whole
+   state machine — no script. The geometry below is shared; every theme
+   dresses .lb-frame / .lb-x / .lb-cap in its own section. */
+.pic-open { display: block; cursor: zoom-in; max-width: 100%; }
+.content picture { display: block; }
+.content figure figcaption { font-size: 0.8125rem; margin-top: 0.45rem; text-align: center; opacity: 0.85; }
+.lb {
+  display: none; position: fixed; inset: 0; z-index: 1000;
+  align-items: center; justify-content: center;
+  padding: 0.75rem; box-sizing: border-box;
+}
+.lb:target { display: flex; }
+.lb-bg { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.86); cursor: zoom-out; }
+.lb-frame { position: relative; display: flex; flex-direction: column; max-width: 100%; max-height: 100%; box-sizing: border-box; }
+.lb-frame picture { display: block; min-height: 0; }
+.lb-frame img {
+  display: block; width: auto; height: auto; margin: 0;
+  max-width: calc(100vw - 1.5rem - var(--lb-pad, 0px));
+  max-height: calc(100dvh - 1.5rem - var(--lb-pad, 0px) - var(--lb-cap-h, 2.5rem));
+  object-fit: contain;
+}
+.lb-cap { display: block; font-size: 0.8125rem; line-height: 1.4; padding: 0.45rem 0.6rem 0.2rem; }
+.lb-x {
+  position: absolute; top: 0; right: 0; z-index: 1;
+  width: 2.75rem; height: 2.75rem; box-sizing: border-box;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.6rem; line-height: 1; text-decoration: none;
+}
+.lb-x::after { content: ""; position: absolute; inset: -0.6rem; }   /* the touch target */
+/* The viewer's links sit inside .content, where every theme styles
+   `a` and `a:hover` (underlines, hover colours that may equal the
+   button's fill). These outrank those in every state: the close button
+   always paints --lb-x-ink on --lb-x-bg (per theme, both schemes,
+   checked at AA by tools/contrast.py), brightens on hover and gets a
+   ring on focus; the open link and the backdrop carry no decoration. */
+.content .lb .lb-frame .lb-x,
+.content .lb .lb-frame .lb-x:link,
+.content .lb .lb-frame .lb-x:visited,
+.content .lb .lb-frame .lb-x:hover,
+.content .lb .lb-frame .lb-x:active,
+.content .lb .lb-frame .lb-x:focus { color: var(--lb-x-ink); background: var(--lb-x-bg); text-decoration: none; }
+.content .lb .lb-frame .lb-x:hover { filter: brightness(1.12) saturate(1.1); }
+.content .lb .lb-frame .lb-x:focus-visible { outline: 3px solid var(--lb-x-ink); outline-offset: 2px; }
+.content .lb .lb-bg, .content .lb .lb-bg:hover, .content .pic-open, .content .pic-open:hover { text-decoration: none; }
+body:has(.lb:target) { overflow: hidden; }
+/* the overlay is a descendant of the article (and, for a figure, of
+   the figure): a card or figure that is clipped (La Paz's chakana
+   corners and chamfers) or transformed (Cochabamba's tilt) would clip
+   or reposition its fixed overlay, so those come off while a viewer is
+   open — it covers the page anyway */
+.article:has(.lb:target), .card:has(.lb:target), .content figure:has(.lb:target) {
+  clip-path: none !important; transform: none !important;
+}
+/* the viewer opens on the inline copy (already cached from the page)
+   with the full one lazy-loading over it; both share one box */
+.lb-pic { position: relative; display: block; min-height: 0; }
+.lb-ph { position: absolute; inset: 0; display: block; overflow: hidden; }
+.lb-ph img { width: 100%; height: 100%; max-width: none; max-height: none; object-fit: contain; }
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes lb-in { from { opacity: 0; transform: scale(0.965); } to { opacity: 1; transform: none; } }
+  .lb:target .lb-frame { animation: lb-in 0.18s ease-out; }
+}
+@media print { .lb { display: none !important; } .pic-open { cursor: auto; } }
 
 /* ===== admin layer =====
    Theme-agnostic structure for the control panel. Themes keep every
@@ -2473,3 +2688,24 @@ textarea.field {
   .card.admin .table td.meta { grid-column: 1; grid-row: 2; }
   .card.admin .table td:last-child { grid-column: 2; grid-row: 2; text-align: right; }
 }
+
+/* the media library */
+.mgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.9rem; margin-top: 1rem; }
+.mitem {
+  margin: 0; padding: 0.4rem; min-width: 0;
+  display: flex; flex-direction: column; gap: 0.4rem;
+  border: 1px solid var(--a-field-line); background: var(--a-field-bg); color: var(--a-field-ink);
+}
+.mitem picture { display: block; }
+.mitem img { display: block; width: 100%; height: 8rem; object-fit: cover; margin: 0; }
+.mitem figcaption { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.8125rem; min-width: 0; }
+.mitem .snippet {
+  display: block; padding: 0.25rem 0.35rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.72rem;
+  overflow-wrap: anywhere; user-select: all;
+  background: var(--a-panel); border: 1px dashed var(--a-field-line);
+}
+.mitem .meta { color: var(--a-hint); }
+.mpreview img { display: block; max-width: 100%; max-height: 16rem; width: auto; height: auto; margin: 0 0 0.75rem; }
+input[type="file"].field { padding: 0.35rem; }
+.card.admin > .hint { margin: 0.5rem 0 0; }

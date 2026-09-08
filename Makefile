@@ -17,7 +17,7 @@ LDLIBS    := -lsodium
 SRC := src/main.asm src/net.asm src/http.asm src/threads.asm src/util.asm \
        src/store.asm src/crypto.asm src/cli.asm src/tmpl.asm src/pages.asm \
        src/auth.asm src/md.asm src/admin.asm src/seccomp.asm src/i18n.asm \
-       src/pcache.asm
+       src/pcache.asm src/media.asm
 OBJ := $(patsubst src/%.asm,build/%.o,$(SRC))
 
 all: build/blogd static/main.css
@@ -50,9 +50,9 @@ icons:
 	python3 tools/mkicons.py
 
 # `make deps`: name what is missing before nasm or ld do it cryptically.
-#   Debian/Ubuntu: apt install nasm binutils libsodium-dev python3 brotli
-#   RHEL/Alma/Rocky: dnf install epel-release && dnf install nasm binutils libsodium-devel python3 brotli
-#   Alpine: apk add nasm binutils libsodium-dev python3 brotli
+#   Debian/Ubuntu: apt install nasm binutils libsodium-dev python3 brotli libvips-tools
+#   RHEL/Alma/Rocky: dnf install epel-release && dnf install nasm binutils libsodium-devel python3 brotli vips-tools
+#   Alpine: apk add nasm binutils libsodium-dev python3 brotli vips-tools
 deps:
 	@ok=1; \
 	command -v $(NASM) >/dev/null || { echo "missing: nasm"; ok=0; }; \
@@ -60,6 +60,7 @@ deps:
 	command -v python3 >/dev/null || { echo "missing: python3"; ok=0; }; \
 	command -v brotli >/dev/null || echo "optional: brotli (set BLOGD_NO_BROTLI=1 to build without .br siblings)"; \
 	command -v curl >/dev/null || { echo "missing: curl (fetches tools/tailwindcss; tests)"; ok=0; }; \
+	sh tools/imgconv --check 2>/dev/null || echo "optional: an image converter for uploads (libvips-tools, ImageMagick, or python3 + Pillow)"; \
 	test -x tools/tailwindcss || echo "tools/tailwindcss absent: make fetches and verifies it"; \
 	$(NASM) -f elf64 $(NASM_PROBE) -o build/probe.o >/dev/null 2>&1 || { echo "nasm cannot assemble elf64"; ok=0; }; \
 	if ! $(LD) -o /dev/null -lsodium --entry=0 -shared >/dev/null 2>&1; then \

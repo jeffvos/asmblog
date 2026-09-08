@@ -13,6 +13,11 @@ revalidate with 304s that cost no render, and there is a sitemap, a
 robots.txt, an Atom feed with full content, a web app manifest and an
 icon set — all emitted by the server, still with zero JavaScript.
 
+Photos live on the site itself: an upload is converted once into WebP
+and PNG at two sizes, served with immutable caching, embedded as a
+`<picture>` with a `srcset`, and opened full-size in a lightbox that is
+pure CSS — see [Images](#images).
+
 See [PLAN.md](PLAN.md) for the full architecture.
 
 ## Build & run
@@ -20,7 +25,7 @@ See [PLAN.md](PLAN.md) for the full architecture.
 ```
 make            # nasm + ld -> build/blogd, tailwind -> one stylesheet per theme
 make run        # serve on http://127.0.0.1:8080
-make test       # contrast floor + smoke suite (store selftest, HTTP, content, admin)
+make test       # contrast floor + smoke suite (store selftest, HTTP, content, admin, images)
 make fuzz       # mutation-fuzz the HTTP and markdown parsers
 make load       # step through concurrency levels, report latency/CPU/RSS knees
 ./build/blogd init       # first-run setup (title, posts/page, admin password)
@@ -56,8 +61,10 @@ docker run -d --name blogd -p 8080:8080 \
 
 On first boot the entrypoint initializes the store in the volume with
 `BLOGD_ADMIN_PASSWORD` (stored only as an Argon2id hash — never in an
-image layer); later boots just serve. Terminate TLS with Caddy/nginx in
-front of the container. Environment:
+image layer); later boots just serve. The volume also holds the
+uploaded images (`data/media/`) and the visitor counter. The image
+bundles libvips's `vipsthumbnail` for conversions. Terminate TLS with
+Caddy/nginx in front of the container. Environment:
 
 | variable | default | purpose |
 |---|---|---|
@@ -69,6 +76,8 @@ front of the container. Environment:
 | `BLOGD_THREADS` | `2` | worker threads |
 | `BLOGD_PORT` | `8080` | listen port inside the container |
 | `BLOGD_IDLE_SECS` | `20` | close connections quiet for this long (`0` = never) |
+| `BLOGD_IMGCONV` | `/usr/local/bin/blogd-imgconv` | the image converter script (see [Images](#images)) |
+| `BLOGD_IMGTOOL` | *(auto)* | force a converter backend: `vips`, `magick` or `pillow` |
 
 CI's container smoke test logs in with the `BLOGD_ADMIN_PASSWORD`
 repository secret (falling back to the default). `make image` builds
@@ -76,9 +85,10 @@ the image locally.
 
 The admin panel lives at `/admin` (log in with the password set by
 `blogd init`). It offers a post dashboard, a markdown editor with live
-preview and draft/publish, delete-with-confirm, and a settings page for
-the site title, posts-per-page, the scrolling banner message, the theme,
-the language, the public site URL, and the password.
+preview and draft/publish, delete-with-confirm, a media library with
+image uploads, and a settings page for the site title, posts-per-page,
+the scrolling banner message, the theme, the language, the public site
+URL, the image size, and the password.
 
 ### SEO, link previews and caching
 
@@ -274,6 +284,78 @@ else is rendered as text. An image alone on a line becomes a
 `<figure>`. Images get `loading="lazy"` and `decoding="async"`; Flickr
 URLs do not encode dimensions, so no `width`/`height` is emitted.
 
+### Images
+
+Upload a photo in **/admin/media** and it is yours to keep: the server
+stores it under `data/media/` and serves it itself, with nothing
+loaded from a third party. The library shows every image with the
+snippet to paste into a post:
+
+```
+![Sunset over the bay](/media/12)
+```
+
+On its own line that becomes a `<figure>` with the alt text as the
+caption; inside a paragraph it is an inline picture. Either way the
+renderer emits, at save time, a `<picture>` with a WebP `<source>` and
+a PNG `<img>` fallback, a `srcset` with both sizes so the browser picks
+by viewport and pixel density, real `width`/`height` so the layout
+never shifts, and lazy loading. Clicking it opens the image full size
+in a lightbox that fits the theme — a Windows 95 window on Retro, a
+pinned print on Cochabamba, a riveted plate on Pittsburgh — and works
+on a phone: the backdrop, the × and the browser's back button all
+close it. It is a `:target` overlay; there is still no JavaScript. The
+first hosted image in a post is also its `og:image`.
+
+**What is stored.** Each upload is converted once, at upload time, and
+the original is not kept:
+
+| file | what |
+|---|---|
+| `data/media/<id>.webp` | full rendition, longest edge ≤ the *image size* setting (default 1600 px), WebP q82 |
+| `data/media/<id>.png` | the same picture as PNG, for clients without WebP |
+| `data/media/<id>-s.webp`, `<id>-s.png` | the inline copy at half the size (skipped when the picture is already that small) |
+
+Nothing is upscaled; the camera's EXIF orientation is applied and all
+metadata (including GPS) is stripped. One `TYPE_MEDIA` record in
+`data/store.blg` describes the image (dimensions, byte sizes, original
+filename); the bytes are files, so the store stays small and a rendition
+is served straight from a file mapping with no copy. Renditions never
+change for their URL, so `/media/<id>.webp` carries a strong `ETag` and
+`Cache-Control: public, max-age=31536000, immutable`. Deleting an image
+appends a tombstone and unlinks the files; any file left behind by a
+crash between the two (or a converted image whose record never landed)
+is removed by a sweep at the next start.
+
+**How conversion runs.** The sandboxed server has no `execve`, so before
+its workers start it forks a small helper process connected only by a
+socketpair. A worker hands it a job (upload number, media id, sizes);
+the helper runs [tools/imgconv](tools/imgconv) — a shell script that
+uses `vipsthumbnail` (libvips), ImageMagick, or python3 + Pillow,
+whichever is installed — with no file descriptors beyond stdin/out/err,
+and answers with the exit status. Conversions are serialised and the
+worker that posted one waits (well under a second per photo with
+libvips, which streams and needs tens of MB even for a 20 MP file —
+the recommended backend on a low-power box):
+
+```bash
+# Debian / Ubuntu / Raspberry Pi OS
+sudo apt install libvips-tools
+```
+
+The script is found next to the binary (`tools/imgconv`), in the
+working directory, or at `BLOGD_IMGCONV`; `BLOGD_IMGTOOL` forces a
+backend. Without any backend the server starts normally, says so in
+its log, and the media page explains that uploads are disabled.
+
+**Uploads.** The form is `multipart/form-data`, up to 32 MB. A body over
+the 100 KB request buffer is streamed to `data/media/up-<n>.tmp` as it
+arrives — only for `POST /admin/media` with a live admin session, so
+nobody anonymous can fill the disk — parsed from a mapping of that
+file, and the temporaries are unlinked afterwards. PNG, JPEG, GIF
+(first frame), WebP, TIFF and HEIC/AVIF are accepted as far as the
+converter understands them; anything else is refused before it runs.
+
 ### Embedding Flickr photos
 
 Paste a Flickr "embed" snippet as its own line in a post's markdown:
@@ -296,20 +378,23 @@ package, `python3` (the CSS build, the icon generator and the tests),
 `brotli` (the `.br` siblings; `BLOGD_NO_BROTLI=1` skips them on a
 machine without the CLI), `curl`, and the Tailwind standalone CLI at
 `tools/tailwindcss` (gitignored: `make` fetches the pinned release and
-verifies its SHA-256 when the file is absent). `make deps` checks all
-of that and names what is missing. Per distribution:
+verifies its SHA-256 when the file is absent). Image uploads need one
+converter backend at run time: `libvips-tools` (recommended),
+ImageMagick, or python3 with Pillow. `make deps` checks all of that and
+names what is missing. Per distribution:
 
 ```bash
 # Debian / Ubuntu
-sudo apt install nasm binutils libsodium-dev python3 brotli curl
+sudo apt install nasm binutils libsodium-dev python3 brotli curl libvips-tools
 # RHEL / AlmaLinux / Rocky (libsodium lives in EPEL)
-sudo dnf install epel-release && sudo dnf install nasm binutils libsodium-devel python3 brotli curl
+sudo dnf install epel-release && sudo dnf install nasm binutils libsodium-devel python3 brotli curl vips-tools
 # Alpine
-apk add nasm binutils libsodium-dev python3 brotli curl
+apk add nasm binutils libsodium-dev python3 brotli curl vips-tools
 ```
 
 At run time only the libsodium shared library is needed (`libsodium23`
-/ `libsodium` / `libsodium`), not the development package. The Makefile, CI and the Docker build all pin the same Tailwind
+/ `libsodium` / `libsodium`), not the development package, plus the
+image converter if you upload photos. The Makefile, CI and the Docker build all pin the same Tailwind
 release and checksum (`TAILWIND_VERSION`/`TAILWIND_SHA256` in the
 [Makefile](Makefile), [ci.yml](.github/workflows/ci.yml) and the
 [Dockerfile](Dockerfile)); bump them together.
@@ -379,6 +464,12 @@ run of saves never exhausts it.
       JSON-LD, robots + sitemap + manifest + icons, ETag/304 validators
       and cache policy, HEAD, canonical redirects, richer Atom, markdown
       images/anchors/code classes, persistent visitor counter
+- [x] Milestone 8 — own the pictures: image uploads streamed to disk,
+      an unsandboxed conversion helper (libvips / ImageMagick / Pillow)
+      producing WebP + PNG at two sizes, media records in the store,
+      mapped-file serving with immutable caching, `<picture>` + `srcset`
+      markup and a CSS-only themed lightbox, a media library in the
+      admin panel
 
 ## Code conventions
 

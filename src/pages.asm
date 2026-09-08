@@ -71,6 +71,7 @@ global hits_init
 global hits_p
 global finish_page
 global finish_304
+global resp_headers
 global shell_vals
 global theme_class
 global css_ver
@@ -982,6 +983,16 @@ page_feed:
 .lang:
     mov rdi, rbx
     call emit
+    mov rdi, r12                ; xml:base: relative /media/ links in the
+    call have_base              ; entries resolve against the site
+    test eax, eax
+    jz .nobase
+    EMITS a_xmlbase, rbx
+    mov rdi, rbx
+    mov rsi, r12
+    call emit_base
+    EMITS s_slash, rbx
+.nobase:
     EMITS a_head1b, rbx         ; "><title>
     call site_name
     mov rdi, rbx
@@ -1815,7 +1826,22 @@ meta_post:
     mov rdi, r12
     mov rsi, r13
     call og_common
+    ; the card image: the post's first self-hosted image (a site-relative
+    ; /media/ path that needs the origin in front), else its first
+    ; Flickr photo (already absolute), else the theme's og.png
     mov qword [rsp+32], 0
+    mov byte [rsp+24], 0        ; 1 = the path is site-relative
+    mov rdi, [r14+P_HTML_P]
+    mov rsi, [r14+P_HTML_L]
+    mov rdx, m_mediasrc
+    mov ecx, m_mediasrc_len
+    call mem_find
+    test rax, rax
+    jz .try_flickr
+    add rax, 5                  ; past src="
+    mov byte [rsp+24], 1
+    jmp .imgat
+.try_flickr:
     mov rdi, [r14+P_HTML_P]
     mov rsi, [r14+P_HTML_L]
     mov rdx, m_flhost
@@ -1823,6 +1849,7 @@ meta_post:
     call mem_find
     test rax, rax
     jz .noflickr
+.imgat:
     mov [rsp+32], rax
     mov rcx, [r14+P_HTML_P]
     add rcx, [r14+P_HTML_L]
@@ -1837,7 +1864,23 @@ meta_post:
 .imgend:
     sub rdx, rax
     mov [rsp+40], rdx
+    cmp byte [rsp+24], 0
+    je .img_abs
+    mov rdi, r13
+    call have_base
+    test eax, eax
+    jnz .img_rel
+    mov qword [rsp+32], 0       ; no origin to make it absolute with
+    jmp .twsmall
+.img_rel:
     EMITS m_ogimage
+    mov rdi, r12
+    mov rsi, r13
+    call emit_base
+    jmp .img_path
+.img_abs:
+    EMITS m_ogimage
+.img_path:
     mov rdi, r12
     mov rsi, [rsp+32]
     mov rdx, [rsp+40]
@@ -1927,6 +1970,12 @@ meta_post:
     cmp qword [rsp+32], 0
     je .jimg_default
     EMITS j_img
+    cmp byte [rsp+24], 0
+    je .jimg_path
+    mov rdi, r12                ; (only reached with an origin: see above)
+    mov rsi, r13
+    call emit_base
+.jimg_path:
     mov rdi, r12
     mov rsi, [rsp+32]
     mov rdx, [rsp+40]
@@ -2901,6 +2950,8 @@ m_postp: db '/post/'
 m_postp_len equ $-m_postp
 m_flhost: db 'https://live.staticflickr.com/'
 m_flhost_len equ $-m_flhost
+m_mediasrc: db 'src="/media/'
+m_mediasrc_len equ $-m_mediasrc
 
 ; JSON-LD (a data block: not a script, so script-src 'none' still holds)
 j_post1: db '<script type="application/ld+json">{"@context":"https://schema.org",'
@@ -2993,6 +3044,8 @@ a_lang_en: db 'en'
 a_lang_en_len equ $-a_lang_en
 a_lang_es: db 'es-BO'
 a_lang_es_len equ $-a_lang_es
+a_xmlbase: db '" xml:base="'
+a_xmlbase_len equ $-a_xmlbase
 a_head1b: db '"><title>'
 a_head1b_len equ $-a_head1b
 a_head2: db '</title>', 10, '<link rel="alternate" type="text/html" href="'
@@ -3003,7 +3056,7 @@ a_head2c: db '/feed.xml"/>', 10, '<id>tag:blogd:feed</id><updated>'
 a_head2c_len equ $-a_head2c
 a_head3: db '</updated>', 10, '<author><name>'
 a_head3_len equ $-a_head3
-a_head3b: db '</name></author><generator>blogd 0.11</generator>', 10
+a_head3b: db '</name></author><generator>blogd 0.12</generator>', 10
 a_head3b_len equ $-a_head3b
 a_icon: db '<icon>'
 a_icon_len equ $-a_icon
@@ -3044,7 +3097,7 @@ s_200: db 'HTTP/1.1 200 OK', 13, 10
 s_200_len equ $-s_200
 s_304: db 'HTTP/1.1 304 Not Modified', 13, 10
 s_304_len equ $-s_304
-s_server: db 'Server: blogd/0.11', 13, 10
+s_server: db 'Server: blogd/0.12', 13, 10
 s_server_len equ $-s_server
 s_ka: db 'Connection: keep-alive', 13, 10
 s_ka_len equ $-s_ka

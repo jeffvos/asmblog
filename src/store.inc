@@ -21,13 +21,28 @@
 
 %define TYPE_POST       1
 %define TYPE_SETTINGS   2
+%define TYPE_MEDIA      3
 %define FLAG_PUBLISHED  1
 %define FLAG_TOMBSTONE  2
+
+; Media payload (TYPE_MEDIA): R_ID is the media id (its own sequence,
+; next_mid); R_TLEN = MD_HDR (the fixed part), R_SLEN = name length,
+; the other lengths 0:
+;   dword w, h            full rendition (<= the max-size setting)
+;   dword sw, sh          inline rendition (0,0 = none: the full one serves)
+;   dword b_webp, b_png   file sizes of the full renditions
+;   dword b_swebp, b_spng file sizes of the inline renditions
+;   name                  original filename, sanitised (<= 120 bytes)
+; The image bytes live in data/media/<id>.webp, <id>.png, <id>-s.webp,
+; <id>-s.png (media.asm); a media record only describes them.
+%define MD_HDR      32
 
 ; Settings payload: dword posts_per_page | dword session_ttl |
 ;   dword title_len | dword banner_len | dword theme | dword locale |
 ;   dword hash_len(128) | title | banner | hash[128]
 ;   | dword url_len | url            (extension; absent in older records)
+;   | dword imgmax                   (extension 2: the longest edge an
+;                                     uploaded image is resized to)
 ; theme, locale, hash and url come from the [set_theme]/[set_locale]/
 ; [set_hash]/[set_url] globals at write time (not passed as args):
 ; callers stage them first (settings_set_url validates the url).
@@ -76,4 +91,27 @@
 %define S_SIZE      96
 
 %define MAX_POSTS   4096
+%define MAX_MEDIA   4096
+
+; In-memory media struct (64 bytes, store arena), newest first in
+; [media_arr]; M_NAME_P points into the file image or an arena copy.
+%define M_ID        0
+%define M_CREATED   8
+%define M_W         16          ; dwords, in payload order (copied as one
+%define M_H         20          ;   32-byte block from/to the record)
+%define M_SW        24
+%define M_SH        28
+%define M_BWEBP     32
+%define M_BPNG      36
+%define M_BSWEBP    40
+%define M_BSPNG     44
+%define M_NAME_P    48
+%define M_NAME_L    56
+%define M_SIZE      64
+
+; image size setting: longest edge of the full rendition, pixels
+%define IMGMAX_DEF  1600
+%define IMGMAX_MIN  320
+%define IMGMAX_MAX  4096
+%define MEDIA_NAME_MAX 120
 %define COMPACT_MIN 65536       ; auto-compact only files past this size

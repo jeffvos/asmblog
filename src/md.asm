@@ -6,6 +6,15 @@
 ;           --- hr, paragraphs, a lone ![image](url) line as <figure>
 ;   inline: **strong**, *em*, `code`, [text](url), ![alt](url)
 ;
+; ![alt](/media/N) is a self-hosted image (media.asm): it becomes a
+; <picture> — WebP with a PNG fallback, an inline-size and a full-size
+; rendition in a srcset, real width/height so nothing shifts — wrapped
+; in a link that opens a CSS-only lightbox (a :target overlay; the
+; markup is emitted here, the look lives in input.css). The writer
+; block carries two extra bytes for this: [w+17] = 1 while a lone-line
+; figure is rendering (adds the <figcaption>), [w+20] = the running
+; image count that numbers the lightbox ids within one render.
+;
 ; Safety model: every byte of user text goes through the HTML escaper;
 ; the only raw emissions are tags this file generates. Link URLs are
 ; scheme-allowlisted (http/https/mailto, site-relative, #fragment) and
@@ -16,10 +25,16 @@
 ; output is always well-formed.
 
 BITS 64
+%include "src/store.inc"
+%include "src/i18n.inc"
 
 extern emit
 extern emit_esc
+extern emit_u64
 extern slugify
+extern media_lookup
+extern parse_dec
+extern i18n_get
 
 global md_render
 global md_excerpt
@@ -34,6 +49,8 @@ md_render:
     push r15
     push rbx
     mov r12, rdi                ; writer
+    mov byte [r12+17], 0        ; figure context off
+    mov dword [r12+20], 0       ; lightbox counter
     mov r13, rsi                ; cursor
     lea r14, [rsi+rdx]          ; end
     xor ebx, ebx                ; block state: 0 none 1 p 2 ul 3 ol 4 quote 5 code
@@ -380,10 +397,12 @@ md_render:
     mov rsi, t_fig_o
     mov edx, t_fig_o_len
     call emit
+    mov byte [r12+17], 1        ; a media image adds its caption
     mov rdi, r12
     mov rsi, r13
     mov rdx, r15
     call inline_render
+    mov byte [r12+17], 0
     mov rdi, r12
     mov rsi, t_fig_c
     mov edx, t_fig_c_len
@@ -787,8 +806,29 @@ inline_render:
     jmp .ipscan
 .iphit:
     push rax                    ; ')' pos
+    ; ![alt](/media/N): a self-hosted image (picture + lightbox)
     mov rdi, rbp
     mov rsi, rax
+    sub rsi, rbp
+    call media_url_id
+    test rax, rax
+    jz .plain_img
+    mov rdi, r12
+    mov rsi, rax
+    lea rdx, [r13+2]            ; alt text
+    mov rcx, [rsp+8]            ; ']' pos
+    sub rcx, rdx
+    call media_emit
+    test eax, eax
+    jz .bang_lit_pop2           ; no such image: the text stays visible
+    pop r13                     ; ')' pos
+    inc r13
+    pop rax
+    mov r15, r13
+    jmp .scan
+.plain_img:
+    mov rdi, rbp
+    mov rsi, [rsp]
     sub rsi, rbp
     call img_allowed
     test eax, eax
@@ -867,6 +907,380 @@ inline_render:
     call emit
 .nostrong:
     pop rbp
+    pop rbx
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    ret
+
+; media_url_id(p, l) -> the N of "/media/N" (1..9 digits), else 0
+media_url_id:
+    cmp rsi, 8
+    jb .no
+    cmp rsi, 16
+    ja .no
+    cmp dword [rdi], '/med'
+    jne .no
+    cmp word [rdi+4], 'ia'
+    jne .no
+    cmp byte [rdi+6], '/'
+    jne .no
+    add rdi, 7
+    sub rsi, 7
+    jmp parse_dec               ; 0 on anything but digits
+.no:
+    xor eax, eax
+    ret
+
+; media_emit(w, id, alt_p, alt_l) -> 1 emitted / 0 unknown id.
+; <a class="pic-open" href="#lbN"><picture>…</picture></a>
+; [<figcaption>alt</figcaption>]
+; <span class="lb" id="lbN" role="dialog" aria-modal="true">
+;   <a class="lb-bg" href="#_"></a><span class="lb-frame"><span class="lb-pic">
+;   <span class="lb-ph"><picture>inline copy</picture></span><picture>full
+;   </picture></span>[<span class="lb-cap">alt</span>]<a class="lb-x" href="#_">×</a>
+; </span></span>
+; Frame: [0..64) the media struct copy, [64] id, [72] alt ptr, [80] alt len,
+;        [88] lightbox number
+media_emit:
+    push r12
+    push r13
+    push r14
+    push r15
+    push rbx
+    push rbp
+    sub rsp, 96
+    mov r12, rdi
+    mov [rsp+64], rsi
+    mov [rsp+72], rdx
+    mov [rsp+80], rcx
+    mov rdi, rsi
+    mov rsi, rsp
+    call media_lookup
+    test eax, eax
+    jz .ret
+    mov eax, [r12+20]
+    inc eax
+    mov [r12+20], eax
+    mov [rsp+88], rax
+    ; the inline copy, linked to the lightbox
+    mov rdi, r12
+    mov rsi, t_pic_a
+    mov edx, t_pic_a_len
+    call emit
+    mov rdi, r12
+    mov rsi, [rsp+88]
+    call emit_u64
+    mov rdi, r12
+    mov rsi, t_pic_a2
+    mov edx, t_pic_a2_len
+    call emit
+    mov edi, S_LB_OPEN
+    call i18n_get
+    mov rdi, r12
+    mov rsi, rax
+    call emit
+    mov rdi, r12
+    mov rsi, t_attr_end
+    mov edx, t_attr_end_len
+    call emit
+    mov rdi, r12
+    mov rsi, rsp
+    mov rdx, [rsp+64]
+    mov rcx, [rsp+72]
+    mov r8, [rsp+80]
+    mov r9, t_sizes_inline
+    mov r10d, t_sizes_inline_len
+    call emit_picture
+    mov rdi, r12
+    mov rsi, t_a_c
+    mov edx, t_a_c_len
+    call emit
+    cmp byte [r12+17], 0
+    je .lightbox
+    cmp qword [rsp+80], 0
+    je .lightbox
+    mov rdi, r12
+    mov rsi, t_figcap_o
+    mov edx, t_figcap_o_len
+    call emit
+    mov rdi, r12
+    mov rsi, [rsp+72]
+    mov rdx, [rsp+80]
+    call emit_esc
+    mov rdi, r12
+    mov rsi, t_figcap_c
+    mov edx, t_figcap_c_len
+    call emit
+.lightbox:
+    mov rdi, r12
+    mov rsi, t_lb_o
+    mov edx, t_lb_o_len
+    call emit
+    mov rdi, r12
+    mov rsi, [rsp+88]
+    call emit_u64
+    mov rdi, r12
+    mov rsi, t_lb_o2
+    mov edx, t_lb_o2_len
+    call emit
+    mov edi, S_LB_CLOSE
+    call i18n_get
+    mov rdi, r12
+    mov rsi, rax
+    call emit
+    mov rdi, r12
+    mov rsi, t_lb_o3
+    mov edx, t_lb_o3_len
+    call emit
+    ; under the full picture, the inline one again (same srcset and
+    ; sizes as on the page, so it is already in the cache): the viewer
+    ; opens on a picture instantly and the full one replaces it
+    mov rdi, r12
+    mov rsi, t_lb_ph
+    mov edx, t_lb_ph_len
+    call emit
+    mov rdi, r12
+    mov rsi, rsp
+    mov rdx, [rsp+64]
+    mov rcx, [rsp+72]
+    xor r8d, r8d                ; decorative: alt=""
+    mov r9, t_sizes_inline
+    mov r10d, t_sizes_inline_len
+    call emit_picture
+    mov rdi, r12
+    mov rsi, t_lb_ph_c
+    mov edx, t_lb_ph_c_len
+    call emit
+    mov rdi, r12
+    mov rsi, rsp
+    mov rdx, [rsp+64]
+    mov rcx, [rsp+72]
+    mov r8, [rsp+80]
+    mov r9, t_sizes_full
+    mov r10d, t_sizes_full_len
+    call emit_picture
+    mov rdi, r12
+    mov rsi, t_lb_pic_c
+    mov edx, t_lb_pic_c_len
+    call emit
+    cmp qword [rsp+80], 0
+    je .nocap
+    mov rdi, r12
+    mov rsi, t_lbcap_o
+    mov edx, t_lbcap_o_len
+    call emit
+    mov rdi, r12
+    mov rsi, [rsp+72]
+    mov rdx, [rsp+80]
+    call emit_esc
+    mov rdi, r12
+    mov rsi, t_lbcap_c
+    mov edx, t_lbcap_c_len
+    call emit
+.nocap:
+    mov rdi, r12
+    mov rsi, t_lb_x
+    mov edx, t_lb_x_len
+    call emit
+    mov edi, S_LB_CLOSE
+    call i18n_get
+    mov rdi, r12
+    mov rsi, rax
+    call emit
+    mov rdi, r12
+    mov rsi, t_lb_c
+    mov edx, t_lb_c_len
+    call emit
+    mov eax, 1
+.ret:
+    add rsp, 96
+    pop rbp
+    pop rbx
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    ret
+
+; emit_picture(w, m, id, alt_p, alt_l, sizes_p, r10 = sizes_l)
+; <picture><source type="image/webp" srcset="…"[ sizes="…"]>
+; <img src="/media/N.png" srcset="…"[ sizes="…"] width="W" height="H"
+;  alt="…" loading="lazy" decoding="async"></picture>
+; With an inline rendition the srcsets carry both widths; without, the
+; full one alone (and no sizes).
+emit_picture:
+    push r12
+    push r13
+    push r14
+    push r15
+    push rbx
+    push rbp
+    sub rsp, 16
+    mov r12, rdi
+    mov r13, rsi                ; m
+    mov r14, rdx                ; id
+    mov r15, rcx                ; alt
+    mov rbx, r8
+    mov rbp, r9                 ; sizes
+    mov [rsp], r10
+    mov rdi, r12
+    mov rsi, t_pic_o            ; <picture><source type="image/webp" srcset="
+    mov edx, t_pic_o_len
+    call emit
+    mov rdi, r12
+    mov rsi, r13
+    mov rdx, r14
+    mov rcx, t_ext_webp
+    mov r8d, t_ext_webp_len
+    call emit_srcset
+    mov rdi, r12
+    mov rsi, t_q
+    mov edx, 1
+    call emit
+    call .sizes
+    mov rdi, r12
+    mov rsi, t_pic_img          ; ><img src="/media/
+    mov edx, t_pic_img_len
+    call emit
+    mov rdi, r12
+    mov rsi, r14
+    call emit_u64
+    mov rdi, r12
+    mov rsi, t_pic_img2         ; .png" srcset="
+    mov edx, t_pic_img2_len
+    call emit
+    mov rdi, r12
+    mov rsi, r13
+    mov rdx, r14
+    mov rcx, t_ext_png
+    mov r8d, t_ext_png_len
+    call emit_srcset
+    mov rdi, r12
+    mov rsi, t_q
+    mov edx, 1
+    call emit
+    call .sizes
+    mov rdi, r12
+    mov rsi, t_pic_w            ;  width="
+    mov edx, t_pic_w_len
+    call emit
+    mov rdi, r12
+    mov esi, [r13+M_W]
+    call emit_u64
+    mov rdi, r12
+    mov rsi, t_pic_h            ; " height="
+    mov edx, t_pic_h_len
+    call emit
+    mov rdi, r12
+    mov esi, [r13+M_H]
+    call emit_u64
+    mov rdi, r12
+    mov rsi, t_img_m            ; " alt="
+    mov edx, t_img_m_len
+    call emit
+    mov rdi, r12
+    mov rsi, r15
+    mov rdx, rbx
+    call emit_esc
+    mov rdi, r12
+    mov rsi, t_pic_c            ; " loading="lazy" decoding="async"></picture>
+    mov edx, t_pic_c_len
+    call emit
+    add rsp, 16
+    pop rbp
+    pop rbx
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    ret
+.sizes:                         ; ' sizes="…"' only when there is a choice
+    cmp dword [r13+M_SW], 0
+    je .nosizes
+    mov rdi, r12
+    mov rsi, t_sizes_a
+    mov edx, t_sizes_a_len
+    call emit
+    mov rdi, r12
+    mov rsi, rbp
+    mov rdx, [rsp+8]            ; (+8: the call pushed a return address)
+    call emit
+    mov rdi, r12
+    mov rsi, t_q
+    mov edx, 1
+    call emit
+.nosizes:
+    ret
+
+; emit_srcset(w, m, id, ext_p, ext_l) — "/media/N-s.EXT SWw, /media/N.EXT Ww"
+; or just "/media/N.EXT" without an inline rendition
+emit_srcset:
+    push r12
+    push r13
+    push r14
+    push r15
+    push rbx
+    mov r12, rdi
+    mov r13, rsi
+    mov r14, rdx
+    mov r15, rcx
+    mov rbx, r8
+    cmp dword [r13+M_SW], 0
+    je .full
+    mov rdi, r12
+    mov rsi, t_mediap
+    mov edx, t_mediap_len
+    call emit
+    mov rdi, r12
+    mov rsi, r14
+    call emit_u64
+    mov rdi, r12
+    mov rsi, t_dash_s
+    mov edx, 2
+    call emit
+    mov rdi, r12
+    mov rsi, r15
+    mov rdx, rbx
+    call emit
+    mov rdi, r12
+    mov rsi, t_sp
+    mov edx, 1
+    call emit
+    mov rdi, r12
+    mov esi, [r13+M_SW]
+    call emit_u64
+    mov rdi, r12
+    mov rsi, t_w_comma
+    mov edx, t_w_comma_len
+    call emit
+.full:
+    mov rdi, r12
+    mov rsi, t_mediap
+    mov edx, t_mediap_len
+    call emit
+    mov rdi, r12
+    mov rsi, r14
+    call emit_u64
+    mov rdi, r12
+    mov rsi, r15
+    mov rdx, rbx
+    call emit
+    cmp dword [r13+M_SW], 0
+    je .done
+    mov rdi, r12
+    mov rsi, t_sp
+    mov edx, 1
+    call emit
+    mov rdi, r12
+    mov esi, [r13+M_W]
+    call emit_u64
+    mov rdi, r12
+    mov rsi, t_w
+    mov edx, 1
+    call emit
+.done:
     pop rbx
     pop r15
     pop r14
@@ -1418,5 +1832,63 @@ t_a_c:  db '</a>'
 t_a_c_len equ $-t_a_c
 t_nl:   db 10
 t_sp:   db ' '
+t_w:    db 'w'
+t_dash_s: db '-s'
+t_w_comma: db 'w, '
+t_w_comma_len equ $-t_w_comma
+t_mediap: db '/media/'
+t_mediap_len equ $-t_mediap
+t_ext_webp: db '.webp'
+t_ext_webp_len equ $-t_ext_webp
+t_ext_png: db '.png'
+t_ext_png_len equ $-t_ext_png
+t_attr_end: db '">'
+t_attr_end_len equ $-t_attr_end
+t_pic_a: db '<a class="pic-open" href="#lb'
+t_pic_a_len equ $-t_pic_a
+t_pic_a2: db '" aria-label="'
+t_pic_a2_len equ $-t_pic_a2
+t_pic_o: db '<picture><source type="image/webp" srcset="'
+t_pic_o_len equ $-t_pic_o
+t_pic_img: db '><img src="/media/'
+t_pic_img_len equ $-t_pic_img
+t_pic_img2: db '.png" srcset="'
+t_pic_img2_len equ $-t_pic_img2
+t_pic_w: db ' width="'
+t_pic_w_len equ $-t_pic_w
+t_pic_h: db '" height="'
+t_pic_h_len equ $-t_pic_h
+t_pic_c: db '" loading="lazy" decoding="async"></picture>'
+t_pic_c_len equ $-t_pic_c
+t_sizes_a: db ' sizes="'
+t_sizes_a_len equ $-t_sizes_a
+t_sizes_inline: db '(min-width: 48rem) 44rem, 100vw'
+t_sizes_inline_len equ $-t_sizes_inline
+t_sizes_full: db '100vw'
+t_sizes_full_len equ $-t_sizes_full
+t_figcap_o: db '<figcaption>'
+t_figcap_o_len equ $-t_figcap_o
+t_figcap_c: db '</figcaption>'
+t_figcap_c_len equ $-t_figcap_c
+t_lb_o: db '<span class="lb" id="lb'
+t_lb_o_len equ $-t_lb_o
+t_lb_o2: db '" role="dialog" aria-modal="true"><a class="lb-bg" href="#_" aria-label="'
+t_lb_o2_len equ $-t_lb_o2
+t_lb_o3: db '"></a><span class="lb-frame"><span class="lb-pic">'
+t_lb_o3_len equ $-t_lb_o3
+t_lb_ph: db '<span class="lb-ph">'
+t_lb_ph_len equ $-t_lb_ph
+t_lb_ph_c: db '</span>'
+t_lb_ph_c_len equ $-t_lb_ph_c
+t_lb_pic_c: db '</span>'
+t_lb_pic_c_len equ $-t_lb_pic_c
+t_lbcap_o: db '<span class="lb-cap">'
+t_lbcap_o_len equ $-t_lbcap_o
+t_lbcap_c: db '</span>'
+t_lbcap_c_len equ $-t_lbcap_c
+t_lb_x: db '<a class="lb-x" href="#_" aria-label="'
+t_lb_x_len equ $-t_lb_x
+t_lb_c: db '">&times;</a></span></span>'
+t_lb_c_len equ $-t_lb_c
 
 section .note.GNU-stack noalloc noexec nowrite progbits

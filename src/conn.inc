@@ -61,9 +61,16 @@
 %define CTX_LAST      144
 %define CTX_TGT_P     152
 %define CTX_TGT_L     160
-%define CTX_IN        192
+%define CTX_SPOOL_FD  168
+%define CTX_SPOOL_ID  172
+%define CTX_SPOOL_LEFT 176
+%define CTX_SPOOL_LEN 184
+%define CTX_FILE_P    192
+%define CTX_FILE_L    200
+%define CTX_FILE_SENT 208
+%define CTX_IN        256
 %define CTX_INBUF_SZ  131072
-%define CTX_OUT       131264
+%define CTX_OUT       131328
 %define CTX_OUTBUF_SZ 524288
 
 ; Cache-Control modes (CTX_CACHE); the header text lives in pages.asm
@@ -76,7 +83,8 @@
 %define CACHE_HOUR       6      ; public, max-age=3600 (unversioned static)
 
 %define HTTP_HEAD_MAX 8192      ; request line + headers
-%define HTTP_BODY_MAX 100000    ; Content-Length cap
+%define HTTP_BODY_MAX 100000    ; Content-Length cap (buffered bodies)
+%define MEDIA_BODY_MAX 33554432 ; 32 MiB: an image upload streams to disk
 
 ; Regions within outbuf:
 ;   [0, 1024)                headers land right-aligned against the body
@@ -94,7 +102,7 @@
 %define CTX_MDHTML_OFF   425984
 %define CTX_MDHTML_END   524288
 
-%define CTX_TOTAL     659456    ; 131264 + 524288, rounded up to pages
+%define CTX_TOTAL     659456    ; 131328 + 524288, rounded up to pages
 
 %define MAX_REQS_PER_CONN 1000
 %define MD_MAX 32768            ; markdown source cap per post
